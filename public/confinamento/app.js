@@ -17,12 +17,54 @@
   let currentUser = null;
   let isAdmin = false;
 
+  // ---------------- uso (telemetria de abertura e tempo, para a aba Uso do admin) ----------------
+  let usageViewId = null;
+  let usageTimer = null;
+
+  function postUsage(path, body, { beacon = false } = {}) {
+    const payload = JSON.stringify(body);
+    if (beacon && navigator.sendBeacon) {
+      navigator.sendBeacon(path, new Blob([payload], { type: "application/json" }));
+      return;
+    }
+    fetch(path, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: payload, keepalive: true }).catch(() => {});
+  }
+
+  function stopUsage({ beacon = false } = {}) {
+    if (!usageViewId) return;
+    clearInterval(usageTimer);
+    postUsage("/api/usage/end", { viewId: usageViewId }, { beacon });
+    usageViewId = null;
+  }
+
+  async function startUsageTracking() {
+    try {
+      const res = await fetch(`${API_BASE}/open`, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
+      const body = await res.json().catch(() => ({}));
+      if (!body.viewId) return;
+      usageViewId = body.viewId;
+      usageTimer = setInterval(() => {
+        if (document.visibilityState === "visible") postUsage("/api/usage/beat", { viewId: usageViewId });
+      }, 60 * 1000);
+    } catch (e) {
+      /* telemetria é best-effort, não deve travar o app */
+    }
+  }
+
+  document.addEventListener("visibilitychange", () => {
+    if (!usageViewId) return;
+    if (document.visibilityState === "hidden") postUsage("/api/usage/beat", { viewId: usageViewId }, { beacon: true });
+    else postUsage("/api/usage/beat", { viewId: usageViewId, resume: true });
+  });
+  window.addEventListener("pagehide", () => stopUsage({ beacon: true }));
+
   function showApp(user) {
     loginScreen.hidden = true;
     appRoot.hidden = false;
     currentUser = user;
     isAdmin = user.role === "admin";
     if (loggedInAs) loggedInAs.textContent = user.name;
+    startUsageTracking();
   }
 
   function showGate(message, canRequest) {

@@ -2,6 +2,7 @@
 // O front-end mora em public/confinamento (servido só para quem está logado e liberado,
 // ver server.js) e fala com estas rotas usando a mesma sessão do portal.
 import { Router } from 'express';
+import { recordToolAccess, startToolView } from '../accessLog.js';
 import { requireAuth } from '../auth.js';
 import { db, newId, save } from '../store.js';
 
@@ -34,6 +35,17 @@ function requireAccess(req, res, next) {
 }
 
 confinamentoRouter.use(requireAccess);
+
+// Chamado quando a ferramenta termina de carregar: registra a abertura nas métricas de uso do
+// portal (aba Uso → Ferramentas) e devolve um viewId para o tempo de uso, igual ao embed de relatório.
+// Admins não contam no uso (mesma regra dos relatórios), então não ganham viewId.
+confinamentoRouter.post('/open', (req, res) => {
+  if (req.user.role === 'admin') return res.json({ viewId: null });
+  const clientId = req.user.clientIds?.[0] || null;
+  recordToolAccess({ userId: req.user.id, clientId, toolId: 'confinamento' });
+  const viewId = startToolView({ userId: req.user.id, clientId, toolId: 'confinamento' });
+  res.json({ viewId });
+});
 
 confinamentoRouter.get('/simulations', (req, res) => {
   const list = db().confinamentoSimulations;

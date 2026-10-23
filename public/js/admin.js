@@ -1429,7 +1429,26 @@ function renderUsage() {
     'Nenhum usuário de cliente.',
   );
 
-  const feedLabels = { view: 'abriu', login: 'entrou no portal', export: 'gerou PDF de', ask: 'perguntou ao assistente' };
+  const toolsTable = h('table');
+  table(
+    toolsTable,
+    ['Ferramenta', 'Aberturas', 'Pessoas', 'Tempo total', 'Tempo médio', 'Último acesso'],
+    (u.tools || []).map((x) =>
+      h(
+        'tr',
+        {},
+        h('td', {}, h('strong', {}, x.name)),
+        h('td', { class: 'mono' }, num(x.views)),
+        h('td', { class: 'mono' }, num(x.users)),
+        h('td', { class: 'mono' }, fmtMinutes(x.minutes)),
+        h('td', { class: 'mono' }, x.avgMinutes ? `${String(x.avgMinutes).replace('.', ',')} min` : '—'),
+        h('td', {}, fmtAgo(x.lastView)),
+      ),
+    ),
+    'Nenhuma ferramenta acessada no período.',
+  );
+
+  const feedLabels = { view: 'abriu', tool_view: 'abriu', login: 'entrou no portal', export: 'gerou PDF de', ask: 'perguntou ao assistente' };
   const feedTable = h('table');
   table(
     feedTable,
@@ -1440,7 +1459,7 @@ function renderUsage() {
         {},
         h('td', { class: 'mono' }, fmtDate(e.at)),
         h('td', {}, e.user, h('span', { class: 'sub' }, e.client)),
-        h('td', {}, `${feedLabels[e.type] || e.type}${e.report ? ` ${e.report}` : ''}`),
+        h('td', {}, `${feedLabels[e.type] || e.type}${e.report ? ` ${e.report}` : ''}${e.tool ? ` ${e.tool}` : ''}`),
       ),
     ),
     'Nada no período.',
@@ -1563,6 +1582,9 @@ function renderUsage() {
     h('p', { class: 'muted usage-hint' }, 'Clique num relatório para ver quais abas são mais acessadas.'),
     scrollTable(reportsTable),
     never,
+    sectionTitle('Ferramentas'),
+    h('p', { class: 'muted usage-hint' }, 'Ferramentas do portal fora dos relatórios do Power BI, como o 4M Confinamento.'),
+    scrollTable(toolsTable),
     h(
       'div',
       { class: 'usage-split' },

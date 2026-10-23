@@ -1,11 +1,17 @@
 // Medição de uso do portal, guardada em JSON Lines ao lado do arquivo de cadastros.
 // Tipos de evento (registros antigos, sem "type", são aberturas):
-//   view   – abriu um relatório (reaberturas em 30 min contam uma vez)
-//   time   – tempo com o relatório aberto e visível (segundos) e páginas vistas
-//   login  – entrou no portal
-//   export – gerou um PDF
-//   ask    – fez uma pergunta ao assistente
+//   view       – abriu um relatório (reaberturas em 30 min contam uma vez)
+//   time       – tempo com o relatório aberto e visível (segundos) e páginas vistas
+//   tool_view  – abriu uma ferramenta (ex.: 4M Confinamento), mesma regra de reabertura
+//   tool_time  – tempo com a ferramenta aberta e visível (segundos)
+//   login      – entrou no portal
+//   export     – gerou um PDF
+//   ask        – fez uma pergunta ao assistente
 // Só clientes contam: acessos de administradores (e de admin "entrando como") não são registrados.
+
+// Ferramentas fora do Power BI que o portal passou a distribuir (a primeira foi o 4M Confinamento).
+// Para adicionar uma nova, basta incluir aqui e usar esse id nas chamadas de recordToolAccess/startToolView.
+export const TOOLS = [{ id: 'confinamento', name: '4M Confinamento' }];
 import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -72,6 +78,14 @@ export function recordAccess({ userId, clientId, reportId }) {
   recordEvent('view', { userId, clientId, reportId });
 }
 
+// Abertura de ferramenta (ex.: 4M Confinamento). Mesma regra de reabertura do recordAccess.
+export function recordToolAccess({ userId, clientId, toolId }) {
+  const now = Date.now();
+  const recent = events.findLast((e) => typeOf(e) === 'tool_view' && e.userId === userId && e.toolId === toolId);
+  if (recent && now - Date.parse(recent.at) < DEDUPE_MS) return;
+  append({ at: new Date().toISOString(), type: 'tool_view', userId, clientId, toolId });
+}
+
 // ---------- Tempo de uso: sessões de visualização com "batimentos" a cada minuto ----------
 
 const BEAT_MAX_S = 75; // um batimento vale no máximo isso (o portal manda a cada 60 s)
@@ -82,6 +96,14 @@ const sessions = new Map();
 export function startView({ userId, clientId, reportId }) {
   const viewId = crypto.randomUUID();
   sessions.set(viewId, { userId, clientId, reportId, start: Date.now(), last: Date.now(), seconds: 0, page: null, pageStats: new Map() });
+  return viewId;
+}
+
+// Mesma sessão de tempo acima, mas para uma ferramenta em vez de um relatório — beatView/endView
+// (chamadas por /api/usage/beat e /api/usage/end) funcionam igual, sem saber a diferença.
+export function startToolView({ userId, clientId, toolId }) {
+  const viewId = crypto.randomUUID();
+  sessions.set(viewId, { userId, clientId, toolId, start: Date.now(), last: Date.now(), seconds: 0, page: null, pageStats: new Map() });
   return viewId;
 }
 
@@ -115,10 +137,11 @@ function finish(viewId) {
   if (s.seconds < 5) return;
   append({
     at: new Date(s.start).toISOString(),
-    type: 'time',
+    type: s.toolId ? 'tool_time' : 'time',
     userId: s.userId,
     clientId: s.clientId,
-    reportId: s.reportId,
+    reportId: s.reportId || null,
+    toolId: s.toolId || null,
     seconds: s.seconds,
     pages: s.pageStats.size,
     pageStats: [...s.pageStats].map(([page, v]) => ({ page, seconds: v.seconds, visits: v.visits })),
@@ -227,6 +250,26 @@ function reportRows(list, reportsInScope, clientsInScope) {
     .sort((a, b) => b.views - a.views || b.minutes - a.minutes || a.name.localeCompare(b.name, 'pt-BR'));
 }
 
+function toolRows(list) {
+  const all = events.filter(clientOnly());
+  return TOOLS.map((t) => {
+    const mine = list.filter((e) => e.toolId === t.id);
+    const views = mine.filter((e) => typeOf(e) === 'tool_view');
+    const timeEvents = mine.filter((e) => typeOf(e) === 'tool_time');
+    const seconds = timeEvents.reduce((s, e) => s + (e.seconds || 0), 0);
+    const last = all.findLast((e) => e.toolId === t.id && typeOf(e) === 'tool_view');
+    return {
+      id: t.id,
+      name: t.name,
+      views: views.length,
+      users: new Set(views.map((e) => e.userId)).size,
+      minutes: Math.round(seconds / 60),
+      avgMinutes: timeEvents.length ? Math.round((seconds / timeEvents.length / 60) * 10) / 10 : 0,
+      lastView: last?.at || null,
+    };
+  }).sort((a, b) => b.views - a.views || b.minutes - a.minutes);
+}
+
 function userRows(list, usersInScope) {
   const all = events.filter(clientOnly());
   const clientNames = new Map(db().clients.map((c) => [c.id, c.name]));
@@ -253,8 +296,9 @@ function userRows(list, usersInScope) {
 function feed(list) {
   const { users, clients, reports } = db();
   const name = (arr, id) => arr.find((x) => x.id === id)?.name;
+  const toolName = (id) => TOOLS.find((t) => t.id === id)?.name || id;
   return list
-    .filter((e) => typeOf(e) !== 'time')
+    .filter((e) => typeOf(e) !== 'time' && typeOf(e) !== 'tool_time')
     .slice(-60)
     .reverse()
     .map((e) => ({
@@ -263,6 +307,7 @@ function feed(list) {
       user: name(users, e.userId) || '(removido)',
       client: name(clients, e.clientId) || '—',
       report: e.reportId ? name(reports, e.reportId) || '(removido)' : null,
+      tool: e.toolId ? toolName(e.toolId) : null,
     }));
 }
 
@@ -375,6 +420,7 @@ export function usageSummary(days, { tagIds = [] } = {}) {
     clients: clientRows,
     tags: tagBreakdown(fullRows),
     reports: reportTable.filter((r) => r.views || r.minutes).slice(0, 30),
+    tools: toolRows(current),
     neverOpened: reportTable.filter((r) => !everViewed.has(r.id)).map(({ id, name, category, clients: owners }) => ({ id, name, category, clients: owners })),
     users: userRows(current, scopeUsers).slice(0, 50),
     recent: feed(current),
@@ -447,7 +493,8 @@ export function usageCsv(days, { tagIds = [] } = {}) {
   const { users, clients, reports } = db();
   const name = (arr, id) => arr.find((x) => x.id === id)?.name || '';
   const email = (id) => users.find((u) => u.id === id)?.email || '';
-  const labels = { view: 'abertura', time: 'tempo de uso', login: 'login', export: 'PDF', ask: 'pergunta ao assistente' };
+  const toolName = (id) => TOOLS.find((t) => t.id === id)?.name || id;
+  const labels = { view: 'abertura', time: 'tempo de uso', tool_view: 'abertura de ferramenta', tool_time: 'tempo de uso (ferramenta)', login: 'login', export: 'PDF', ask: 'pergunta ao assistente' };
   const fmt = new Intl.DateTimeFormat('pt-BR', { timeZone: TZ, dateStyle: 'short', timeStyle: 'short' });
   const cell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
   const rows = events
@@ -461,10 +508,11 @@ export function usageCsv(days, { tagIds = [] } = {}) {
       email(e.userId),
       name(clients, e.clientId),
       e.reportId ? name(reports, e.reportId) : '',
-      typeOf(e) === 'time' ? String(Math.round(((e.seconds || 0) / 60) * 10) / 10).replace('.', ',') : '',
+      e.toolId ? toolName(e.toolId) : '',
+      typeOf(e) === 'time' || typeOf(e) === 'tool_time' ? String(Math.round(((e.seconds || 0) / 60) * 10) / 10).replace('.', ',') : '',
       typeOf(e) === 'time' ? e.pages || 0 : '',
     ]);
-  const header = ['Data e hora', 'Tipo', 'Usuário', 'E-mail', 'Cliente', 'Relatório', 'Minutos', 'Páginas'];
+  const header = ['Data e hora', 'Tipo', 'Usuário', 'E-mail', 'Cliente', 'Relatório', 'Ferramenta', 'Minutos', 'Páginas'];
   // O BOM no início faz o Excel reconhecer os acentos (UTF-8).
   const BOM = String.fromCharCode(0xfeff);
   return `${BOM}${[header, ...rows].map((r) => r.map(cell).join(';')).join('\r\n')}\r\n`;
