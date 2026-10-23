@@ -1,0 +1,25 @@
+{
+  "name": "my-bi-portal",
+  "version": "1.0.0",
+  "description": "Portal para distribuir relatórios do Power BI Embedded com login por cliente",
+  "private": true,
+  "type": "module",
+  "main": "server.js",
+  "engines": {
+    "node": ">=22.9"
+  },
+  "scripts": {
+    "start": "node --env-file-if-exists=.env server.js",
+    "dev": "node --watch --env-file-if-exists=.env server.js",
+    "create-admin": "node --env-file-if-exists=.env scripts/create-admin.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.135.0",
+    "@azure/msal-node": "^7.1.0",
+    "chart.js": "^4.5.1",
+    "cookie-session": "^2.1.1",
+    "express": "^4.22.3",
+    "helmet": "^8.3.0",
+    "powerbi-client": "^2.25.0"
+  }
+}

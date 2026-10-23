@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Relatórios</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Saira:wght@500;600;700&display=swap" />
+    <script src="/js/theme.js"></script>
+    <link rel="icon" type="image/png" href="/img/probeef-symbol.png" />
+    <link rel="stylesheet" href="/css/app.css" />
+  </head>
+  <body>
+    <div class="impersonation" id="impersonation" role="status" hidden>
+      <span id="impersonation-text"></span>
+      <button class="btn btn-sm" id="stop-impersonation" type="button">Voltar para o admin</button>
+    </div>
+    <div class="app">
+      <header class="topbar">
+        <button class="btn btn-ghost btn-sm nav-toggle" id="nav-toggle" type="button" aria-controls="sidebar" aria-expanded="false">Relatórios</button>
+        <a class="brand" href="/portal#inicio"><img class="brand-logo logo-on-light" src="/img/probeef-horizontal.png" alt="Probeef" width="108" height="24" /><img class="brand-logo logo-on-dark" src="/img/probeef-horizontal-light.png" alt="Probeef" width="108" height="24" /><span class="brand-sub">BI</span></a>
+        <span class="spacer"></span>
+        <a class="btn btn-sm" id="admin-link" href="/admin" hidden>Administração</a>
+        <div class="who"><strong id="user-name"></strong><span class="muted" id="client-name"></span></div>
+        <button class="btn btn-sm btn-ghost theme-toggle" type="button" data-theme-toggle aria-label="Alternar tema claro/escuro">
+          <svg class="icon-sun" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="12" cy="12" r="4.2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 2.5v2.2M12 19.3v2.2M4.6 4.6l1.6 1.6M17.8 17.8l1.6 1.6M2.5 12h2.2M19.3 12h2.2M4.6 19.4l1.6-1.6M17.8 6.2l1.6-1.6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          <svg class="icon-moon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M20.2 14.6A8.5 8.5 0 0 1 9.4 3.8a8.5 8.5 0 1 0 10.8 10.8z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+        </button>
+        <div class="menu">
+          <button class="btn btn-sm" id="menu-button" type="button" aria-haspopup="true" aria-expanded="false">Conta</button>
+          <div class="menu-list" id="menu-list" hidden>
+            <button class="btn btn-ghost btn-sm" id="team-button" type="button" hidden>Minha equipe</button>
+            <button class="btn btn-ghost btn-sm" id="assistant-settings" type="button">Meu assistente</button>
+            <button class="btn btn-ghost btn-sm" id="change-password" type="button">Trocar senha</button>
+            <button class="btn btn-ghost btn-sm" id="logout" type="button">Sair</button>
+          </div>
+        </div>
+      </header>
+
+      <div class="portal">
+        <nav class="sidebar" id="sidebar" aria-label="Relatórios">
+          <div class="sidebar-head">
+            <label class="field client-field" id="client-field" hidden>
+              <span class="label">Cliente</span>
+              <select id="client-switch"></select>
+            </label>
+            <p class="label" id="report-count">Relatórios</p>
+            <input id="search" type="search" placeholder="Buscar relatório" aria-label="Buscar relatório" />
+          </div>
+          <a class="home-link" id="home-link" href="#inicio">Todos os relatórios</a>
+          <div class="report-list" id="report-list"></div>
+        </nav>
+
+        <main class="viewer">
+          <section class="home" id="home" hidden aria-labelledby="home-title">
+            <div class="home-head">
+              <p class="label" id="home-client"></p>
+              <h1 id="home-title">Seus relatórios</h1>
+              <p class="muted">Escolha um painel para abrir.</p>
+            </div>
+            <div id="home-groups"></div>
+          </section>
+          <div class="viewer-head" id="viewer-head" hidden>
+            <div class="title">
+              <h1 id="report-title"></h1>
+              <p id="report-description"></p>
+              <span class="pill pill-ok updated" id="report-updated" hidden></span>
+            </div>
+            <div class="viewer-actions">
+              <select id="as-client" aria-label="Visualizar como cliente" hidden></select>
+              <button class="btn btn-sm fav-toggle" id="fav-button" type="button" aria-pressed="false">☆ Favoritar</button>
+              <div class="menu">
+                <button class="btn btn-sm" id="views-button" type="button" aria-haspopup="true" aria-expanded="false">Visões</button>
+                <div class="menu-list views-menu" id="views-menu" hidden></div>
+              </div>
+              <div class="menu">
+                <button class="btn btn-sm" id="export-button" type="button" aria-haspopup="true" aria-expanded="false">Exportar PDF</button>
+                <div class="menu-list" id="export-menu" hidden>
+                  <button class="btn btn-ghost btn-sm" type="button" data-export="page">Página atual</button>
+                  <button class="btn btn-ghost btn-sm" type="button" data-export="all">Relatório completo</button>
+                </div>
+              </div>
+              <button class="btn btn-sm" id="reload" type="button">Recarregar</button>
+              <button class="btn btn-sm" id="fullscreen" type="button">Tela cheia</button>
+            </div>
+          </div>
+          <div class="export-status" id="export-status" role="status" hidden></div>
+          <div class="embed-wrap" id="embed-wrap">
+            <div id="embed"></div>
+            <div class="state" id="state">
+              <div class="spinner" aria-hidden="true"></div>
+              <p>Carregando seus relatórios…</p>
+            </div>
+          </div>
+        </main>
+      </div>
+    </div>
+
+    <dialog id="password-dialog">
+      <form novalidate>
+        <h2>Trocar senha</h2>
+        <p class="alert alert-ok" data-required-note hidden>Este é seu primeiro acesso. Defina uma senha pessoal para continuar.</p>
+        <label class="field"><span>Senha atual</span><input id="pw-current" name="currentPassword" type="password" autocomplete="current-password" required /></label>
+        <label class="field"><span>Nova senha</span><input id="pw-new" name="newPassword" type="password" autocomplete="new-password" minlength="10" required /><small>Pelo menos 10 caracteres.</small></label>
+        <label class="field"><span>Repita a nova senha</span><input id="pw-confirm" name="confirm" type="password" autocomplete="new-password" required /></label>
+        <div class="alert" role="alert" hidden></div>
+        <div class="dialog-actions">
+          <button class="btn" type="button" data-cancel>Cancelar</button>
+          <button class="btn btn-primary" type="submit">Salvar senha</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script src="/vendor/powerbi.min.js"></script>
+    <script type="module" src="/js/portal.js"></script>
+  </body>
+</html>

@@ -1,0 +1,1296 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>4M Confinamento</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<script src="/vendor/chart.min.js"></script>
+<style>
+  :root{
+    --bg:#F5F6F6;
+    --surface:#FFFFFF;
+    --surface-2:#EDEFEE;
+    --border:#DCDFDE;
+    --text:#1A1A1A;
+    --text-muted:#6B6B6B;
+    --accent:#003A40;
+    --accent-strong:#00262B;
+    --accent-soft:#DCE7E6;
+    --accent-2:#B9752B;
+    --accent-2-soft:#F2E2C9;
+    --positive:#2F8F5B;
+    --positive-soft:#DFEEE4;
+    --negative:#AE4430;
+    --negative-soft:#F4DCD4;
+    --accent-contrast:#FFFFFF;
+    --shadow: 0 1px 2px rgba(12,20,22,0.07), 0 6px 20px rgba(12,20,22,0.07);
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#14191A;
+      --surface:#1B2122;
+      --surface-2:#212829;
+      --border:#323A3B;
+      --text:#EDEFEE;
+      --text-muted:#9BA3A2;
+      --accent:#5FA79B;
+      --accent-strong:#8AC9BD;
+      --accent-soft:#1A322F;
+      --accent-2:#E0A857;
+      --accent-2-soft:#3A2E1C;
+      --positive:#6FD99B;
+      --positive-soft:#1B3327;
+      --negative:#E38A78;
+      --negative-soft:#3A231F;
+      --accent-contrast:#0B1213;
+      --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 8px 24px rgba(0,0,0,0.35);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#14191A;
+    --surface:#1B2122;
+    --surface-2:#212829;
+    --border:#323A3B;
+    --text:#EDEFEE;
+    --text-muted:#9BA3A2;
+    --accent:#5FA79B;
+    --accent-strong:#8AC9BD;
+    --accent-soft:#1A322F;
+    --accent-2:#E0A857;
+    --accent-2-soft:#3A2E1C;
+    --positive:#6FD99B;
+    --positive-soft:#1B3327;
+    --negative:#E38A78;
+    --negative-soft:#3A231F;
+    --accent-contrast:#0B1213;
+    --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 8px 24px rgba(0,0,0,0.35);
+  }
+
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:"Inter", system-ui, sans-serif;
+    font-size:14px;
+    line-height:1.45;
+  }
+  h1,h2,h3{font-family:"Inter",sans-serif; text-wrap:balance; margin:0;}
+  .num{font-family:"IBM Plex Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums;}
+  table{font-variant-numeric: tabular-nums;}
+
+  a{color:var(--accent);}
+
+  .app{
+    display:flex;
+    min-height:100vh;
+  }
+  /* [hidden] do navegador tem prioridade baixa e perde para a regra de
+     classe acima — força explicitamente, senão o app fica visível por
+     baixo da tela de login mesmo com o atributo hidden presente. */
+  .app[hidden], .login-screen[hidden]{ display:none !important; }
+
+  /* ---------- Sidebar ---------- */
+  .sidebar{
+    width:238px;
+    flex-shrink:0;
+    background:var(--surface);
+    border-right:1px solid var(--border);
+    padding:20px 14px;
+    display:flex;
+    flex-direction:column;
+    gap:22px;
+    position:sticky;
+    top:0;
+    height:100vh;
+    overflow-y:auto;
+  }
+  .sidebar-top{
+    display:flex;
+    align-items:flex-start;
+    justify-content:space-between;
+    gap:8px;
+  }
+  .brand{
+    display:flex;
+    flex-direction:column;
+    align-items:flex-start;
+    gap:8px;
+    padding:2px 2px;
+    min-width:0;
+    overflow:hidden;
+  }
+  .brand-logo{
+    height:24px;
+    width:auto;
+    max-width:100%;
+    flex-shrink:0;
+    filter:none;
+  }
+  /* a logo é um wordmark escuro fixo — no tema escuro ela precisa clarear
+     para continuar legível sobre o fundo (mantendo o desenho via invert). */
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]) .brand-logo{ filter: brightness(0) invert(1); }
+  }
+  :root[data-theme="dark"] .brand-logo{ filter: brightness(0) invert(1); }
+  .brand-text{ white-space:nowrap; overflow:hidden; }
+  .brand-text h1{font-size:15px; font-weight:600; letter-spacing:0.2px;}
+  .brand-text span{font-size:11px; color:var(--text-muted);}
+  .sidebar.collapsed .brand{ align-items:center; }
+
+  .sidebar-toggle{
+    flex-shrink:0;
+    width:30px; height:30px;
+    border-radius:8px;
+    border:1px solid var(--border);
+    background:var(--surface);
+    color:var(--text-muted);
+    cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .sidebar-toggle:hover{ background:var(--surface-2); color:var(--text); }
+  .sidebar-toggle svg{ width:16px; height:16px; }
+
+  nav.tabs{display:flex; flex-direction:column; gap:3px;}
+  .tab-btn{
+    display:flex; align-items:flex-start; gap:11px;
+    padding:9px 12px;
+    border-radius:9px;
+    border:none;
+    background:transparent;
+    color:var(--text-muted);
+    font:inherit;
+    font-weight:600;
+    font-size:13px;
+    line-height:1.3;
+    text-align:left;
+    cursor:pointer;
+    transition: background .12s ease, color .12s ease;
+  }
+  .tab-icon{
+    width:20px;height:20px;flex-shrink:0;
+    margin-top:1px;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .tab-icon svg{ width:100%; height:100%; }
+  .tab-label{ display:flex; align-items:flex-start; gap:8px; white-space:normal; }
+  .tab-btn:hover{ background:var(--surface-2); color:var(--text); }
+  .tab-btn.active{ background:var(--accent-soft); color:var(--accent-strong); }
+  .tab-step{
+    font-family:"IBM Plex Mono", monospace;
+    font-size:10px;
+    color:var(--text-muted);
+    opacity:0.7;
+  }
+  .tab-btn.active .tab-step{ color:var(--accent-strong); opacity:1;}
+
+  /* ---------- Sidebar recolhida ---------- */
+  .sidebar.collapsed{ width:76px; }
+  .sidebar.collapsed .sidebar-top{ flex-direction:column; gap:10px; }
+  .sidebar.collapsed .brand-text,
+  .sidebar.collapsed .tab-label,
+  .sidebar.collapsed .sidebar-foot{ display:none; }
+  .sidebar.collapsed .brand{ padding:0; justify-content:center; }
+  .sidebar.collapsed .tab-btn{ justify-content:center; padding:10px; }
+  .sidebar.collapsed .sidebar-toggle svg{ transform:rotate(180deg); }
+
+  .report-btn{
+    display:flex; align-items:center; gap:9px;
+    margin-top:10px;
+    padding:9px 12px;
+    border-radius:9px;
+    border:1px solid var(--accent-2);
+    background:var(--accent-2-soft);
+    color:var(--accent-2);
+    font:inherit; font-weight:700; font-size:12.5px;
+    cursor:pointer;
+    width:100%;
+  }
+  .report-btn:hover{ filter:brightness(0.96); }
+  .report-btn svg{ width:16px; height:16px; flex-shrink:0; }
+  .sidebar.collapsed .report-btn{ justify-content:center; padding:10px; }
+  .sidebar.collapsed .report-btn span{ display:none; }
+
+  .sidebar-foot{
+    margin-top:auto;
+    font-size:11px;
+    color:var(--text-muted);
+    padding:10px 6px;
+    border-top:1px solid var(--border);
+  }
+  .sidebar-foot b{color:var(--text);}
+
+  /* ---------- Main ---------- */
+  .main{
+    flex:1;
+    min-width:0;
+    padding:28px 34px 60px;
+  }
+  .main-topbar{
+    display:flex; justify-content:flex-end; align-items:center; gap:12px;
+    margin-bottom:18px;
+  }
+  .main-logo{ height:26px; width:auto; }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]) .main-logo{ filter: brightness(0) invert(1); }
+  }
+  :root[data-theme="dark"] .main-logo{ filter: brightness(0) invert(1); }
+  .theme-toggle{
+    width:32px; height:32px; border-radius:50%; flex-shrink:0;
+    border:1px solid var(--border);
+    background:var(--surface);
+    color:var(--text-muted);
+    display:flex; align-items:center; justify-content:center;
+    cursor:pointer;
+  }
+  .theme-toggle:hover{ background:var(--surface-2); color:var(--text); }
+  .theme-toggle svg{ width:17px; height:17px; }
+  .page-head{
+    display:flex; justify-content:space-between; align-items:flex-start; gap:16px;
+    margin-bottom:22px;
+    flex-wrap:wrap;
+  }
+  .page-head h2{font-size:24px; font-weight:600;}
+  .page-head p{margin:6px 0 0; color:var(--text-muted); max-width:62ch;}
+  .live-badge{
+    display:flex; align-items:center; gap:6px;
+    font-size:11px; font-weight:600; color:var(--accent-strong);
+    background:var(--accent-soft);
+    padding:6px 10px; border-radius:100px;
+    white-space:nowrap;
+  }
+  .live-dot{width:6px;height:6px;border-radius:50%;background:var(--accent); animation:pulse 2s infinite;}
+  @media (prefers-reduced-motion: reduce){ .live-dot{animation:none;} }
+  @keyframes pulse{ 0%,100%{opacity:1;} 50%{opacity:.35;} }
+
+  .view{display:none;}
+  .view.active{display:block;}
+
+  .panel-grid{
+    display:grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap:16px;
+    margin-bottom:16px;
+  }
+  .panel{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:14px;
+    padding:18px 18px 20px;
+    box-shadow:var(--shadow);
+  }
+  .panel-title{
+    font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em;
+    color:var(--text-muted);
+    margin-bottom:14px;
+    display:flex; align-items:center; gap:8px;
+  }
+  .panel-title .swatch{width:8px;height:8px;border-radius:2px; background:var(--accent);}
+  .panel-title.money .swatch{background:var(--accent-2);}
+
+  .field{margin-bottom:13px;}
+  .field:last-child{margin-bottom:0;}
+  .field label{
+    display:block; font-size:12.5px; font-weight:600; color:var(--text);
+    margin-bottom:5px;
+  }
+  .field .hint{font-size:11px; color:var(--text-muted); font-weight:400;}
+  .field input[type=number]{
+    width:100%;
+    padding:8px 10px;
+    border-radius:8px;
+    border:1px solid var(--border);
+    background:var(--bg);
+    color:var(--text);
+    font:inherit;
+    font-family:"IBM Plex Mono", monospace;
+  }
+  .field input[type=number]:focus{ outline:2px solid var(--accent); outline-offset:1px; }
+
+  .seg{
+    display:flex; flex-wrap:wrap; gap:6px;
+  }
+  .seg button{
+    border:1px solid var(--border);
+    background:var(--bg);
+    color:var(--text);
+    font:inherit; font-size:12px; font-weight:600;
+    padding:7px 11px; border-radius:8px;
+    cursor:pointer;
+  }
+  .seg button.active{ background:var(--accent); border-color:var(--accent); color:var(--accent-contrast); }
+
+  .scenario-switch{
+    background:var(--surface-2);
+    border:1px solid var(--border);
+    border-radius:11px;
+    padding:9px 10px;
+    display:flex; flex-direction:column; gap:7px;
+  }
+  .scenario-switch-label{ font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--text-muted); }
+  .scenario-seg{ display:flex; gap:5px; }
+  .scenario-seg button{ flex:1; padding:7px 8px; font-size:12px; }
+  .scenario-seg button.scenario-a.active{ background:var(--accent); border-color:var(--accent); color:var(--accent-contrast); }
+  .scenario-seg button.scenario-b.active{ background:var(--accent-2); border-color:var(--accent-2); color:var(--accent-contrast); }
+  .sidebar.collapsed .scenario-switch-label{ display:none; }
+  .sidebar.collapsed .scenario-seg{ flex-direction:column; }
+  .scenario-name-input{
+    width:100%;
+    padding:7px 9px;
+    border-radius:8px;
+    border:1px solid var(--border);
+    background:var(--bg);
+    color:var(--text);
+    font:inherit; font-size:12px;
+  }
+  .scenario-name-input:focus{ outline:2px solid var(--accent); outline-offset:1px; }
+
+  .scenario-panel{
+    display:flex; align-items:flex-end; gap:14px;
+    background:var(--surface); border:1px solid var(--border); border-radius:14px;
+    padding:14px 18px; margin-bottom:18px; box-shadow:var(--shadow);
+  }
+  .scenario-panel-tag{
+    width:38px; height:38px; border-radius:10px; flex-shrink:0;
+    display:flex; align-items:center; justify-content:center;
+    font-family:"Inter",sans-serif; font-weight:800; font-size:16px;
+    background:var(--accent); color:var(--accent-contrast);
+  }
+  .scenario-panel-tag.is-b{ background:var(--accent-2); }
+
+  .field-inline{display:flex; gap:10px; align-items:flex-start;}
+  .field-inline .field{flex:1;}
+
+  /* stat tiles */
+  .stat-grid{
+    display:grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap:14px;
+    margin-bottom:20px;
+  }
+  .stat-tile{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:14px;
+    padding:16px 18px;
+    box-shadow:var(--shadow);
+    position:relative;
+    overflow:hidden;
+  }
+  .stat-tile::before{
+    content:"";
+    position:absolute; left:0; top:0; bottom:0; width:3px;
+    background:var(--tile-accent, var(--accent));
+  }
+  .stat-tile .label{font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--text-muted);}
+  .stat-tile .value{font-family:"IBM Plex Mono",monospace; font-size:25px; font-weight:600; margin-top:6px;}
+  .stat-tile .unit{font-size:12px; color:var(--text-muted); margin-left:4px;}
+
+  /* tables */
+  .table-wrap{
+    overflow-x:auto;
+    border:1px solid var(--border);
+    border-radius:14px;
+    background:var(--surface);
+    box-shadow:var(--shadow);
+  }
+  table.data{
+    width:100%;
+    border-collapse:collapse;
+    font-size:13px;
+    min-width:640px;
+  }
+  table.data caption{
+    text-align:left;
+    font-family:"Inter",sans-serif; font-weight:600; font-size:15px;
+    padding:14px 16px 4px;
+    color:var(--text);
+  }
+  table.data thead th{
+    text-align:right;
+    background:var(--surface-2);
+    color:var(--text-muted);
+    font-size:11px; text-transform:uppercase; letter-spacing:.04em;
+    font-weight:700;
+    padding:10px 14px;
+    border-bottom:1px solid var(--border);
+    white-space:nowrap;
+  }
+  table.data thead th:first-child, table.data thead th:nth-child(2){text-align:left;}
+  table.data tbody td{
+    padding:8px 14px;
+    text-align:right;
+    border-bottom:1px solid var(--border);
+    white-space:nowrap;
+  }
+  table.data tbody tr:last-child td{border-bottom:none;}
+  table.data tbody td:first-child{ text-align:left; font-weight:600; color:var(--text);}
+  table.data tbody td:nth-child(2){ text-align:left; color:var(--text-muted); font-size:12px;}
+  table.data tbody tr.highlight td{ background:var(--accent-soft); }
+  .pos{color:var(--positive); font-weight:700;}
+  .neg{color:var(--negative); font-weight:700;}
+  .dash{color:var(--text-muted);}
+
+  .subtabs{display:flex; gap:4px; margin-bottom:14px; flex-wrap:wrap;}
+  .subtabs button{
+    border:1px solid var(--border);
+    background:var(--surface);
+    color:var(--text-muted);
+    font:inherit; font-weight:600; font-size:12.5px;
+    padding:8px 13px; border-radius:9px 9px 0 0;
+    cursor:pointer;
+    border-bottom:2px solid transparent;
+  }
+  .subtabs button.active{ color:var(--accent-strong); border-bottom:2px solid var(--accent); background:var(--accent-soft); }
+  .subview{display:none;}
+  .subview.active{display:block;}
+
+  .toolbar{display:flex; justify-content:flex-end; gap:8px; margin:10px 0 0;}
+  .btn{
+    border:1px solid var(--border);
+    background:var(--surface);
+    color:var(--text);
+    font:inherit; font-weight:600; font-size:12.5px;
+    padding:8px 13px; border-radius:8px;
+    cursor:pointer;
+    display:inline-flex; align-items:center; gap:6px;
+  }
+  .btn:hover{background:var(--surface-2);}
+  .btn.primary{ background:var(--accent); border-color:var(--accent); color:var(--accent-contrast); }
+
+  .chart-card{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:14px;
+    padding:18px;
+    box-shadow:var(--shadow);
+    margin-top:16px;
+  }
+  .chart-card h3{font-size:14px; font-weight:600; margin-bottom:2px;}
+  .chart-card .sub{font-size:12px; color:var(--text-muted); margin-bottom:12px;}
+  .chart-card canvas{max-width:100%;}
+  .chart-card-head{display:flex; justify-content:space-between; align-items:flex-start; gap:12px;}
+
+  .expand-btn{
+    flex-shrink:0;
+    width:30px; height:30px;
+    border-radius:8px;
+    border:1px solid var(--border);
+    background:var(--surface);
+    color:var(--text-muted);
+    font-size:14px; line-height:1;
+    cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+    transition: background .12s ease, color .12s ease;
+  }
+  .expand-btn:hover{ background:var(--surface-2); color:var(--text); }
+  .expand-btn:focus-visible{ outline:2px solid var(--accent); outline-offset:1px; }
+
+  .modal-overlay{
+    position:fixed; inset:0;
+    background:rgba(10,16,24,0.58);
+    display:flex; align-items:center; justify-content:center;
+    padding:24px;
+    z-index:200;
+  }
+  .modal-overlay[hidden]{ display:none; }
+  .modal-box{
+    position:relative;
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:16px;
+    box-shadow:var(--shadow);
+    width:min(960px, 100%);
+    max-height:88vh;
+    overflow:auto;
+    padding:24px 26px 28px;
+  }
+  .modal-box h3{font-size:17px; font-weight:600; padding-right:34px;}
+  .modal-sub{font-size:12.5px; color:var(--text-muted); margin-top:4px; margin-bottom:16px;}
+  .modal-close{
+    position:absolute; top:16px; right:16px;
+    width:32px; height:32px; border-radius:50%;
+    border:1px solid var(--border);
+    background:var(--surface-2);
+    color:var(--text);
+    font-size:14px; cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .modal-close:hover{ background:var(--border); }
+  .modal-body canvas{ max-width:100%; }
+  .modal-body .table-wrap{ box-shadow:none; }
+
+  .report-picker-list{ display:flex; flex-direction:column; gap:10px; margin-bottom:20px; }
+  .report-picker-list label{
+    display:flex; align-items:center; gap:10px;
+    padding:10px 12px;
+    border:1px solid var(--border);
+    border-radius:9px;
+    font-size:13px; font-weight:600;
+    cursor:pointer;
+  }
+  .report-picker-list label:has(input:checked){ border-color:var(--accent); background:var(--accent-soft); }
+  .report-picker-list input{ width:16px; height:16px; accent-color:var(--accent); flex-shrink:0; }
+  @media (max-width:640px){
+    .modal-box{ padding:20px 16px 22px; }
+  }
+
+  .risk-grid{
+    display:grid;
+    grid-template-columns: 1.1fr 1fr;
+    gap:16px;
+  }
+  @media (max-width: 980px){ .risk-grid{grid-template-columns:1fr;} }
+
+  .compare-section-title{ font-size:14px; font-weight:600; margin:26px 0 12px; padding-top:16px; border-top:1px solid var(--border); }
+  .compare-section-title:first-of-type{ margin-top:0; padding-top:0; border-top:none; }
+  .compare-banner{
+    background:var(--accent-2-soft); color:var(--accent-2);
+    border:1px solid var(--accent-2);
+    border-radius:10px;
+    padding:10px 14px;
+    font-size:12.5px; font-weight:600;
+    margin-bottom:20px;
+  }
+  .compare-hint{ font-size:12px; color:var(--text-muted); margin:-4px 0 12px; }
+
+  .sim-unavailable{
+    background:var(--surface); border:1px solid var(--border); border-radius:14px;
+    padding:36px 24px; text-align:center; color:var(--text-muted); font-size:13px;
+    box-shadow:var(--shadow);
+  }
+  .sim-list{ display:flex; flex-direction:column; gap:10px; margin-bottom:24px; }
+  .sim-item{
+    display:flex; align-items:center; gap:14px;
+    background:var(--surface); border:1px solid var(--border); border-radius:12px;
+    padding:12px 16px; box-shadow:var(--shadow);
+  }
+  .sim-item-info{ flex:1; min-width:0; }
+  .sim-item-name{ font-weight:700; font-size:13.5px; }
+  .sim-item-meta{ font-size:11.5px; color:var(--text-muted); margin-top:2px; }
+  .sim-item-actions{ display:flex; gap:6px; flex-shrink:0; flex-wrap:wrap; }
+  .sim-empty{ font-size:12.5px; color:var(--text-muted); padding:4px 0 16px; }
+  .compare-legend{ display:flex; gap:16px; margin-bottom:14px; }
+  .compare-legend span{ display:flex; align-items:center; gap:6px; font-size:12px; font-weight:600; color:var(--text); }
+  .compare-legend .dot{ width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+  .compare-legend .dot.a{ background:var(--accent); }
+  .compare-legend .dot.b{ background:var(--accent-2); }
+  .compare-stat{ position:relative; }
+  .compare-stat .compare-pair{ display:flex; gap:10px; align-items:baseline; margin-top:6px; }
+  .compare-stat .compare-pair .a{ color:var(--accent); font-weight:700; font-family:"IBM Plex Mono",monospace; font-size:19px; }
+  .compare-stat .compare-pair .b{ color:var(--accent-2); font-weight:700; font-family:"IBM Plex Mono",monospace; font-size:19px; }
+  .compare-stat .compare-pair .sep{ color:var(--text-muted); font-size:12px; }
+  .compare-stat .compare-delta{ font-size:11px; color:var(--text-muted); margin-top:3px; }
+
+  .kpi-row{ display:flex; gap:10px; flex-wrap:wrap; margin-top:12px;}
+  .kpi-pill{
+    background:var(--surface-2);
+    border-radius:10px;
+    padding:8px 12px;
+    font-size:12px;
+  }
+  .kpi-pill b{ font-family:"IBM Plex Mono",monospace; display:block; font-size:15px; margin-top:2px;}
+
+  .toast{
+    position:fixed; bottom:22px; left:50%; transform:translateX(-50%) translateY(20px);
+    background:var(--text); color:var(--bg);
+    padding:10px 16px; border-radius:9px; font-size:13px; font-weight:600;
+    box-shadow:var(--shadow);
+    opacity:0; pointer-events:none;
+    transition: opacity .2s ease, transform .2s ease;
+    z-index:50;
+  }
+  .toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+
+  @media (max-width: 760px){
+    .app{flex-direction:column;}
+    .sidebar{
+      width:100%; height:auto; position:relative;
+      flex-direction:row; align-items:center; overflow-x:auto;
+      padding:12px 14px;
+    }
+    .brand{padding:0;}
+    nav.tabs{flex-direction:row;}
+    .sidebar-foot{display:none;}
+    .sidebar-toggle{display:none;}
+    .sidebar.collapsed{width:100%;}
+    .sidebar.collapsed .brand-text{display:block;}
+    .sidebar.collapsed .tab-label{display:flex;}
+    .main{padding:20px 16px 40px;}
+    table.data{min-width:560px;}
+  }
+
+  /* ---------- Relatório / impressão ---------- */
+  .report-view{ display:none; }
+  @media print{
+    /* Usa visibility (não display) para não depender de quais elementos são
+       filhos diretos do <body> — o Artifact pode envolver a página num
+       contêiner extra, e um "display:none" nele esconderia o relatório junto. */
+    html, body{ height:auto !important; overflow:visible !important; background:#fff !important; }
+    body *{ visibility:hidden !important; }
+    #reportView, #reportView *{ visibility:visible !important; }
+    #reportView{
+      display:block !important;
+      position:absolute;
+      top:0; left:0;
+      width:100%;
+      background:#fff;
+      z-index:999999;
+    }
+    @page{ margin:16mm 14mm; }
+  }
+  .report-view{
+    --r-text:#1A1A1A; --r-muted:#6B6B6B; --r-accent:#003A40; --r-accent2:#B9752B; --r-border:#D9DCDB; --r-bg:#F5F6F6;
+    max-width:900px; margin:0 auto;
+    background:#fff; color:var(--r-text);
+    font-family:"Inter", sans-serif;
+    padding:8px 4px 40px;
+  }
+  .report-view .r-head{ display:flex; justify-content:space-between; align-items:flex-end; gap:16px; border-bottom:3px solid var(--r-text); padding-bottom:12px; margin-bottom:18px; }
+  .report-view .r-head h1{ font-family:"Inter",sans-serif; font-size:24px; font-weight:700; color:var(--r-text); margin:0; }
+  .report-view .r-head .r-sub{ font-size:11.5px; color:var(--r-muted); margin-top:2px; }
+  .report-view .r-meta{ text-align:right; font-size:11px; color:var(--r-muted); line-height:1.5; }
+  .report-view section{ page-break-inside:avoid; margin-bottom:22px; }
+  .report-view h2{
+    font-family:"Inter",sans-serif; font-size:16px; font-weight:700; color:var(--r-text);
+    margin:0 0 12px; padding:6px 0 6px 10px; border-left:4px solid var(--r-accent);
+  }
+  .report-view h3{ font-size:12.5px; font-weight:700; color:var(--r-accent); margin:14px 0 6px; }
+  .report-view p{ font-size:11.5px; line-height:1.65; margin:0 0 8px; color:var(--r-text); }
+  .report-view ul{ margin:0 0 8px; padding-left:18px; }
+  .report-view li{ font-size:11.5px; line-height:1.6; margin-bottom:3px; }
+  .report-view .r-input-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:6px 18px; margin-bottom:10px; }
+  .report-view .r-input-grid div{ font-size:11px; display:flex; justify-content:space-between; border-bottom:1px dotted var(--r-border); padding:2px 0; gap:8px; }
+  .report-view .r-input-grid b{ font-weight:700; font-family:"IBM Plex Mono",monospace; font-size:10.5px; text-align:right; }
+  .report-view .r-stat-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:12px; }
+  .report-view .r-stat{ border:1px solid var(--r-border); border-radius:6px; padding:8px 10px; }
+  .report-view .r-stat .l{ font-size:9px; text-transform:uppercase; letter-spacing:.03em; color:var(--r-muted); font-weight:700; }
+  .report-view .r-stat .v{ font-size:14px; font-weight:700; margin-top:2px; font-family:"IBM Plex Mono",monospace; }
+  .report-view table{ width:100%; border-collapse:collapse; margin-bottom:14px; font-size:10px; page-break-inside:avoid; }
+  .report-view table caption{ text-align:left; font-weight:700; font-size:12px; margin-bottom:5px; color:var(--r-text); }
+  .report-view th, .report-view td{ border:1px solid var(--r-border); padding:4px 7px; text-align:right; font-variant-numeric:tabular-nums; }
+  .report-view th:first-child, .report-view td:first-child, .report-view th:nth-child(2), .report-view td:nth-child(2){ text-align:left; }
+  .report-view thead th{ background:var(--r-bg); font-size:9px; text-transform:uppercase; }
+  .report-view .r-chart{ margin:6px 0 16px; page-break-inside:avoid; }
+  .report-view .r-chart img{ width:100%; max-width:100%; display:block; border:1px solid var(--r-border); border-radius:6px; }
+  .report-view .r-chart-cap{ font-size:10px; color:var(--r-muted); margin-top:4px; text-align:center; }
+  .report-view .r-foot{ margin-top:18px; padding-top:10px; border-top:1px solid var(--r-border); font-size:10px; color:var(--r-muted); }
+
+  .login-screen{
+    min-height:100vh;
+    display:flex; align-items:center; justify-content:center;
+    padding:24px;
+    background:
+      radial-gradient(circle at 15% 20%, var(--accent-soft), transparent 55%),
+      radial-gradient(circle at 85% 80%, var(--accent-2-soft), transparent 55%),
+      var(--bg);
+  }
+  .login-card{
+    width:min(380px, 100%);
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:16px;
+    box-shadow:var(--shadow);
+    padding:28px 28px 26px;
+  }
+  .login-brand{display:flex; align-items:center; gap:12px; margin-bottom:22px;}
+  .login-logo{ height:30px; }
+  .login-brand h1{font-size:18px; font-weight:600;}
+  .login-brand span{font-size:11.5px; color:var(--text-muted);}
+  .login-card .field label{font-size:12.5px;}
+  .login-card .field input{
+    width:100%; padding:10px 12px; border-radius:8px;
+    border:1px solid var(--border); background:var(--bg); color:var(--text);
+    font:inherit;
+  }
+  .login-card .field input:focus{ outline:2px solid var(--accent); outline-offset:1px; }
+  .login-submit{
+    width:100%; margin-top:6px;
+    padding:10px 14px; border-radius:9px;
+    border:1px solid var(--accent); background:var(--accent); color:var(--accent-contrast);
+    font:inherit; font-weight:700; font-size:13.5px; cursor:pointer;
+  }
+  .login-submit:hover{ filter:brightness(1.05); }
+  .login-error{
+    background:var(--negative-soft); color:var(--negative);
+    border-radius:8px; padding:8px 11px;
+    font-size:12.5px; font-weight:600;
+    margin-bottom:14px;
+  }
+  .login-error[hidden]{display:none;}
+  .login-note{font-size:11px; color:var(--text-muted); margin-top:18px; text-align:center; line-height:1.5;}
+  .access-status{
+    background:var(--accent-soft); color:var(--accent-strong);
+    border-radius:8px; padding:10px 12px;
+    font-size:12.5px; font-weight:600; line-height:1.5;
+    margin-bottom:14px; text-align:center;
+  }
+</style>
+
+<div class="login-screen" id="loginScreen">
+  <div class="login-card">
+    <div class="login-brand">
+      <img src="logo_probeef.png" alt="ProBeef" class="brand-logo login-logo">
+      <div>
+        <h1>4M Confinamento</h1>
+        <span>Ferramenta liberada pelo administrador do portal</span>
+      </div>
+    </div>
+    <p class="access-status" id="accessStatusText">Verificando seu acesso…</p>
+    <button type="button" class="login-submit" id="accessRequestBtn" hidden>Solicitar acesso</button>
+    <div class="login-note">
+      <a href="/portal">← Voltar ao portal</a><br>
+      4M for Risk Management · Cargill Nutrição Animal
+    </div>
+  </div>
+</div>
+
+<div class="app" id="appRoot" hidden>
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-top">
+      <div class="brand">
+        <div class="brand-text">
+          <h1>4M Confinamento</h1>
+          <span>Calibração &amp; gestão de risco</span>
+        </div>
+      </div>
+      <button class="sidebar-toggle" id="sidebarToggle" title="Recolher menu" aria-label="Recolher menu" aria-expanded="true">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="3" y1="6" x2="17" y2="6"/><line x1="3" y1="10" x2="17" y2="10"/><line x1="3" y1="14" x2="17" y2="14"/></svg>
+      </button>
+    </div>
+    <div class="scenario-switch">
+      <div class="scenario-switch-label">Editando</div>
+      <div class="seg scenario-seg" data-seg="scenario">
+        <button data-value="A" class="active scenario-a" title="Cenário A">A</button>
+        <button data-value="B" class="scenario-b" title="Cenário B">B</button>
+      </div>
+    </div>
+    <nav class="tabs">
+      <button class="tab-btn active" data-tab="calibracao" title="Calibração">
+        <span class="tab-icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><line x1="4" y1="3" x2="4" y2="17"/><circle cx="4" cy="8" r="2"/><line x1="10" y1="3" x2="10" y2="17"/><circle cx="10" cy="13" r="2"/><line x1="16" y1="3" x2="16" y2="17"/><circle cx="16" cy="6" r="2"/></svg></span>
+        <span class="tab-label"><span class="tab-step">01</span> Calibração</span>
+      </button>
+      <button class="tab-btn" data-tab="financeiro" title="Informações Financeiras">
+        <span class="tab-icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="16" height="10" rx="2"/><circle cx="10" cy="10" r="2.4"/><line x1="5" y1="10" x2="5" y2="10"/><line x1="15" y1="10" x2="15" y2="10"/></svg></span>
+        <span class="tab-label"><span class="tab-step">02</span> Informações Financeiras</span>
+      </button>
+      <button class="tab-btn" data-tab="negocios" title="Modelos de Negócio">
+        <span class="tab-icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="6.5" width="15" height="10" rx="2"/><path d="M7 6.5V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v1.5"/><line x1="2.5" y1="11" x2="17.5" y2="11"/></svg></span>
+        <span class="tab-label"><span class="tab-step">03</span> Modelos de Negócio</span>
+      </button>
+      <button class="tab-btn" data-tab="risco" title="Análise de Risco">
+        <span class="tab-icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="2,11 6,11 8,5 12,15 14,9 18,9"/></svg></span>
+        <span class="tab-label"><span class="tab-step">04</span> Análise de Risco</span>
+      </button>
+      <button class="tab-btn" data-tab="comparacao" title="Comparação de Cenários">
+        <span class="tab-icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="7" height="14" rx="1.5"/><rect x="11" y="3" width="7" height="14" rx="1.5"/></svg></span>
+        <span class="tab-label"><span class="tab-step">05</span> Comparação</span>
+      </button>
+      <button class="tab-btn" data-tab="simulacoes" title="Minhas Simulações">
+        <span class="tab-icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 4a1 1 0 0 1 1-1h7l4.5 4.5V16a1 1 0 0 1-1 1h-10.5a1 1 0 0 1-1-1V4Z"/><path d="M6.5 3v4h6.5V3.4"/><rect x="6.5" y="10.5" width="7" height="5"/></svg></span>
+        <span class="tab-label"><span class="tab-step">06</span> Minhas Simulações</span>
+      </button>
+    </nav>
+    <button class="report-btn" id="reportBtn" title="Gerar relatório em PDF">
+      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 2.5h7l3 3v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-14a1 1 0 0 1 1-1Z"/><path d="M12 2.5V6h3.5"/><line x1="6.5" y1="10.5" x2="13.5" y2="10.5"/><line x1="6.5" y1="13.5" x2="13.5" y2="13.5"/></svg>
+      <span>Gerar Relatório PDF</span>
+    </button>
+    <div class="sidebar-foot">
+      Responsável: <b>André Mauric</b><br>
+      andre_mauric@cargill.com<br>
+      Logado como <b id="loggedInAs">—</b> · <a href="/portal" id="logoutLink">Voltar ao portal</a>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="main-topbar">
+      <button class="theme-toggle" id="themeToggle" title="Alternar tema claro/escuro" aria-label="Alternar tema claro/escuro">
+        <svg class="icon-sun" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="10" cy="10" r="3.5"/><line x1="10" y1="2" x2="10" y2="4"/><line x1="10" y1="16" x2="10" y2="18"/><line x1="2" y1="10" x2="4" y2="10"/><line x1="16" y1="10" x2="18" y2="10"/><line x1="4.2" y1="4.2" x2="5.6" y2="5.6"/><line x1="14.4" y1="14.4" x2="15.8" y2="15.8"/><line x1="4.2" y1="15.8" x2="5.6" y2="14.4"/><line x1="14.4" y1="5.6" x2="15.8" y2="4.2"/></svg>
+        <svg class="icon-moon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" hidden><path d="M17 11.5A7 7 0 1 1 8.5 3a5.5 5.5 0 0 0 8.5 8.5Z"/></svg>
+      </button>
+      <img src="logo_probeef.png" alt="ProBeef" class="main-logo">
+    </div>
+
+    <!-- ===================== CALIBRAÇÃO ===================== -->
+    <section class="view active" id="view-calibracao">
+      <div class="page-head">
+        <div>
+          <h2>Calibração das equações</h2>
+          <p>Ajuste os parâmetros zootécnicos do lote. As curvas de consumo e ganho de peso são recalculadas automaticamente.</p>
+        </div>
+        <div class="live-badge"><span class="live-dot"></span>Recalcula em tempo real</div>
+      </div>
+
+      <div class="scenario-panel">
+        <div class="scenario-panel-tag" id="scenarioPanelTag">A</div>
+        <div class="field" style="margin-bottom:0; flex:1;">
+          <label>Nome deste cenário <span class="hint">(o que você edita agora, veja o alternador A/B na barra lateral)</span></label>
+          <input type="text" id="scenarioNameInput" class="scenario-name-input" maxlength="30" placeholder="Nome do cenário" value="Cenário A">
+        </div>
+      </div>
+
+      <div class="panel-grid">
+        <div class="panel">
+          <div class="panel-title"><span class="swatch"></span>Lote</div>
+          <div class="field">
+            <label>Raça</label>
+            <div class="seg" data-seg="raca">
+              <button data-value="Bos taurus">Bos taurus</button>
+              <button data-value="Bos indicus" class="active">Bos indicus</button>
+              <button data-value="Cruzamento Industrial">Cruz. Industrial</button>
+              <button data-value="Holandês">Holandês</button>
+              <button data-value="Cruzamento Leiteiro">Cruz. Leiteiro</button>
+            </div>
+          </div>
+          <div class="field">
+            <label>Sexo</label>
+            <div class="seg" data-seg="sexo">
+              <button data-value="Inteiro" class="active">Inteiro</button>
+              <button data-value="Fêmea">Fêmea</button>
+              <button data-value="Castrado">Castrado</button>
+            </div>
+          </div>
+          <div class="field-inline">
+            <div class="field">
+              <label>Peso de entrada <span class="hint">(kg)</span></label>
+              <input type="number" id="c2" value="360" min="250" max="700" step="1">
+            </div>
+            <div class="field">
+              <label>Dias de cocho <span class="hint">(atual)</span></label>
+              <input type="number" id="c3" value="111" min="60" max="200" step="1">
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-title"><span class="swatch"></span>Adaptação e energia</div>
+          <div class="field-inline">
+            <div class="field">
+              <label>Adaptação <span class="hint">(dias)</span></label>
+              <input type="number" id="d1" value="21" min="0" max="21" step="1">
+            </div>
+          </div>
+          <div class="field-inline">
+            <div class="field">
+              <label>ELm adaptação <span class="hint">(Mcal/kg)</span></label>
+              <input type="number" id="d2" value="2.2" min="1.8" max="2.6" step="0.1">
+            </div>
+            <div class="field">
+              <label>ELg adaptação <span class="hint">(Mcal/kg)</span></label>
+              <input type="number" id="d3" value="1.2" min="0.8" max="1.4" step="0.1">
+            </div>
+          </div>
+          <div class="field-inline">
+            <div class="field">
+              <label>ELm terminação <span class="hint">(Mcal/kg)</span></label>
+              <input type="number" id="d5" value="2.2" min="1.8" max="2.6" step="0.1">
+            </div>
+            <div class="field">
+              <label>ELg terminação <span class="hint">(Mcal/kg)</span></label>
+              <input type="number" id="d6" value="1.3" min="0.8" max="1.4" step="0.1">
+            </div>
+          </div>
+          <div class="field">
+            <label>Rendimento de carcaça inicial <span class="hint">(%)</span></label>
+            <input type="number" id="a7" value="50" min="50" max="56" step="0.1">
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-title"><span class="swatch"></span>Padrões de calibração</div>
+          <div class="field">
+            <label>CMS alvo <span class="hint">(kg/dia, medido em campo)</span></label>
+            <input type="number" id="c5" value="10.04" min="1" max="15" step="0.01">
+          </div>
+          <div class="field">
+            <label>Padrão GMD <span class="hint">(fator de escala)</span></label>
+            <input type="number" id="c6" value="0.801" min="0.6" max="1.2" step="0.01">
+          </div>
+          <div class="field">
+            <label>Padrão rendimento de carcaça <span class="hint">(fator de escala)</span></label>
+            <input type="number" id="c7" value="0.988" min="0.8" max="1.2" step="0.001">
+          </div>
+        </div>
+      </div>
+
+      <div class="stat-grid" id="calib-stats"></div>
+
+      <div class="field" style="margin-bottom:14px;">
+        <label>Gráfico</label>
+        <div class="seg" data-seg="calibChart">
+          <button data-value="peso" class="active">Peso Vivo</button>
+          <button data-value="gmd">Ganho de Peso e Carcaça</button>
+          <button data-value="cms">Consumo de Matéria Seca</button>
+        </div>
+      </div>
+      <div class="chart-card" style="margin-top:0;">
+        <div class="chart-card-head">
+          <div>
+            <h3 id="calib-chart-title">Curva de peso vivo</h3>
+            <div class="sub" id="calib-chart-sub">Evolução do peso corporal ao longo dos dias de cocho — ponto marcado no dia atual.</div>
+          </div>
+          <button class="expand-btn" data-expand-chart="chartCalib" title="Ampliar" aria-label="Ampliar gráfico">⤢</button>
+        </div>
+        <canvas id="chartCalib" height="110"></canvas>
+      </div>
+    </section>
+
+    <!-- ===================== FINANCEIRO ===================== -->
+    <section class="view" id="view-financeiro">
+      <div class="page-head">
+        <div>
+          <h2>Informações financeiras</h2>
+          <p>Preços, custos operacionais e regras de financiamento usados nos quatro modelos de negócio.</p>
+        </div>
+        <div class="live-badge"><span class="live-dot"></span>Recalcula em tempo real</div>
+      </div>
+
+      <div class="panel-grid">
+        <div class="panel">
+          <div class="panel-title money"><span class="swatch"></span>Preços e custos diretos</div>
+          <div class="field"><label>Custo do boi magro <span class="hint">(R$/@)</span></label><input type="number" id="f1" value="167" min="100" max="300" step="0.5"></div>
+          <div class="field"><label>Valor de venda <span class="hint">(R$/@)</span></label><input type="number" id="b0" value="150" min="120" max="220" step="0.5"></div>
+          <div class="field-inline">
+            <div class="field"><label>Custo do frete <span class="hint">(R$/cab.)</span></label><input type="number" id="f2" value="10" min="0" max="20" step="0.5"></div>
+          </div>
+          <div class="field"><label>Frete pago por</label>
+            <div class="seg" data-seg="f21">
+              <button data-value="Confinamento" class="active">Confinamento</button>
+              <button data-value="Parceiro">Parceiro</button>
+            </div>
+          </div>
+          <div class="field"><label>Custo operacional <span class="hint">(R$/cab./dia)</span></label><input type="number" id="f3" value="1.3" min="0" max="3" step="0.1"></div>
+          <div class="field"><label>Número de animais</label><input type="number" id="a3" value="1000" min="1" step="1"></div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-title money"><span class="swatch"></span>Dieta e processamento</div>
+          <div class="field-inline">
+            <div class="field"><label>Dieta de adaptação <span class="hint">(R$/ton.)</span></label><input type="number" id="d4" value="560" min="350" max="900" step="10"></div>
+            <div class="field"><label>Dieta de terminação <span class="hint">(R$/ton.)</span></label><input type="number" id="d7" value="570" min="350" max="900" step="10"></div>
+          </div>
+          <div class="field"><label>Custo de processamento <span class="hint">(R$/cab.)</span></label><input type="number" id="f4" value="10" min="0" max="20" step="0.5"></div>
+          <div class="field"><label>Processamento pago por</label>
+            <div class="seg" data-seg="f41">
+              <button data-value="Confinamento" class="active">Confinamento</button>
+              <button data-value="Parceiro">Parceiro</button>
+            </div>
+          </div>
+          <div class="field"><label>Custos sanitários <span class="hint">(R$/cab.)</span></label><input type="number" id="f5" value="2" min="0" max="10" step="0.1"></div>
+          <div class="field"><label>Comissão compra boi próprio <span class="hint">(R$/cab.)</span></label><input type="number" id="f6" value="15" min="0" max="30" step="0.5"></div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-title money"><span class="swatch"></span>Boitel, arroba e parceria</div>
+          <div class="field"><label>Valor da diária — Boitel <span class="hint">(R$/cab.)</span></label><input type="number" id="bp1" value="8.3" min="5" max="15" step="0.1"></div>
+          <div class="field"><label>Valor da @ produzida <span class="hint">(R$)</span></label><input type="number" id="bp2" value="130" min="80" max="180" step="1"></div>
+          <div class="field"><label>Bônus para parceiro <span class="hint">(% do bônus de venda)</span></label><input type="number" id="bp3" value="50" min="0" max="100" step="5"></div>
+          <div class="field"><label>Valor de bonificação <span class="hint">(R$/@, na venda)</span></label><input type="number" id="b1" value="0" min="0" max="10" step="0.25"></div>
+          <div class="field"><label>Mínimo de dias p/ bonificação</label><input type="number" id="b2" value="90" min="40" max="120" step="1"></div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-title"><span class="swatch"></span>Financiamento, venda e mortalidade</div>
+          <div class="field"><label>Financiamento de alimentos</label>
+            <div class="seg" data-seg="f8"><button data-value="Sim">Sim</button><button data-value="Não" class="active">Não</button></div>
+          </div>
+          <div class="field"><label>Financiamento de gado</label>
+            <div class="seg" data-seg="f9"><button data-value="Sim">Sim</button><button data-value="Não" class="active">Não</button></div>
+          </div>
+          <div class="field"><label>Taxa de juros <span class="hint">(% a.a.)</span></label><input type="number" id="f7" value="5" min="0" max="15" step="0.5"></div>
+          <div class="field"><label>Venda do boi</label>
+            <div class="seg" data-seg="f10"><button data-value="à Vista">À vista</button><button data-value="30 Dias" class="active">30 dias</button></div>
+          </div>
+          <div class="field-inline">
+            <div class="field"><label>Taxa de mortalidade <span class="hint">(%)</span></label><input type="number" id="m1" value="0.3" min="0" max="1.5" step="0.05"></div>
+            <div class="field"><label>% custo alimentar (mortos)</label><input type="number" id="m2" value="50" min="0" max="100" step="5"></div>
+          </div>
+          <div class="field"><label>Custo de mortalidade pago por</label>
+            <div class="seg" data-seg="m11">
+              <button data-value="Confinamento" class="active">Confinamento</button>
+              <button data-value="Parceiro">Parceiro</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== MODELOS DE NEGÓCIO ===================== -->
+    <section class="view" id="view-negocios">
+      <div class="page-head">
+        <div>
+          <h2>Modelos de negócio</h2>
+          <p>Escolha um modelo de negócio e compare os quatro critérios de projeção de dias de cocho lado a lado.</p>
+        </div>
+        <div class="live-badge"><span class="live-dot"></span>Recalcula em tempo real</div>
+      </div>
+
+      <div class="panel" style="margin-bottom:18px;">
+        <div class="panel-title"><span class="swatch"></span>Modelo de negócio</div>
+        <div class="field-inline">
+          <div class="field">
+            <label>Comparar critérios para</label>
+            <div class="seg" data-seg="negModel">
+              <button data-value="bp" class="active">Boi Próprio</button>
+              <button data-value="b">Boitel</button>
+              <button data-value="ap">Arrobas Produzidas</button>
+              <button data-value="p">Parceria</button>
+            </div>
+          </div>
+          <div class="field" style="max-width:180px;">
+            <label>Dias de cocho fixo</label>
+            <input type="number" id="L2" value="110" min="22" max="180" step="1">
+          </div>
+        </div>
+      </div>
+
+      <div class="subtabs">
+        <button class="active" data-sub="zoot">Desempenho Zootécnico</button>
+        <button data-sub="econ">Econômico do Confinamento</button>
+        <button data-sub="parc">Econômico do Parceiro</button>
+        <button data-sub="graf">Avaliação Gráfica</button>
+      </div>
+
+      <div class="subview active" id="sub-zoot">
+        <div class="table-wrap"><table class="data" id="table-zoot"></table></div>
+        <div class="toolbar">
+          <button class="btn" data-expand-table="table-zoot">Ampliar</button>
+          <button class="btn" data-copy="table-zoot">Copiar CSV</button>
+        </div>
+      </div>
+      <div class="subview" id="sub-econ">
+        <div class="table-wrap"><table class="data" id="table-econ"></table></div>
+        <div class="toolbar">
+          <button class="btn" data-expand-table="table-econ">Ampliar</button>
+          <button class="btn" data-copy="table-econ">Copiar CSV</button>
+        </div>
+      </div>
+      <div class="subview" id="sub-parc">
+        <div class="table-wrap"><table class="data" id="table-parc"></table></div>
+        <div class="toolbar">
+          <button class="btn" data-expand-table="table-parc">Ampliar</button>
+          <button class="btn" data-copy="table-parc">Copiar CSV</button>
+        </div>
+      </div>
+      <div class="subview" id="sub-graf">
+        <div class="field" style="margin-bottom:14px;">
+          <label>Métrica do gráfico</label>
+          <div class="seg" data-seg="chartMetric">
+            <button data-value="lucro" class="active">Lucro (R$/cab.)</button>
+            <button data-value="rentTotal">Rentabilidade Total (%)</button>
+            <button data-value="rentMensal">Rentabilidade Mensal (%)</button>
+          </div>
+        </div>
+        <div class="chart-card" style="margin-top:0;">
+          <div class="chart-card-head">
+            <div>
+              <h3 id="graf-title">Lucro (R$/cab.) por dia de cocho — Boi Próprio</h3>
+              <div class="sub">Marcadores indicam o dia atual (Calibração) e o ponto ótimo para a métrica escolhida.</div>
+            </div>
+            <button class="expand-btn" data-expand-chart="chartModelos" title="Ampliar" aria-label="Ampliar gráfico">⤢</button>
+          </div>
+          <canvas id="chartModelos" height="110"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== RISCO ===================== -->
+    <section class="view" id="view-risco">
+      <div class="page-head">
+        <div>
+          <h2>Análise de risco</h2>
+          <p>Simulação de Monte Carlo (15.000 cenários) da margem do Boi Próprio no dia de cocho selecionado, considerando variação de preços e custo de dieta.</p>
+        </div>
+        <div class="live-badge"><span class="live-dot"></span>Recalcula em tempo real</div>
+      </div>
+
+      <div class="panel" style="margin-bottom:18px;">
+        <div class="panel-title"><span class="swatch"></span>Variabilidade considerada</div>
+        <div class="panel-grid" style="margin-bottom:0;">
+          <div class="field"><label>Var. @ boi magro <span class="hint">(R$)</span></label><input type="number" id="arbp1" value="5" min="0" max="50" step="1"></div>
+          <div class="field"><label>Var. @ boi gordo <span class="hint">(R$)</span></label><input type="number" id="arbp2" value="5" min="0" max="50" step="1"></div>
+          <div class="field"><label>Var. dieta de adaptação <span class="hint">(R$/ton.)</span></label><input type="number" id="arbp3" value="10" min="0" max="100" step="1"></div>
+          <div class="field"><label>Var. dieta de terminação <span class="hint">(R$/ton.)</span></label><input type="number" id="arbp4" value="10" min="0" max="100" step="1"></div>
+          <div class="field"><label>Margem mínima aceitável <span class="hint">(R$/cab.)</span></label><input type="number" id="arbp5" value="100" min="10" max="900" step="1"></div>
+          <div class="field">
+            <label>Relação margem × variável</label>
+            <div class="seg" data-seg="An">
+              <button data-value="@ Boi Magro">@ Boi Magro</button>
+              <button data-value="@ Boi Gordo">@ Boi Gordo</button>
+              <button data-value="Dieta" class="active">Dieta</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="kpi-row" id="risk-kpis"></div>
+
+      <div class="risk-grid">
+        <div class="chart-card" style="margin-top:16px;">
+          <div class="chart-card-head">
+            <div>
+              <h3>Distribuição da margem líquida</h3>
+              <div class="sub" id="risk-hist-sub">Barras vermelhas: cenários abaixo da margem mínima.</div>
+            </div>
+            <button class="expand-btn" data-expand-chart="chartHist" title="Ampliar" aria-label="Ampliar gráfico">⤢</button>
+          </div>
+          <canvas id="chartHist" height="230"></canvas>
+        </div>
+        <div class="chart-card" style="margin-top:16px;">
+          <div class="chart-card-head">
+            <div>
+              <h3 id="risk-scatter-title">Margem vs. variável de risco</h3>
+              <div class="sub" id="risk-scatter-sub">Cada ponto é um cenário simulado; a linha é a regressão linear.</div>
+            </div>
+            <button class="expand-btn" data-expand-chart="chartScatter" title="Ampliar" aria-label="Ampliar gráfico">⤢</button>
+          </div>
+          <canvas id="chartScatter" height="230"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== COMPARAÇÃO ===================== -->
+    <section class="view" id="view-comparacao">
+      <div class="page-head">
+        <div>
+          <h2>Comparação de cenários</h2>
+          <p id="compare-page-desc">Compare o Cenário A e o Cenário B lado a lado. Troque qual está sendo editado no alternador da barra lateral.</p>
+        </div>
+        <div class="live-badge"><span class="live-dot"></span>Recalcula em tempo real</div>
+      </div>
+
+      <div class="compare-banner" id="compareBanner" hidden></div>
+
+      <div class="panel" style="margin-bottom:20px;">
+        <div class="panel-title"><span class="swatch"></span>Modelo de negócio</div>
+        <div class="field" style="margin-bottom:0;">
+          <label>Comparar A e B para</label>
+          <div class="seg" data-seg="negModel">
+            <button data-value="bp" class="active">Boi Próprio</button>
+            <button data-value="b">Boitel</button>
+            <button data-value="ap">Arrobas Produzidas</button>
+            <button data-value="p">Parceria</button>
+          </div>
+        </div>
+      </div>
+
+      <h3 class="compare-section-title">Calibração</h3>
+      <div class="compare-legend" id="compare-legend"></div>
+      <div class="stat-grid" id="compare-stats"></div>
+
+      <div class="field" style="margin-bottom:14px;">
+        <label>Curva para comparar</label>
+        <div class="seg" data-seg="compareMetric">
+          <button data-value="peso" class="active">Peso Vivo</button>
+          <button data-value="gmd">Ganho Médio Diário</button>
+          <button data-value="cms">Consumo de Matéria Seca</button>
+        </div>
+      </div>
+      <div class="chart-card" style="margin-top:0;">
+        <div class="chart-card-head">
+          <div>
+            <h3 id="compare-chart-title">Peso vivo — Cenário A vs. Cenário B</h3>
+            <div class="sub" id="compare-chart-sub">Linha sólida (azul): Cenário A. Linha tracejada (âmbar): Cenário B.</div>
+          </div>
+          <button class="expand-btn" data-expand-chart="chartCompare" title="Ampliar" aria-label="Ampliar gráfico">⤢</button>
+        </div>
+        <canvas id="chartCompare" height="110"></canvas>
+      </div>
+
+      <h3 class="compare-section-title" id="compare-models-title">Modelos de negócio</h3>
+      <p class="compare-hint" id="compare-models-hint">Todos os critérios de projeção lado a lado — cada um com o Cenário A e o Cenário B.</p>
+      <div class="table-wrap"><table class="data" id="table-compare-zoot"></table></div>
+      <div class="toolbar">
+        <button class="btn" data-expand-table="table-compare-zoot">Ampliar</button>
+        <button class="btn" data-copy="table-compare-zoot">Copiar CSV</button>
+      </div>
+      <div class="table-wrap" style="margin-top:16px;"><table class="data" id="table-compare-econ"></table></div>
+      <div class="toolbar">
+        <button class="btn" data-expand-table="table-compare-econ">Ampliar</button>
+        <button class="btn" data-copy="table-compare-econ">Copiar CSV</button>
+      </div>
+
+      <h3 class="compare-section-title">Análise de risco (Boi Próprio)</h3>
+      <div class="kpi-row" id="compare-risk-kpis"></div>
+      <div class="chart-card">
+        <div class="chart-card-head">
+          <div>
+            <h3 id="compare-risk-title">Distribuição da margem líquida — A vs. B</h3>
+            <div class="sub" id="compare-risk-sub">Cenário A em azul, Cenário B em âmbar.</div>
+          </div>
+          <button class="expand-btn" data-expand-chart="chartCompareRisk" title="Ampliar" aria-label="Ampliar gráfico">⤢</button>
+        </div>
+        <canvas id="chartCompareRisk" height="230"></canvas>
+      </div>
+    </section>
+
+    <!-- ===================== SIMULAÇÕES SALVAS ===================== -->
+    <section class="view" id="view-simulacoes">
+      <div class="page-head">
+        <div>
+          <h2>Minhas simulações</h2>
+          <p>Salve o cenário atual (os dois cenários A/B e todas as configurações) para retomar depois, ou carregue uma simulação já salva.</p>
+        </div>
+      </div>
+
+      <div class="sim-unavailable" id="simUnavailable" hidden>
+        <p id="simUnavailableMsg"></p>
+      </div>
+
+      <div id="simAvailableArea" hidden>
+        <div class="panel" style="margin-bottom:20px;">
+          <div class="panel-title"><span class="swatch"></span>Salvar simulação atual</div>
+          <div class="field-inline">
+            <div class="field" style="flex:1; margin-bottom:0;">
+              <label>Nome da simulação</label>
+              <input type="text" id="simNameInput" placeholder="Ex.: Lote Fazenda X — Set/2026" maxlength="60">
+            </div>
+            <button class="btn primary" id="simSaveBtn" style="margin-bottom:0;">Salvar como nova</button>
+          </div>
+        </div>
+
+        <h3 class="compare-section-title" style="margin-top:0;">Minhas simulações salvas</h3>
+        <div id="simListMine" class="sim-list"></div>
+
+        <div id="simAdminSection" hidden>
+          <h3 class="compare-section-title">Todas as simulações (admin)</h3>
+          <div id="simListAll" class="sim-list"></div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<div class="report-view" id="reportView"></div>
+
+<div class="toast" id="toast">Copiado para a área de transferência</div>
+
+<div class="modal-overlay" id="reportPickerOverlay" hidden>
+  <div class="modal-box" style="width:min(420px,100%);" role="dialog" aria-modal="true" aria-labelledby="reportPickerTitle">
+    <button class="modal-close" id="reportPickerClose" aria-label="Fechar">✕</button>
+    <h3 id="reportPickerTitle">Gerar relatório</h3>
+    <div class="modal-sub">Escolha quais modelos de negócio entram no relatório — pode marcar mais de um.</div>
+    <div class="report-picker-list" id="reportPickerList">
+      <label><input type="checkbox" value="bp"> Boi Próprio</label>
+      <label><input type="checkbox" value="b"> Boitel</label>
+      <label><input type="checkbox" value="ap"> Arrobas Produzidas</label>
+      <label><input type="checkbox" value="p"> Parceria</label>
+    </div>
+    <button class="login-submit" id="reportPickerConfirm">Gerar PDF</button>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modalOverlay" hidden>
+  <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <button class="modal-close" id="modalClose" aria-label="Fechar">✕</button>
+    <h3 id="modalTitle"></h3>
+    <div class="modal-sub" id="modalSub"></div>
+    <div class="modal-body" id="modalBody"></div>
+  </div>
+</div>
+
+<script src="calc.js"></script>
+<script src="app.js"></script>
