@@ -1,4 +1,5 @@
 import { initAssistant } from './assistant.js';
+import { mountCcv } from './ccv.js';
 import { initNps } from './nps.js';
 import { openTeam } from './team.js';
 import { setupViews } from './views.js';
@@ -32,6 +33,7 @@ const els = {
   embedWrap: document.getElementById('embed-wrap'),
   favButton: document.getElementById('fav-button'),
   viewsButton: document.getElementById('views-button'),
+  ccvRoot: document.getElementById('ccv-root'),
 };
 
 let me;
@@ -43,6 +45,7 @@ let currentViewId = null;
 let activeClient = null; // cliente selecionado (só para usuários de cliente)
 let current = null;
 let embedded = null;
+let ccv = null; // painel nativo da Ferramenta CCV aberto (em vez do relatório incorporado)
 let refreshTimer = null;
 let loadSeq = 0;
 let portalName = document.title;
@@ -305,10 +308,17 @@ document.addEventListener('visibilitychange', () => {
 });
 window.addEventListener('pagehide', () => stopUsage({ beacon: true }));
 
+function closeCcv() {
+  ccv?.destroy();
+  ccv = null;
+  els.ccvRoot.hidden = true;
+}
+
 function showHome() {
   stopUsage();
   loadSeq += 1;
   current = null;
+  closeCcv();
   clearTimeout(refreshTimer);
   service.reset(els.embed);
   embedded = null;
@@ -398,13 +408,36 @@ function showLastRefresh(iso, { stale = false } = {}) {
   els.updated.title = stale ? 'Os dados deste relatório não são atualizados há algum tempo.' : date.toLocaleString('pt-BR');
 }
 
-async function open(report, { viewId = null } = {}) {
+// Painel CCV: desenhado pelo próprio portal (public/js/ccv.js), sem visões salvas nem PDF do Power BI.
+function openCcv(report, farm) {
+  service.reset(els.embed);
+  embedded = null;
+  els.embedWrap.hidden = true;
+  els.ccvRoot.hidden = false;
+  showLastRefresh(report.freshness?.dataDate || null, { stale: Boolean(report.freshness?.stale) });
+  ccv = mountCcv(els.ccvRoot, {
+    report,
+    clientId: activeClient,
+    farm,
+    onUsage: (viewId) => {
+      if (!viewId) return;
+      startUsage(viewId);
+      usage.page = 'Painel CCV';
+    },
+  });
+}
+
+async function open(report, { viewId = null, farm = null } = {}) {
   stopUsage();
   const seq = ++loadSeq;
   current = report;
   currentViewId = null;
   updateFavButton();
   clearTimeout(refreshTimer);
+  closeCcv();
+  const native = report.kind === 'ccv';
+  els.viewsButton.parentElement.hidden = native;
+  els.exportButton.parentElement.hidden = native;
   els.home.hidden = true;
   els.embedWrap.hidden = false;
   els.homeLink.removeAttribute('aria-current');
@@ -416,6 +449,10 @@ async function open(report, { viewId = null } = {}) {
   if (!exporting) els.exportStatus.hidden = true;
   els.asClient.hidden = !(me.role === 'admin' && report.rls);
   document.title = `${report.name} · ${portalName}`;
+  if (native) {
+    openCcv(report, farm);
+    return;
+  }
 
   service.reset(els.embed);
   embedded = null;
@@ -561,9 +598,11 @@ async function exportPdf(scope) {
 }
 
 // Sem relatório no endereço (#inicio ou vazio): tela inicial com os cards.
-// Endereço: #<relatório> ou #<relatório>/visao/<visão salva>.
+// Endereço: #<relatório>, #<relatório>/visao/<visão salva> ou, no painel CCV, #<relatório>/fazenda/<nome>.
 function openFromHash() {
-  const [id, , viewId] = decodeURIComponent(location.hash.slice(1)).split('/');
+  const [id, kind, extra] = location.hash.slice(1).split('/').map((part) => decodeURIComponent(part));
+  const viewId = kind === 'visao' ? extra : null;
+  const farm = kind === 'fazenda' ? extra : null;
   const linked = reports.find((r) => r.id === id);
   if (!linked) {
     showHome();
@@ -571,9 +610,9 @@ function openFromHash() {
   }
   // Link para um relatório de outro cliente do usuário: troca para esse cliente.
   if (activeClient && !linked.clientIds.includes(activeClient)) setActiveClient(linked.clientIds[0]);
-  // Tira a visão do endereço, para que o mesmo atalho funcione de novo depois.
-  if (viewId) history.replaceState(null, '', `#${linked.id}`);
-  open(linked, { viewId: viewId || null });
+  // Tira a visão (ou a fazenda) do endereço, para que o mesmo atalho funcione de novo depois.
+  if (viewId || farm) history.replaceState(null, '', `#${linked.id}`);
+  open(linked, { viewId, farm });
 }
 
 // Trocar de cliente volta para a tela inicial com os relatórios dele.
@@ -589,7 +628,10 @@ async function init() {
   setupMenu(document.getElementById('menu-button'), document.getElementById('menu-list'));
   document.getElementById('logout').onclick = logout;
   document.getElementById('change-password').onclick = () => openPasswordDialog();
-  document.getElementById('reload').onclick = () => current && open(current);
+  document.getElementById('reload').onclick = () => {
+    if (ccv) ccv.reload();
+    else if (current) open(current);
+  };
   setupMenu(els.exportButton, document.getElementById('export-menu'));
   document.querySelectorAll('[data-export]').forEach((b) => {
     b.onclick = () => {
@@ -597,7 +639,10 @@ async function init() {
       exportPdf(b.dataset.export);
     };
   });
-  document.getElementById('fullscreen').onclick = () => embedded?.fullscreen();
+  document.getElementById('fullscreen').onclick = () => {
+    if (ccv) els.ccvRoot.requestFullscreen?.().catch(() => {});
+    else embedded?.fullscreen();
+  };
   els.favButton.onclick = () => current && toggleFavorite(current);
   setupViews({
     button: els.viewsButton,

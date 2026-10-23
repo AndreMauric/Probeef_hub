@@ -3,7 +3,7 @@
 // Segurança: as ferramentas só enxergam os relatórios liberados para o próprio usuário, e consultas
 // DAX (EVALUATE) apenas leem dados. Relatórios com RLS ficam de fora.
 import Anthropic from '@anthropic-ai/sdk';
-import { visibleReports } from '../access.js';
+import { isCcv, visibleReports } from '../access.js';
 import { db } from '../store.js';
 import { executeDax, reportDataset } from '../powerbi.js';
 import { ASSISTANT_MODEL, getUserKey, hasUserKey } from '../userKeys.js';
@@ -30,12 +30,12 @@ function friendlyError(err) {
   return null;
 }
 
-// Relatórios que a IA pode consultar para este usuário (sem RLS). Com scope.clientId, só os
-// relatórios daquele cliente (a fazenda selecionada no portal).
+// Relatórios que a IA pode consultar para este usuário (sem RLS e sem o painel CCV, cujo modelo
+// junta todas as fazendas). Com scope.clientId, só os relatórios daquele cliente (a fazenda selecionada no portal).
 function aiReports(user, scope = {}) {
   const clients = db().clients;
   return visibleReports(user)
-    .filter((r) => !r.rls)
+    .filter((r) => !r.rls && !isCcv(r))
     .filter((r) => !scope.clientId || r.clientIds.includes(scope.clientId))
     .map((r) => ({ ...r, clientNames: r.clientIds.map((id) => clients.find((c) => c.id === id)?.name).filter(Boolean) }));
 }

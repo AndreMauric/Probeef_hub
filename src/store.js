@@ -5,7 +5,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { config } from './config.js';
 
-const empty = () => ({ users: [], clients: [], reports: [], images: [], categories: [], tags: [], confinamentoSimulations: [] });
+const empty = () => ({ users: [], clients: [], reports: [], images: [], categories: [], tags: [], confinamentoSimulations: [], ccvAlertLog: [] });
 
 // Usuários antigos tinham um único "clientId"; hoje cada usuário tem uma lista "clientIds".
 function normalize(raw) {
@@ -15,6 +15,8 @@ function normalize(raw) {
     clientIds: Array.isArray(user.clientIds) ? user.clientIds : clientId ? [clientId] : [],
     // Acesso à calculadora 4M Confinamento: pedido e aprovação, como o acesso a um relatório.
     confinamento: user.confinamento || { status: 'none', requestedAt: null, decidedAt: null },
+    // Painel CCV: fazendas que o usuário vê, dentre as do cliente. Vazio = todas as do cliente.
+    ccvFarms: Array.isArray(user.ccvFarms) ? user.ccvFarms : [],
   }));
 
   // Categorias eram só o texto em cada relatório (e uma imagem por nome em "categoryImages");
@@ -35,8 +37,10 @@ function normalize(raw) {
     }
     return category;
   };
-  // Tags dos clientes (ex.: Porte → Grande, Médio, Pequeno).
-  next.clients = next.clients.map((c) => ({ ...c, tagIds: Array.isArray(c.tagIds) ? c.tagIds : [] }));
+  // Tags dos clientes (ex.: Porte → Grande, Médio, Pequeno) e fazendas do painel CCV que cada cliente vê.
+  next.clients = next.clients.map((c) => ({ ...c, tagIds: Array.isArray(c.tagIds) ? c.tagIds : [], ccvFarms: Array.isArray(c.ccvFarms) ? c.ccvFarms : [] }));
+  // Relatórios antigos são todos do Power BI incorporado.
+  next.reports = next.reports.map((r) => ({ ...r, kind: r.kind === 'ccv' ? 'ccv' : 'powerbi' }));
   next.reports = next.reports.map((r) => {
     const category = categoryFor(r);
     return { ...r, categoryId: category.id, category: category.name };

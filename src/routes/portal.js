@@ -21,6 +21,7 @@ portalRouter.get('/reports', (req, res) => {
   const reports = visibleReports(req.user).map((r) => ({
     id: r.id,
     name: r.name,
+    kind: r.kind || 'powerbi',
     category: r.category,
     categoryDescription: categoryOf(r)?.description || '',
     description: r.description,

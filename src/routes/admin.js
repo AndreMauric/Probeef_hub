@@ -5,7 +5,9 @@ import { handleMessage } from '../bot/engine.js';
 import { logBotMessage, recentBotMessages } from '../bot/log.js';
 import { notifyReportUpdated, recipientsFor } from '../bot/notify.js';
 import { cleanPhoneInput, samePhone } from '../bot/phone.js';
-import { whatsappStatus } from '../bot/whatsapp.js';
+import { sendTemplate, whatsappStatus } from '../bot/whatsapp.js';
+import { isCcv } from '../access.js';
+import { computeCcvAlerts, listFarms, messageFor, oneLine, RULES } from '../ccv.js';
 import { exportData, listSnapshots, snapshotPath, validateBackup } from '../backup.js';
 import { generatePassword, hashPassword, requireAdmin, validatePassword } from '../auth.js';
 import { config } from '../config.js';
@@ -123,6 +125,120 @@ adminRouter.post('/alerts/unsnooze', route(async (_req, res) => {
   await clearSnoozes();
   res.json(computeAlerts());
 }));
+
+// ---------- Ferramenta CCV: fazendas e central de alertas ----------
+
+const ccvReports = () => db().reports.filter(isCcv);
+
+function ccvReportOr404(id) {
+  const report = id ? ccvReports().find((r) => r.id === id) : ccvReports()[0];
+  if (!report) {
+    const err = new Error('Nenhum relatório do tipo "Painel CCV" cadastrado. Cadastre o relatório "Ferramenta CCV" em Relatórios.');
+    err.status = 404;
+    throw err;
+  }
+  return report;
+}
+
+// Fazendas do modelo, para escolher as de cada cliente e usuário.
+adminRouter.get('/ccv/farms', route(async (req, res) => {
+  const report = ccvReportOr404(text(req.query.reportId, 36));
+  res.json({ reportId: report.id, farms: await listFarms(report) });
+}));
+
+// Última decisão por alerta (chave = fazenda + semana) e fazendas adiadas.
+function ccvDecisions(reportId) {
+  const log = (db().ccvAlertLog || []).filter((e) => e.reportId === reportId);
+  const byKey = new Map();
+  for (const e of log) if (e.action !== 'adiar') byKey.set(e.key, e);
+  const snoozed = new Map();
+  for (const e of log) if (e.action === 'adiar' && Date.parse(e.until) > Date.now()) snoozed.set(e.farm, e.until);
+  return { byKey, snoozed };
+}
+
+const ccvLink = (req, report, farm) => `${config.publicUrl || `${req.protocol}://${req.get('host')}`}/portal#${report.id}/fazenda/${encodeURIComponent(farm)}`;
+
+adminRouter.get('/ccv/alerts', route(async (req, res) => {
+  const users = db().users;
+  const result = [];
+  for (const report of ccvReports()) {
+    const data = await computeCcvAlerts(report, { refresh: req.query.refresh === '1' });
+    const { byKey, snoozed } = ccvDecisions(report.id);
+    data.farms = data.farms.map((f) => {
+      const decision = byKey.get(f.key);
+      return {
+        ...f,
+        decision: decision ? { ...decision, adminName: users.find((u) => u.id === decision.adminId)?.name || null } : null,
+        snoozedUntil: snoozed.get(f.farm) || null,
+        messages: Object.fromEntries(['alerta', 'relatorio'].map((kind) => [kind, messageFor({ ...f, periodFrom: data.period.from, periodTo: data.period.to }, kind, { link: ccvLink(req, report, f.farm) })])),
+      };
+    });
+    result.push(data);
+  }
+  res.json({ reports: result, whatsapp: whatsappStatus(), rules: RULES });
+}));
+
+// Decisão do admin sobre o alerta de uma fazenda: enviar alerta, enviar resumo, adiar ou dar por tratado.
+adminRouter.post('/ccv/alerts/decide', route(async (req, res) => {
+  const body = req.body || {};
+  const report = ccvReportOr404(text(body.reportId, 36));
+  const action = ['alerta', 'relatorio', 'adiar', 'tratado'].includes(body.action) ? body.action : fail('Ação inválida.');
+  const farm = text(body.farm, 120);
+  const key = text(body.key, 200);
+  if (!farm || !key.startsWith(`${farm}|`)) fail('Alerta inválido.');
+  // Só manda para quem realmente vê aquela fazenda (as mesmas regras do painel).
+  const { recipients } = (await computeCcvAlerts(report)).farms.find((f) => f.farm === farm) || { recipients: [] };
+  const entry = { id: newId(), at: new Date().toISOString(), adminId: req.user.id, reportId: report.id, key, farm, action };
+
+  if (action === 'adiar') {
+    const days = [1, 3, 7].includes(Number(body.days)) ? Number(body.days) : 7;
+    entry.until = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+  } else if (action === 'tratado') {
+    entry.note = text(body.note, 500);
+  } else {
+    const message = String(body.text || '').trim().slice(0, 3000);
+    if (!message) fail('Escreva a mensagem.');
+    const allowed = new Map(recipients.map((r) => [r.id, r]));
+    const picked = [...new Set(Array.isArray(body.recipientIds) ? body.recipientIds : [])].map((id) => allowed.get(id)).filter(Boolean);
+    const channel = body.channel === 'whatsapp' ? 'whatsapp' : 'manual';
+    entry.text = message;
+    entry.channel = channel;
+    entry.recipients = picked.map((r) => ({ id: r.id, name: r.name }));
+    if (channel === 'whatsapp') {
+      const status = whatsappStatus();
+      if (!status.configured || !status.ccvTemplate) fail('O WhatsApp não está pronto para enviar (falta configurar o modelo WHATSAPP_TEMPLATE_CCV).');
+      const withPhone = picked.filter((r) => r.phone);
+      if (!withPhone.length) fail('Nenhum destinatário escolhido tem WhatsApp cadastrado.');
+      entry.sent = 0;
+      entry.failed = [];
+      for (const r of withPhone) {
+        try {
+          await sendTemplate(r.phone, status.ccvTemplate, [r.name.split(' ')[0], farm, oneLine(message)]);
+          logBotMessage({ direction: 'out', userId: r.id, text: `[CCV ${action}] ${farm}` });
+          entry.sent += 1;
+        } catch (err) {
+          console.error(`Envio CCV para ${r.phone} falhou:`, err.message);
+          entry.failed.push(r.name);
+        }
+      }
+    }
+  }
+  const data = db();
+  data.ccvAlertLog = [...(data.ccvAlertLog || []), entry].slice(-2000);
+  await save();
+  res.json({ entry });
+}));
+
+// Histórico das decisões (mais recentes primeiro).
+adminRouter.get('/ccv/log', (_req, res) => {
+  const users = db().users;
+  res.json({
+    log: [...(db().ccvAlertLog || [])]
+      .reverse()
+      .slice(0, 200)
+      .map((e) => ({ ...e, adminName: users.find((u) => u.id === e.adminId)?.name || null })),
+  });
+});
 
 // ---------- Saúde dos dados ----------
 
@@ -339,7 +455,10 @@ function readReport(body) {
     reportId: text(body.reportId, 36).toLowerCase(),
     rls: Boolean(body.rls),
     imageId: body.imageId ? text(body.imageId, 36) : null,
+    // "ccv": painel nativo do portal (as fazendas de cada cliente são escolhidas em Clientes).
+    kind: body.kind === 'ccv' ? 'ccv' : 'powerbi',
   };
+  if (report.kind === 'ccv') report.rls = false;
   if (!report.name) fail('Informe o nome do relatório.');
   if (report.imageId && !db().images.some((i) => i.id === report.imageId)) fail('Imagem não encontrada.');
   const category = findCategory(report.categoryId);
@@ -471,6 +590,7 @@ adminRouter.post('/bulk-setup', route(async (req, res) => {
         workspaceId,
         reportId,
         rls: false,
+        kind: 'powerbi',
         createdAt: now,
       };
       data.reports.push(report);
@@ -480,7 +600,7 @@ adminRouter.post('/bulk-setup', route(async (req, res) => {
     const key = clientKey(clientName);
     let client = clientsByKey.get(key);
     if (!client) {
-      client = { id: newId(), name: clientName, rlsUsername: '', rlsRoles: [], reportIds: [], active: true, createdAt: now };
+      client = { id: newId(), name: clientName, rlsUsername: '', rlsRoles: [], reportIds: [], tagIds: [], ccvFarms: [], active: true, createdAt: now };
       data.clients.push(client);
       clientsByKey.set(key, client);
       counts.clientsCreated += 1;
@@ -496,6 +616,8 @@ adminRouter.post('/bulk-setup', route(async (req, res) => {
 }));
 
 // ---------- Clientes (empresas) ----------
+
+const farmList = (list) => [...new Set(list.map((f) => text(f, 120)).filter(Boolean))].slice(0, 200);
 
 function readClient(body) {
   const known = new Set(db().reports.map((r) => r.id));
@@ -513,6 +635,8 @@ function readClient(body) {
     const tagIds = new Set(db().tags.map((t) => t.id));
     client.tagIds = [...new Set(body.tagIds)].filter((id) => tagIds.has(id));
   }
+  // Fazendas do painel CCV (nomes exatamente como estão no modelo). Mesma regra das tags.
+  if (Array.isArray(body.ccvFarms)) client.ccvFarms = farmList(body.ccvFarms);
   if (!client.name) fail('Informe o nome do cliente.');
   if (client.rlsRoles.length && !client.rlsUsername) fail('Informe o usuário RLS junto com as funções.');
   return client;
@@ -626,6 +750,8 @@ function readUser(body, existing) {
     whatsappNotify: Boolean(body.whatsappNotify),
     // Gestor da empresa: cadastra e gerencia as pessoas das fazendas dele no portal.
     isManager: body.role !== 'admin' && Boolean(body.isManager),
+    // Painel CCV: só estas fazendas (dentre as dos clientes dele); vazio = todas as dos clientes.
+    ccvFarms: body.role === 'admin' || !Array.isArray(body.ccvFarms) ? [] : farmList(body.ccvFarms),
     active: body.active !== false,
   };
   if (user.phone && (user.phone.length < 12 || user.phone.length > 15)) fail('Telefone inválido. Use DDD + número, ex.: (61) 99999-8888.');

@@ -9,6 +9,7 @@ import { config } from './src/config.js';
 import { adminRouter } from './src/routes/admin.js';
 import { assistantRouter } from './src/routes/assistant.js';
 import { authRouter } from './src/routes/auth.js';
+import { ccvRouter } from './src/routes/ccv.js';
 import { confinamentoRouter } from './src/routes/confinamento.js';
 import { portalRouter } from './src/routes/portal.js';
 import { teamRouter } from './src/routes/team.js';
@@ -122,6 +123,7 @@ app.use('/api/admin', adminRouter);
 app.use('/api/assistant', assistantRouter);
 app.use('/api/team', teamRouter);
 app.use('/api/confinamento', confinamentoRouter);
+app.use('/api/ccv', ccvRouter);
 app.use('/api', portalRouter);
 app.use('/api', (_req, res) => res.status(404).json({ error: 'Rota não encontrada.' }));
 

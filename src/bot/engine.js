@@ -1,6 +1,6 @@
 // Conversa do bot (WhatsApp ou simulador do admin). Recebe o texto de um usuário já identificado
 // e responde chamando "send" com mensagens de texto ou documentos (PDF).
-import { resolveAccess, visibleReports } from '../access.js';
+import { isCcv, resolveAccess, visibleReports } from '../access.js';
 import { recordAccess } from '../accessLog.js';
 import { config } from '../config.js';
 import { fold } from '../naming.js';
@@ -46,6 +46,7 @@ function reportOptions(user) {
   const multi = new Set(visibleReports(user).flatMap((r) => r.clientIds)).size > 1;
   const options = [];
   for (const r of visibleReports(user)) {
+    if (isCcv(r)) continue; // o painel CCV não vira PDF (o relatório por trás tem todas as fazendas)
     for (const clientId of r.clientIds) {
       const clientName = clients.find((c) => c.id === clientId)?.name || '';
       options.push({ reportId: r.id, clientId, label: multi ? `${clientName} · ${r.name}` : r.name, search: fold(`${clientName} ${r.name} ${r.category}`) });

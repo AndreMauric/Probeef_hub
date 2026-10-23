@@ -61,6 +61,29 @@ Esse é o padrão pra adicionar a próxima ferramenta:
    (`/api/usage/beat`, `/api/usage/end`, tabela "Ferramentas" na aba Uso do admin) já é
    genérico e funciona sozinho a partir daí.
 
+## Painel CCV (relatório nativo, lido do modelo semântico)
+
+A "Ferramenta CCV" (leitura de cocho) não é incorporada: o portal consulta o modelo semântico
+do relatório via DAX (`executeDax`, API `executeQueries`) e desenha o painel em
+`public/js/ccv.js`. Relatórios têm `kind: 'powerbi' | 'ccv'` (escolhido no cadastro do relatório).
+
+- **O modelo junta todas as fazendas e não tem RLS.** O acesso é decidido pelo portal:
+  `client.ccvFarms` (fazendas que o cliente vê) e, opcionalmente, `user.ccvFarms` (subconjunto;
+  vazio = todas as do cliente). Toda consulta filtra a fazenda no servidor (`src/ccv.js`,
+  `allowedFarms`/`readFilters`, falha fechada). Por isso `resolveAccess` recusa embed/PDF de
+  relatórios `ccv`, e o bot/assistente os ignoram — não remova essas travas.
+- As medidas são as do próprio modelo (os números batem com o relatório do Power BI). O filtro
+  de período do relatório age em `Consulta1[data]` (data **com hora**: use `>= início` e
+  `< fim + 1`). O service principal não consegue ler as fórmulas das medidas (INFO.MEASURES
+  falha); para descobrir o que uma medida faz, avalie-a com filtros e compare com o relatório.
+- Cada consulta conta na cota do service principal no Power BI (~120/min). As respostas ficam em
+  cache por 5 min (painel) e 30 min (alertas).
+- **Alertas CCV** (aba no admin): `computeCcvAlerts` compara a última semana com a anterior para
+  cada fazenda ligada a um cliente (limites em `RULES`). O admin decide por fazenda/semana: enviar
+  alerta, enviar resumo, adiar ou tratado; tudo vai para `ccvAlertLog`. O envio automático usa o
+  modelo do WhatsApp `WHATSAPP_TEMPLATE_CCV`; sem ele, o admin copia o texto ou abre o WhatsApp
+  dele e registra o envio.
+
 ## Deploy
 
 - GitHub: `AndreMauric/Probeef_hub`, branch `main`, auto-deploy ativado no Railway.

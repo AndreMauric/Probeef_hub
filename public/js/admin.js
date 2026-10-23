@@ -106,13 +106,13 @@ function renderReports() {
         {},
         h('td', {}, h('strong', {}, r.name), h('span', { class: 'sub mono' }, r.reportId)),
         h('td', {}, r.category),
-        h('td', {}, r.rls ? h('span', { class: 'pill pill-accent' }, 'RLS') : h('span', { class: 'pill' }, 'Sem RLS')),
+        h('td', {}, r.kind === 'ccv' ? h('span', { class: 'pill pill-accent', title: 'Painel nativo: cada cliente vê só as fazendas liberadas' }, 'Painel CCV') : r.rls ? h('span', { class: 'pill pill-accent' }, 'RLS') : h('span', { class: 'pill' }, 'Sem RLS')),
         h('td', { class: 'mono' }, usage(r.id)),
         h(
           'td',
           { class: 'actions' },
           h('a', { class: 'btn btn-sm btn-ghost', href: `/portal#${r.id}` }, 'Abrir'),
-          h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => notifyClients(r) }, 'Avisar clientes'),
+          r.kind === 'ccv' ? null : h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => notifyClients(r) }, 'Avisar clientes'),
           h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => reportDialog(r) }, 'Editar'),
           h('button', { class: 'btn btn-sm btn-ghost btn-danger', type: 'button', onclick: () => deleteReport(r) }, 'Excluir'),
         ),
@@ -733,6 +733,24 @@ async function refresh() {
 
 function reportDialog(report) {
   const rls = h('input', { id: 'rls', name: 'rls', type: 'checkbox', checked: Boolean(report?.rls) });
+  const kind = h(
+    'select',
+    { id: 'kind', name: 'kind' },
+    h('option', { value: 'powerbi', selected: report?.kind !== 'ccv' }, 'Relatório do Power BI (incorporado)'),
+    h('option', { value: 'ccv', selected: report?.kind === 'ccv' }, 'Painel CCV (desenhado pelo portal)'),
+  );
+  const rlsField = h('label', { class: 'check' }, rls, h('span', {}, h('strong', {}, 'Usa segurança por linha (RLS)'), h('br'), h('span', { class: 'muted' }, 'Cada cliente verá só os dados do próprio filtro de RLS.')));
+  const ccvNote = h(
+    'p',
+    { class: 'alert alert-ok', style: 'margin: 0' },
+    'O portal lê o modelo do relatório "Ferramenta CCV" e desenha o painel. Cada cliente vê só as fazendas marcadas para ele em Clientes → Editar. O relatório do Power BI nunca é mostrado nem exportado para os clientes.',
+  );
+  const syncKind = () => {
+    rlsField.hidden = kind.value === 'ccv';
+    ccvNote.hidden = kind.value !== 'ccv';
+  };
+  kind.addEventListener('change', syncKind);
+  syncKind();
   let imageId = report?.imageId || null;
   const category = categorySelect('categoryId', report?.categoryId);
   const description = h('textarea', { id: 'description', name: 'description' }, report?.description || '');
@@ -772,6 +790,8 @@ function reportDialog(report) {
     report ? 'Editar relatório' : 'Novo relatório',
     [
       field('Nome', input('name', { value: report?.name, required: true })),
+      field('Tipo', kind),
+      ccvNote,
       h(
         'div',
         { class: 'grid-2' },
@@ -781,12 +801,12 @@ function reportDialog(report) {
       field('ID do relatório', input('reportId', { value: report?.reportId, required: true }), 'Na URL do relatório: app.powerbi.com/groups/{workspace}/reports/{relatório}.'),
       field('Descrição', description, 'Deixe em branco para usar a descrição da categoria.'),
       h('div', { class: 'field' }, h('span', {}, 'Imagem do card'), imagePreview),
-      h('label', { class: 'check' }, rls, h('span', {}, h('strong', {}, 'Usa segurança por linha (RLS)'), h('br'), h('span', { class: 'muted' }, 'Cada cliente verá só os dados do próprio filtro de RLS.'))),
+      rlsField,
     ],
     {
       onSubmit: async (form) => {
         const body = Object.fromEntries(new FormData(form));
-        body.rls = rls.checked;
+        body.rls = kind.value !== 'ccv' && rls.checked;
         body.imageId = imageId;
         if (report) await api(`/api/admin/reports/${report.id}`, { method: 'PUT', body });
         else await api('/api/admin/reports', { method: 'POST', body });
@@ -1014,6 +1034,225 @@ async function copyDigest() {
       pre,
       h('div', {}, h('button', { class: 'btn btn-primary btn-sm', type: 'button', onclick: () => copyText(text, pre) }, 'Copiar texto')),
     ]);
+  } catch (err) {
+    toast(err.message, 'error');
+  }
+}
+
+// ---------- Alertas CCV ----------
+
+const ccvState = { data: null, loading: false };
+const CCV_SEV = {
+  alta: { label: 'Prioridade alta', cls: 'sev-alta' },
+  media: { label: 'Atenção', cls: 'sev-media' },
+  ok: { label: 'Sem alerta', cls: 'sev-baixa' },
+};
+const CCV_ACTION = { alerta: 'Alerta enviado', relatorio: 'Resumo enviado', tratado: 'Marcado como tratado', adiar: 'Adiado' };
+const pctText = (v) => (v === null || v === undefined ? '—' : `${Math.round(v * 100)}%`);
+const dec1 = (v) => (v === null || v === undefined ? '—' : v.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }));
+
+async function loadCcvAlerts({ refresh = false } = {}) {
+  if (ccvState.loading) return;
+  ccvState.loading = true;
+  const box = document.getElementById('ccv-alerts');
+  const button = document.getElementById('ccv-refresh');
+  button.disabled = true;
+  if (!ccvState.data || refresh) box.replaceChildren(h('p', { class: 'muted' }, refresh ? 'Buscando os dados novos no Power BI… (leva alguns segundos)' : 'Calculando os alertas de todas as fazendas… (leva alguns segundos)'));
+  try {
+    ccvState.data = await api(`/api/admin/ccv/alerts${refresh ? '?refresh=1' : ''}`);
+    renderCcvAlerts();
+  } catch (err) {
+    box.replaceChildren(h('p', { class: 'alert' }, err.message));
+  } finally {
+    ccvState.loading = false;
+    button.disabled = false;
+  }
+}
+
+async function decideCcv(report, f, body, doneText) {
+  await api('/api/admin/ccv/alerts/decide', { method: 'POST', body: { reportId: report.id, key: f.key, farm: f.farm, ...body } });
+  toast(doneText);
+  await loadCcvAlerts();
+}
+
+// Enviar alerta ou resumo: o admin revisa o texto e escolhe quem recebe.
+function sendCcvDialog(report, f, kind) {
+  const wa = ccvState.data.whatsapp;
+  const ready = wa.configured && wa.ccvTemplate;
+  const text = h('textarea', { name: 'text', rows: 12, style: 'font: 13px/1.45 var(--font-data)' }, f.messages[kind]);
+  const rows = f.recipients.map((r) => {
+    const box = h('input', { type: 'checkbox', value: r.id, checked: Boolean(r.phone) || !ready });
+    const wame = r.phone ? h('a', { class: 'btn btn-sm btn-ghost', target: '_blank', rel: 'noopener', href: '#', onclick: (e) => (e.currentTarget.href = `https://wa.me/${r.phone}?text=${encodeURIComponent(text.value)}`) }, 'Abrir no WhatsApp') : null;
+    return { r, box, row: h('label', { class: 'check', style: 'align-items: center' }, box, h('span', { style: 'flex: 1' }, r.name, h('span', { class: 'muted' }, r.phone ? ` · +${r.phone}` : ' · sem WhatsApp cadastrado')), wame) };
+  });
+  formDialog(
+    `${kind === 'alerta' ? 'Enviar alerta' : 'Enviar resumo da semana'} · ${f.farm}`,
+    [
+      field('Mensagem', text, 'Revise e ajuste o texto antes de enviar.'),
+      h(
+        'div',
+        { class: 'field' },
+        h('span', {}, 'Quem recebe'),
+        rows.length ? h('div', { class: 'checkbox-list' }, rows.map((x) => x.row)) : h('small', {}, 'Nenhum usuário ativo vê esta fazenda no painel. Cadastre usuários no cliente (ou libere a fazenda para eles).'),
+      ),
+      ready
+        ? h('p', { class: 'muted', style: 'margin: 0; font-size: 13px' }, 'Vai pelo WhatsApp oficial, com o modelo de mensagem aprovado. Quem não tem telefone cadastrado não recebe.')
+        : h(
+            'p',
+            { class: 'alert', style: 'margin: 0' },
+            'O envio automático pelo WhatsApp ainda não está configurado (falta o modelo WHATSAPP_TEMPLATE_CCV). Copie o texto ou use "Abrir no WhatsApp" e depois registre o envio aqui.',
+          ),
+      h('div', {}, h('button', { class: 'btn btn-sm', type: 'button', onclick: () => copyText(text.value, text) }, 'Copiar texto')),
+    ],
+    {
+      submitLabel: ready ? 'Enviar pelo WhatsApp' : 'Registrar envio',
+      onSubmit: async () => {
+        const recipientIds = rows.filter((x) => x.box.checked).map((x) => x.r.id);
+        if (!recipientIds.length) throw new Error('Marque ao menos uma pessoa.');
+        const { entry } = await api('/api/admin/ccv/alerts/decide', {
+          method: 'POST',
+          body: { reportId: report.id, key: f.key, farm: f.farm, action: kind, text: text.value, recipientIds, channel: ready ? 'whatsapp' : 'manual' },
+        });
+        toast(entry.channel === 'whatsapp' ? `Enviado para ${entry.sent} ${entry.sent === 1 ? 'pessoa' : 'pessoas'}${entry.failed.length ? ` (falhou: ${entry.failed.join(', ')})` : ''}.` : 'Envio registrado.');
+        await loadCcvAlerts();
+      },
+    },
+  );
+}
+
+function treatedDialog(report, f) {
+  const note = h('textarea', { name: 'note', rows: 3, placeholder: 'Ex.: liguei para o gerente, já estão ajustando a leitura.' });
+  formDialog(`Marcar como tratado · ${f.farm}`, [field('O que foi feito (opcional)', note)], {
+    submitLabel: 'Marcar como tratado',
+    onSubmit: () => decideCcv(report, f, { action: 'tratado', note: note.value }, 'Alerta marcado como tratado.'),
+  });
+}
+
+function ccvFarmCard(report, f) {
+  const sev = CCV_SEV[f.severity];
+  const k = f.kpis;
+  const facts = [
+    k.ibc !== null ? `IBC ${dec1(k.ibc)}${k.ibcAnt !== null ? ` (antes ${dec1(k.ibcAnt)})` : ''}` : null,
+    k.conformidade !== null ? `Conformidade ${pctText(k.conformidade)}${k.conformidadeAnt !== null ? ` (antes ${pctText(k.conformidadeAnt)})` : ''}` : 'Sem leitura de sobra',
+    k.inconsistencias !== null ? `${num(k.inconsistencias)} inconsistências` : null,
+    k.rebanho !== null ? `${num(Math.round(k.rebanho))} cabeças` : null,
+    f.lastReading ? `última leitura ${fmtDateOnly(`${f.lastReading}T12:00:00`)}` : null,
+  ].filter(Boolean);
+  const decision = f.decision
+    ? h(
+        'p',
+        { class: 'ccv-decision' },
+        h('strong', {}, CCV_ACTION[f.decision.action] || f.decision.action),
+        ` por ${f.decision.adminName || 'admin'} em ${fmtDate(f.decision.at)}`,
+        f.decision.recipients?.length ? ` · para ${f.decision.recipients.map((r) => r.name).join(', ')}` : '',
+        f.decision.channel === 'manual' ? ' (envio manual)' : '',
+        f.decision.note ? ` · “${f.decision.note}”` : '',
+      )
+    : f.snoozedUntil
+      ? h('p', { class: 'ccv-decision' }, h('strong', {}, 'Adiado'), ` até ${fmtDate(f.snoozedUntil)}`)
+      : null;
+  const snooze = (days) => decideCcv(report, f, { action: 'adiar', days }, `Alerta de ${f.farm} adiado por ${days} ${days === 1 ? 'dia' : 'dias'}.`).catch((err) => toast(err.message, 'error'));
+  const action = (label, onclick, cls = 'btn btn-sm') => h('button', { class: cls, type: 'button', onclick }, label);
+  return h(
+    'article',
+    { class: `alert-card ${sev.cls}` },
+    h('span', { class: 'alert-icon', 'aria-hidden': 'true' }, f.severity === 'ok' ? '✓' : f.severity === 'alta' ? '⚠' : '•'),
+    h(
+      'div',
+      { class: 'alert-main' },
+      h('strong', {}, f.farm, h('span', { class: 'muted', style: 'font-weight: 400' }, ` · ${f.clients.map((c) => c.name).join(', ')}`)),
+      f.signals.length ? h('ul', { class: 'ccv-signals' }, f.signals.map((s) => h('li', { class: s.severity === 'alta' ? 'alta' : '' }, s.text))) : h('p', {}, 'Nenhum sinal de alerta na semana.'),
+      h('p', { class: 'muted' }, facts.join(' · ')),
+      f.lotes.length
+        ? h('details', { class: 'ccv-lotes' }, h('summary', {}, `Lotes com mais leituras críticas (${f.lotes.length})`), h('ul', {}, f.lotes.map((l) => h('li', {}, h('strong', {}, `Lote ${l.lote}`), l.curral ? ` (${l.curral})` : '', ` · ${l.resumo || `${l.criticas} críticas`}`))))
+        : null,
+      decision,
+      h(
+        'div',
+        { class: 'alert-actions' },
+        action('Enviar alerta', () => sendCcvDialog(report, f, 'alerta'), f.severity === 'ok' ? 'btn btn-sm' : 'btn btn-sm btn-primary'),
+        action('Enviar resumo', () => sendCcvDialog(report, f, 'relatorio')),
+        h('a', { class: 'btn btn-sm btn-ghost', href: `/portal#${report.id}/fazenda/${encodeURIComponent(f.farm)}`, target: '_blank', rel: 'noopener' }, 'Abrir painel'),
+        f.decision ? null : action('Tratado', () => treatedDialog(report, f), 'btn btn-sm btn-ghost'),
+        f.decision || f.snoozedUntil ? null : h('span', { class: 'alert-snooze' }, action('Adiar 1 dia', () => snooze(1), 'btn btn-sm btn-ghost'), action('3 dias', () => snooze(3), 'btn btn-sm btn-ghost'), action('7 dias', () => snooze(7), 'btn btn-sm btn-ghost')),
+      ),
+    ),
+  );
+}
+
+function renderCcvAlerts() {
+  const box = document.getElementById('ccv-alerts');
+  const { reports, whatsapp } = ccvState.data;
+  const counter = document.getElementById('count-ccv');
+  if (!reports.length) {
+    counter.textContent = '';
+    box.replaceChildren(h('p', { class: 'alert' }, 'Nenhum relatório do tipo "Painel CCV" cadastrado. Em Relatórios, cadastre (ou edite) o relatório "Ferramenta CCV" e escolha o tipo "Painel CCV".'));
+    return;
+  }
+  let pendingHigh = 0;
+  let pendingAll = 0;
+  const blocks = reports.map((data) => {
+    const report = data.report;
+    const pending = data.farms.filter((f) => f.severity !== 'ok' && !f.decision && !f.snoozedUntil);
+    const decided = data.farms.filter((f) => f.decision);
+    const snoozed = data.farms.filter((f) => !f.decision && f.snoozedUntil);
+    const quiet = data.farms.filter((f) => f.severity === 'ok' && !f.decision && !f.snoozedUntil);
+    pendingAll += pending.length;
+    pendingHigh += pending.filter((f) => f.severity === 'alta').length;
+    const group = (title, list, cls = '') => (list.length ? h('section', { class: 'alert-group' }, h('h3', { class: `usage-title ${cls}` }, `${title} · ${list.length}`), list.map((f) => ccvFarmCard(report, f))) : null);
+    return [
+      reports.length > 1 ? h('h3', { class: 'usage-title' }, report.name) : null,
+      h(
+        'div',
+        { class: 'stats' },
+        statTile('Pendentes · prioridade alta', num(pending.filter((f) => f.severity === 'alta').length)),
+        statTile('Pendentes · atenção', num(pending.filter((f) => f.severity === 'media').length)),
+        statTile('Decididos nesta semana', num(decided.length)),
+        statTile('Fazendas monitoradas', num(data.farms.length), data.period ? h('span', { class: 'muted' }, `semana de ${fmtDateOnly(`${data.period.from}T12:00:00`).slice(0, 5)} a ${fmtDateOnly(`${data.period.to}T12:00:00`).slice(0, 5)}`) : null),
+      ),
+      data.farms.length ? null : h('p', { class: 'alert' }, 'Nenhuma fazenda ligada a clientes. Em Clientes → Editar, marque o relatório CCV e escolha as fazendas de cada cliente.'),
+      pending.length ? null : data.farms.length ? h('p', { class: 'alert alert-ok' }, 'Nenhum alerta pendente nesta semana. 🎉') : null,
+      group('Prioridade alta', pending.filter((f) => f.severity === 'alta'), 'sev-alta'),
+      group('Atenção', pending.filter((f) => f.severity === 'media'), 'sev-media'),
+      group('Decididos nesta semana', decided),
+      group('Adiados', snoozed),
+      quiet.length ? h('details', { class: 'ccv-quiet' }, h('summary', {}, `Sem alerta · ${quiet.length}`), quiet.map((f) => ccvFarmCard(report, f))) : null,
+      data.unlinked.length ? h('p', { class: 'muted usage-hint' }, `Fazendas no modelo sem cliente no portal (não geram alerta): ${data.unlinked.join(', ')}.`) : null,
+    ];
+  });
+  counter.textContent = pendingAll || '';
+  counter.classList.toggle('has-high', pendingHigh > 0);
+  box.replaceChildren(
+    ...[
+      whatsapp.configured && whatsapp.ccvTemplate
+        ? null
+        : h('p', { class: 'muted usage-hint' }, 'Envio automático pelo WhatsApp desligado (falta o modelo WHATSAPP_TEMPLATE_CCV). Dá para copiar a mensagem ou abrir o seu WhatsApp com o texto pronto e registrar o envio.'),
+      ...blocks.flat(),
+    ].filter(Boolean),
+  );
+}
+
+async function ccvHistory() {
+  try {
+    const { log } = await api('/api/admin/ccv/log');
+    const tableEl = h('table');
+    table(
+      tableEl,
+      ['Quando', 'Fazenda', 'Decisão', 'Por', 'Detalhe'],
+      log.map((e) =>
+        h(
+          'tr',
+          {},
+          h('td', { class: 'mono' }, fmtDate(e.at)),
+          h('td', {}, e.farm),
+          h('td', {}, CCV_ACTION[e.action] || e.action, e.channel === 'manual' ? h('span', { class: 'sub' }, 'envio manual') : e.channel === 'whatsapp' ? h('span', { class: 'sub' }, `WhatsApp · ${e.sent || 0} enviada(s)`) : null),
+          h('td', {}, e.adminName || '—'),
+          h('td', {}, e.recipients?.length ? `Para ${e.recipients.map((r) => r.name).join(', ')}` : e.until ? `Até ${fmtDate(e.until)}` : e.note || ''),
+        ),
+      ),
+      'Nenhuma decisão registrada ainda.',
+    );
+    formDialog('Histórico de alertas CCV', h('div', { class: 'table-wrap' }, tableEl));
   } catch (err) {
     toast(err.message, 'error');
   }
@@ -2108,6 +2347,61 @@ function deleteTag(tag) {
 
 // ---------- Clientes ----------
 
+// ---------- Fazendas do painel CCV ----------
+
+// Fazendas do modelo do CCV (o servidor guarda em cache por 1 hora).
+let ccvFarmsRequest = null;
+function loadCcvFarms() {
+  ccvFarmsRequest ??= api('/api/admin/ccv/farms')
+    .then((d) => d.farms.map((f) => f.name))
+    .catch((err) => {
+      ccvFarmsRequest = null;
+      throw err;
+    });
+  return ccvFarmsRequest;
+}
+
+// Lista de fazendas com busca. options(): nomes possíveis; selected: marcadas. Devolve { el, values() }.
+function farmPicker({ label, hint, selected = [], options }) {
+  const picked = new Set(selected);
+  const list = h('div', { class: 'checkbox-list' }, h('p', { class: 'muted', style: 'margin: 0' }, 'Buscando fazendas no modelo do CCV…'));
+  const count = h('small', {});
+  const updateCount = () => {
+    count.textContent = picked.size ? `${picked.size} ${picked.size === 1 ? 'fazenda marcada' : 'fazendas marcadas'}` : hint;
+  };
+  const search = h('input', {
+    type: 'search',
+    placeholder: 'Buscar fazenda',
+    'aria-label': 'Buscar fazenda',
+    oninput: () => {
+      const term = fold(search.value.trim());
+      list.querySelectorAll('label').forEach((row) => (row.hidden = term !== '' && !fold(row.textContent).includes(term)));
+    },
+  });
+  const render = (names) => {
+    // Fazendas marcadas que não existem mais no modelo continuam aparecendo, para poder desmarcar.
+    const all = [...new Set([...names, ...picked])].sort((a, b) => Number(picked.has(b)) - Number(picked.has(a)) || a.localeCompare(b, 'pt-BR'));
+    list.replaceChildren(
+      ...(all.length
+        ? all.map((name) => {
+            const box = h('input', { type: 'checkbox', value: name, checked: picked.has(name), onchange: () => (box.checked ? picked.add(name) : picked.delete(name), updateCount()) });
+            return h('label', { class: 'check' }, box, h('span', {}, name, names.includes(name) ? null : h('span', { class: 'muted' }, ' (não está mais no modelo)')));
+          })
+        : [h('p', { class: 'muted', style: 'margin: 0' }, 'Nenhuma fazenda disponível.')]),
+    );
+  };
+  updateCount();
+  const el = h('div', { class: 'field' }, h('span', {}, label), search, list, count);
+  return {
+    el,
+    refresh: () =>
+      Promise.resolve(options())
+        .then(render)
+        .catch((err) => list.replaceChildren(h('p', { class: 'alert', style: 'margin: 0' }, err.message))),
+    values: () => [...picked],
+  };
+}
+
 function clientDialog(client) {
   const active = h('input', { id: 'active', type: 'checkbox', checked: client ? client.active : true });
   const tagPicker = h(
@@ -2133,9 +2427,23 @@ function clientDialog(client) {
       'label',
       { class: 'check' },
       h('input', { type: 'checkbox', value: r.id, checked: Boolean(client?.reportIds.includes(r.id)) }),
-      h('span', {}, r.name, ' ', h('span', { class: 'muted' }, `· ${r.category}`), r.rls ? [' ', h('span', { class: 'pill pill-accent' }, 'RLS')] : null),
+      h('span', {}, r.name, ' ', h('span', { class: 'muted' }, `· ${r.category}`), r.rls ? [' ', h('span', { class: 'pill pill-accent' }, 'RLS')] : null, r.kind === 'ccv' ? [' ', h('span', { class: 'pill pill-accent' }, 'Painel CCV')] : null),
     ),
   );
+  // Fazendas do painel CCV: aparecem quando algum relatório CCV está marcado.
+  const farms = farmPicker({ label: 'Fazendas do painel CCV que este cliente vê', hint: 'Nenhuma marcada: o cliente não vê dados no painel CCV.', selected: client?.ccvFarms || [], options: loadCcvFarms });
+  const ccvIds = new Set(state.reports.filter((r) => r.kind === 'ccv').map((r) => r.id));
+  const syncFarms = () => {
+    const show = reportChecks.some((row) => {
+      const box = row.querySelector('input');
+      return box.checked && ccvIds.has(box.value);
+    });
+    if (show && farms.el.hidden !== false) farms.refresh();
+    farms.el.hidden = !show;
+  };
+  farms.el.hidden = true;
+  reportChecks.forEach((row) => row.querySelector('input').addEventListener('change', syncFarms));
+  syncFarms();
   formDialog(
     client ? 'Editar cliente' : 'Novo cliente',
     [
@@ -2148,6 +2456,7 @@ function clientDialog(client) {
           ? h('div', { class: 'checkbox-list', id: 'client-reports' }, reportChecks)
           : h('small', {}, 'Cadastre relatórios primeiro.'),
       ),
+      farms.el,
       h(
         'div',
         { class: 'grid-2' },
@@ -2170,6 +2479,7 @@ function clientDialog(client) {
           rlsUsername: form.elements['rlsUsername'].value,
           rlsRoles: form.elements['rlsRoles'].value,
           reportIds: [...form.querySelectorAll('#client-reports input:checked')].map((i) => i.value),
+          ccvFarms: farms.values(),
           active: active.checked,
         };
         if (client) await api(`/api/admin/clients/${client.id}`, { method: 'PUT', body });
@@ -2212,6 +2522,19 @@ function userDialog(user) {
     pickedCount.textContent = n === 1 ? '1 cliente selecionado' : `${n} clientes selecionados`;
   };
   clientRows.forEach((r) => r.box.addEventListener('change', updateCount));
+  // Painel CCV: opcionalmente, só algumas das fazendas dos clientes marcados.
+  const clientFarms = () => [...new Set(clientRows.filter((r) => r.box.checked).flatMap((r) => r.c.ccvFarms || []))];
+  const farms = farmPicker({
+    label: 'Fazendas do painel CCV que este usuário vê',
+    hint: 'Nenhuma marcada: vê todas as fazendas CCV dos clientes dele.',
+    selected: user?.ccvFarms || [],
+    options: clientFarms,
+  });
+  const syncFarms = () => {
+    farms.el.hidden = role.value === 'admin' || (!clientFarms().length && !(user?.ccvFarms || []).length);
+    if (!farms.el.hidden) farms.refresh();
+  };
+  clientRows.forEach((r) => r.box.addEventListener('change', syncFarms));
   const clientSearch = h('input', {
     type: 'search',
     placeholder: 'Buscar cliente',
@@ -2249,6 +2572,7 @@ function userDialog(user) {
     clientField.hidden = role.value === 'admin';
     whatsappField.hidden = role.value === 'admin';
     managerField.hidden = role.value === 'admin';
+    syncFarms();
   };
   role.addEventListener('change', syncRole);
   syncRole();
@@ -2264,6 +2588,7 @@ function userDialog(user) {
       ),
       field('Tipo de acesso', role),
       clientField,
+      farms.el,
       managerField,
       whatsappField,
       user ? null : h('p', { class: 'muted', style: 'margin: 0; font-size: 13px' }, 'Uma senha temporária será gerada e mostrada a seguir.'),
@@ -2276,6 +2601,8 @@ function userDialog(user) {
           email: form.elements['email'].value,
           role: role.value,
           clientIds: clientRows.filter((r) => r.box.checked).map((r) => r.c.id),
+          // Só as fazendas que ainda pertencem a algum cliente marcado.
+          ccvFarms: farms.values().filter((f) => clientFarms().includes(f)),
           phone: form.elements['phone'].value,
           whatsappNotify: notify.checked,
           isManager: manager.checked,
@@ -2336,6 +2663,7 @@ function selectTab(name) {
   history.replaceState(null, '', `#${name}`);
   if (name === 'usage') loadUsage();
   if (name === 'alerts') loadAlerts();
+  if (name === 'ccv') loadCcvAlerts();
   if (name === 'health') loadHealth();
   if (name === 'whatsapp') loadBot();
 }
@@ -2363,6 +2691,8 @@ async function init() {
     }
   });
   document.getElementById('alerts-digest').addEventListener('click', copyDigest);
+  document.getElementById('ccv-refresh').addEventListener('click', () => loadCcvAlerts({ refresh: true }));
+  document.getElementById('ccv-history').addEventListener('click', ccvHistory);
   api('/api/admin/alerts').then(updateAlertCount).catch(() => {});
   // Contador de problemas na aba, mesmo antes de abri-la.
   api('/api/admin/data-health')

@@ -36,6 +36,7 @@
         <div class="admin-inner">
           <div class="tabs" role="tablist">
             <button class="tab" role="tab" type="button" data-tab="alerts" aria-selected="false">Alertas<span class="count alert-count" id="count-alerts"></span></button>
+            <button class="tab" role="tab" type="button" data-tab="ccv" aria-selected="false">Alertas CCV<span class="count alert-count" id="count-ccv"></span></button>
             <button class="tab" role="tab" type="button" data-tab="usage" aria-selected="false">Uso</button>
             <button class="tab" role="tab" type="button" data-tab="health" aria-selected="false">Saúde dos dados<span class="count" id="count-health"></span></button>
             <button class="tab" role="tab" type="button" data-tab="reports" aria-selected="true">Relatórios<span class="count" id="count-reports"></span></button>
@@ -58,6 +59,20 @@
               </div>
             </div>
             <div id="alerts"></div>
+          </section>
+
+          <section data-panel="ccv" hidden>
+            <div class="section-head">
+              <div>
+                <h2>Alertas CCV</h2>
+                <p>Situação da última semana de leitura de cocho em cada fazenda ligada a um cliente, comparada à semana anterior. Para cada fazenda, decida: enviar o alerta, enviar o resumo da semana, adiar ou dar por tratado. Tudo fica registrado no histórico.</p>
+              </div>
+              <div class="viewer-actions">
+                <button class="btn" id="ccv-history" type="button">Histórico</button>
+                <button class="btn btn-primary" id="ccv-refresh" type="button">Buscar dados novos</button>
+              </div>
+            </div>
+            <div id="ccv-alerts"></div>
           </section>
 
           <section data-panel="usage" hidden>

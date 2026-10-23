@@ -9,6 +9,8 @@ const cfg = () => ({
   verifyToken: process.env.WHATSAPP_VERIFY_TOKEN || '',
   version: process.env.WHATSAPP_GRAPH_VERSION || 'v21.0',
   updateTemplate: process.env.WHATSAPP_TEMPLATE_UPDATE || '',
+  // Alertas e resumos da Ferramenta CCV enviados pelo admin: {{1}} nome, {{2}} fazenda, {{3}} texto (uma linha).
+  ccvTemplate: process.env.WHATSAPP_TEMPLATE_CCV || '',
   templateLanguage: process.env.WHATSAPP_TEMPLATE_LANGUAGE || 'pt_BR',
 });
 
@@ -17,6 +19,7 @@ export function whatsappStatus() {
   return {
     configured: Boolean(c.token && c.phoneNumberId && c.appSecret && c.verifyToken),
     updateTemplate: c.updateTemplate || null,
+    ccvTemplate: c.ccvTemplate || null,
   };
 }
 

@@ -9,6 +9,11 @@ export class AccessError extends Error {
   }
 }
 
+// Painel nativo da Ferramenta CCV (ver src/ccv.js): abre só pelo painel do portal, que filtra por
+// fazenda. O relatório do Power BI por trás dele junta todas as fazendas e não tem RLS, então nunca
+// é incorporado, exportado em PDF ou consultado pelo assistente.
+export const isCcv = (report) => report?.kind === 'ccv';
+
 // Administradores veem todos os relatórios. Clientes veem os relatórios liberados para cada um
 // dos clientes (empresas) aos quais têm acesso; "clientIds" diz em quais deles o relatório aparece.
 export function visibleReports(user) {
@@ -22,10 +27,12 @@ export function visibleReports(user) {
 
 // Confere se o usuário pode ver o relatório e resolve o cliente e a identidade de RLS a usar.
 // Usado pelo embed, pela exportação e pelo bot, para que todos sigam exatamente as mesmas regras.
-export function resolveAccess(user, reportId, { client: clientParam, asClient } = {}) {
+// native: chamado pelo painel CCV, o único que pode abrir relatórios desse tipo.
+export function resolveAccess(user, reportId, { client: clientParam, asClient, native = false } = {}) {
   const isAdmin = user.role === 'admin';
   const report = visibleReports(user).find((r) => r.id === reportId);
   if (!report) throw new AccessError('Relatório não encontrado ou sem permissão.', 404);
+  if (isCcv(report) && !native) throw new AccessError('Este painel abre direto no portal.', 400);
 
   // Cliente em nome do qual o relatório é aberto: o escolhido, desde que o relatório esteja
   // liberado para ele; sem escolha válida, o primeiro cliente do usuário que tem o relatório.
