@@ -1,0 +1,123 @@
+/* Faixa de cotações no rodapé (public/js/ticker.js). Arquivo próprio para servir também às
+   ferramentas com tema próprio (4M), sem depender do app.css: cores e fontes têm valor padrão.
+   Cada página ajusta o próprio layout para a faixa usando --ticker-h (0 quando não há faixa). */
+
+:root {
+  --ticker-h: 0px;
+}
+
+body.has-ticker {
+  --ticker-h: 34px;
+}
+
+.ticker {
+  position: fixed;
+  inset: auto 0 0;
+  z-index: 40;
+  display: flex;
+  align-items: stretch;
+  height: calc(var(--ticker-h) + env(safe-area-inset-bottom, 0px));
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  background: var(--brand, #094140);
+  color: #e9f3f1;
+  font: 13px/1.5 var(--font-ui, 'Instrument Sans', 'Segoe UI', system-ui, sans-serif);
+  border-top: 1px solid rgb(255 255 255 / 10%);
+}
+
+.ticker[hidden] {
+  display: none;
+}
+
+.ticker-tag {
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  background: rgb(0 0 0 / 22%);
+  color: #ffffff;
+  font-size: 11.5px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.ticker-window {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.ticker-track {
+  display: flex;
+  width: max-content;
+  height: 100%;
+  animation: ticker-roll var(--ticker-duration, 60s) linear infinite;
+}
+
+.ticker-window:hover .ticker-track {
+  animation-play-state: paused;
+}
+
+@keyframes ticker-roll {
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.ticker-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 22px;
+  border-right: 1px solid rgb(255 255 255 / 14%);
+  white-space: nowrap;
+}
+
+.ticker-item strong {
+  font-weight: 600;
+}
+
+.ticker-value {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Sobe/desce: seta + sinal + cor (nunca só a cor). Tons claros para o fundo verde-escuro. */
+.ticker-change {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.ticker-change.up {
+  color: #6ee7a8;
+}
+
+.ticker-change.down {
+  color: #ff9b8f;
+}
+
+.ticker-change.flat {
+  color: #b9cfcb;
+}
+
+@media (max-width: 600px) {
+  .ticker-tag {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ticker-track {
+    animation: none;
+  }
+
+  .ticker-window {
+    overflow-x: auto;
+  }
+}
+
+@media print {
+  .ticker {
+    display: none !important;
+  }
+}

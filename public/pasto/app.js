@@ -2,6 +2,7 @@
 // O cálculo fica em model.js (tradução fiel do app.R); aqui ficam os formulários dos dois
 // cenários, o Dashboard comparativo, as simulações salvas e as exportações (Excel e relatório).
 import { api, h, toast } from '/js/common.js';
+import { initTicker } from '/js/ticker.js';
 import { comparar, cenarioPadrao, EPOCAS, epocasDoAno, OPCOES, PASTOS, PRODUTOS, simular, sobreposicao, validar, VARIAVEIS } from './model.js';
 
 const state = { c1: null, c2: null, s1: null, s2: null, erros: { c1: [], c2: [] }, tab: 'c1', chart: null, sim: null };
@@ -709,6 +710,7 @@ async function init() {
     document.getElementById('impersonation-text').textContent = `Você (${user.impersonatedBy.name}) está vendo a 3P como ${user.name}.`;
     document.getElementById('impersonation').hidden = false;
   }
+  initTicker();
   state.c1 = cenarioPadrao(undefined, 1);
   state.c2 = cenarioPadrao(undefined, 2);
   recalc();

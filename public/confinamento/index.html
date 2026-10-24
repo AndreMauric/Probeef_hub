@@ -5,6 +5,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
 <script src="/vendor/chart.min.js"></script>
+<link rel="stylesheet" href="/css/ticker.css">
 <style>
   :root{
     --bg:#F5F6F6;
@@ -91,6 +92,12 @@
      classe acima — força explicitamente, senão o app fica visível por
      baixo da tela de login mesmo com o atributo hidden presente. */
   .app[hidden], .login-screen[hidden]{ display:none !important; }
+
+  /* Faixa de cotações do portal no rodapé (/css/ticker.css): o conteúdo termina acima dela. */
+  body.has-ticker{ padding-bottom:var(--ticker-h); }
+  body.has-ticker .app{ min-height:calc(100vh - var(--ticker-h)); }
+  body.has-ticker .sidebar{ height:calc(100vh - var(--ticker-h)); }
+  body.has-ticker .toast{ bottom:calc(22px + var(--ticker-h)); }
 
   /* ---------- Sidebar ---------- */
   .sidebar{
@@ -1294,3 +1301,4 @@
 
 <script src="calc.js"></script>
 <script src="app.js"></script>
+<script type="module" src="/js/ticker-boot.js"></script>

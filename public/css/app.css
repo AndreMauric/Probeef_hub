@@ -3740,15 +3740,7 @@ pre.digest {
   }
 }
 
-/* ---------- Faixa de cotações (public/js/ticker.js) ---------- */
-
-:root {
-  --ticker-h: 0px;
-}
-
-body.has-ticker {
-  --ticker-h: 34px;
-}
+/* ---------- Faixa de cotações: ajustes do portal (o visual da faixa está em ticker.css) ---------- */
 
 /* A faixa ocupa o rodapé: o portal encolhe e os botões flutuantes sobem junto. */
 .has-ticker .app {
@@ -3762,107 +3754,9 @@ body.has-ticker {
   bottom: calc(20px + var(--ticker-h) + env(safe-area-inset-bottom, 0px));
 }
 
-.ticker {
-  position: fixed;
-  inset: auto 0 0;
-  z-index: 40;
-  display: flex;
-  align-items: stretch;
-  height: calc(var(--ticker-h) + env(safe-area-inset-bottom, 0px));
-  padding-bottom: env(safe-area-inset-bottom, 0px);
-  background: var(--brand);
-  color: #e9f3f1;
-  font-size: 13px;
-  border-top: 1px solid rgb(255 255 255 / 10%);
-}
-
-.ticker-tag {
-  display: flex;
-  align-items: center;
-  padding: 0 14px;
-  background: rgb(0 0 0 / 22%);
-  color: #ffffff;
-  font: 700 11.5px/1 var(--font-ui);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
-.ticker-window {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-}
-
-.ticker-track {
-  display: flex;
-  width: max-content;
-  height: 100%;
-  animation: ticker-roll var(--ticker-duration, 60s) linear infinite;
-}
-
-.ticker-window:hover .ticker-track {
-  animation-play-state: paused;
-}
-
-@keyframes ticker-roll {
-  to {
-    transform: translateX(-50%);
-  }
-}
-
-.ticker-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 22px;
-  border-right: 1px solid rgb(255 255 255 / 14%);
-  white-space: nowrap;
-}
-
-.ticker-item strong {
-  font-weight: 600;
-}
-
-.ticker-value {
-  font-variant-numeric: tabular-nums;
-}
-
-/* Sobe/desce: seta + sinal + cor (nunca só a cor). Tons claros para o fundo verde-escuro. */
-.ticker-change {
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-}
-
-.ticker-change.up {
-  color: #6ee7a8;
-}
-
-.ticker-change.down {
-  color: #ff9b8f;
-}
-
-.ticker-change.flat {
-  color: #b9cfcb;
-}
-
 @media (max-width: 600px) {
   .has-ticker .ai-panel:not(.chat-panel) {
     bottom: var(--ticker-h);
-  }
-
-  .ticker-tag {
-    display: none;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .ticker-track {
-    animation: none;
-  }
-
-  .ticker-window {
-    overflow-x: auto;
   }
 }
 

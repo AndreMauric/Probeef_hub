@@ -113,6 +113,9 @@ nessa conversa.
 ## Faixa de cotações (rodapé do portal)
 
 `src/quotes.js` + `public/js/ticker.js`, configurada na aba Cotações do admin (`db().quotes`).
+Aparece no portal, no 4M e na 3P. O visual fica em `public/css/ticker.css` (independente do
+`app.css`, porque o 4M tem tema próprio); cada página ajusta o próprio layout com `--ticker-h`
+(`body.has-ticker`). Páginas que não são módulo ligam a faixa com `/js/ticker-boot.js`.
 Câmbio vem da AwesomeAPI e bolsas (Ibovespa, CBOT/CME) do endpoint não oficial do Yahoo Finance
 (~15 min de atraso; pode mudar sem aviso — se quebrar, o portal mantém o último valor por até
 3 dias e depois esconde o item). Os **preços brasileiros (CEPEA/B3) são lançados à mão** pelo
