@@ -95,6 +95,16 @@ guarda o contexto (relatório aberto e, no CCV, a fazenda — validada contra as
 "entrando como" só lê. Os Alertas CCV podem ser enviados pelo canal `portal`, que vira mensagem
 nessa conversa.
 
+## Faixa de cotações (rodapé do portal)
+
+`src/quotes.js` + `public/js/ticker.js`, configurada na aba Cotações do admin (`db().quotes`).
+Câmbio vem da AwesomeAPI e bolsas (Ibovespa, CBOT/CME) do endpoint não oficial do Yahoo Finance
+(~15 min de atraso; pode mudar sem aviso — se quebrar, o portal mantém o último valor por até
+3 dias e depois esconde o item). Os **preços brasileiros (CEPEA/B3) são lançados à mão** pelo
+admin: o CEPEA bloqueia acesso automatizado e copiar de sites de terceiros (Notícias Agrícolas
+etc.) foi descartado por termos de uso/licença — não troque por scraping sem uma fonte
+autorizada. O servidor faz as chamadas externas (a CSP só permite `connectSrc: 'self'`).
+
 ## Deploy
 
 - GitHub: `AndreMauric/Probeef_hub`, branch `main`, auto-deploy ativado no Railway.

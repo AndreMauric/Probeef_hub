@@ -45,6 +45,7 @@
             <button class="tab" role="tab" type="button" data-tab="users" aria-selected="false">Usuários<span class="count" id="count-users"></span><span class="count" id="count-confinamento"></span></button>
             <button class="tab" role="tab" type="button" data-tab="categories" aria-selected="false">Categorias<span class="count" id="count-categories"></span></button>
             <button class="tab" role="tab" type="button" data-tab="images" aria-selected="false">Imagens<span class="count" id="count-images"></span></button>
+            <button class="tab" role="tab" type="button" data-tab="quotes" aria-selected="false">Cotações</button>
             <button class="tab" role="tab" type="button" data-tab="whatsapp" aria-selected="false">WhatsApp</button>
             <button class="tab" role="tab" type="button" data-tab="setup" aria-selected="false">Configuração</button>
           </div>
@@ -207,6 +208,19 @@
             </div>
             <div class="drop-zone" id="drop-zone">Arraste imagens para cá ou use o botão "Enviar imagens".</div>
             <div class="image-grid" id="image-grid"></div>
+          </section>
+
+          <section data-panel="quotes" hidden>
+            <div class="section-head">
+              <div>
+                <h2>Cotações</h2>
+                <p>A faixa que roda no rodapé do portal. Os preços brasileiros (indicadores do CEPEA, por exemplo) são lançados aqui uma vez por dia; a tendência é calculada contra o lançamento anterior. Câmbio e bolsas de Chicago atualizam sozinhos.</p>
+              </div>
+              <div class="viewer-actions">
+                <button class="btn" id="quote-new" type="button">Nova cotação</button>
+              </div>
+            </div>
+            <div id="quotes"></div>
           </section>
 
           <section data-panel="whatsapp" hidden>

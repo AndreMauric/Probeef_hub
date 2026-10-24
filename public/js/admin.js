@@ -1043,6 +1043,124 @@ async function copyDigest() {
   }
 }
 
+// ---------- Cotações ----------
+
+const todayIso = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
+const fmtQuote = (v, digits = 2) => (v === null || v === undefined ? '—' : v.toLocaleString('pt-BR', { minimumFractionDigits: digits, maximumFractionDigits: digits }));
+const fmtPct = (p) => (p === null || p === undefined ? '' : `${p > 0 ? '▲ +' : p < 0 ? '▼ ' : '■ '}${fmtQuote(p)}%`);
+
+async function loadQuotes() {
+  try {
+    renderQuotes(await api('/api/admin/quotes'));
+  } catch (err) {
+    document.getElementById('quotes').replaceChildren(h('p', { class: 'alert' }, err.message));
+  }
+}
+
+function quoteDialog(q) {
+  formDialog(
+    q ? 'Editar cotação' : 'Nova cotação',
+    [
+      field('Nome', input('label', { value: q?.label, placeholder: 'Ex.: Boi gordo', required: true })),
+      h('div', { class: 'grid-2' }, field('Unidade', input('unit', { value: q?.unit, placeholder: 'Ex.: R$/@' })), field('Fonte', input('source', { value: q?.source, placeholder: 'Ex.: CEPEA · SP' }), 'Aparece ao passar o mouse na faixa.')),
+    ],
+    {
+      onSubmit: async (form) => {
+        const body = Object.fromEntries(new FormData(form));
+        renderQuotes(await api(q ? `/api/admin/quotes/${q.id}` : '/api/admin/quotes', { method: q ? 'PUT' : 'POST', body }));
+        toast(q ? 'Cotação atualizada.' : 'Cotação criada. Lance o valor do dia na tabela.');
+      },
+    },
+  );
+}
+
+function renderQuotes(data) {
+  const box = document.getElementById('quotes');
+  const enabled = h('input', {
+    type: 'checkbox',
+    checked: data.enabled,
+    onchange: async () => {
+      renderQuotes(await api('/api/admin/quotes/options', { method: 'PUT', body: { enabled: enabled.checked } }));
+      toast(enabled.checked ? 'A faixa voltou a aparecer no portal.' : 'A faixa saiu do portal.');
+    },
+  });
+  const manualTable = h('table');
+  table(
+    manualTable,
+    ['Cotação', 'Último valor', 'Lançar valor do dia', ''],
+    data.manual.map((q) => {
+      const value = h('input', { type: 'text', inputmode: 'decimal', placeholder: q.value !== null ? fmtQuote(q.value) : '0,00', 'aria-label': `Valor de ${q.label}`, style: 'width: 110px' });
+      const date = h('input', { type: 'date', value: todayIso(), 'aria-label': 'Data do valor', style: 'width: 150px' });
+      const launch = async () => {
+        try {
+          renderQuotes(await api(`/api/admin/quotes/${q.id}/value`, { method: 'POST', body: { value: value.value, date: date.value } }));
+          toast(`${q.label}: valor lançado.`);
+        } catch (err) {
+          toast(err.message, 'error');
+        }
+      };
+      value.addEventListener('keydown', (e) => e.key === 'Enter' && launch());
+      return h(
+        'tr',
+        {},
+        h('td', {}, h('strong', {}, q.label), h('span', { class: 'sub' }, [q.unit, q.source].filter(Boolean).join(' · '))),
+        h(
+          'td',
+          { class: 'mono' },
+          q.value !== null ? `${fmtQuote(q.value)}` : h('span', { class: 'muted' }, 'sem valor (não aparece)'),
+          q.asOf ? h('span', { class: 'sub' }, `${fmtDateOnly(`${q.asOf}T12:00:00`)} ${fmtPct(q.changePct)}`) : null,
+          q.history.length > 1 ? h('span', { class: 'sub', title: q.history.map((x) => `${fmtDateOnly(`${x.date}T12:00:00`)}: ${fmtQuote(x.value)}`).join('\n') }, `${q.history.length} lançamentos`) : null,
+        ),
+        h('td', {}, h('div', { class: 'quote-entry' }, value, date, h('button', { class: 'btn btn-sm btn-primary', type: 'button', onclick: launch }, 'Lançar'))),
+        h(
+          'td',
+          { class: 'actions' },
+          h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => quoteDialog(q) }, 'Editar'),
+          h(
+            'button',
+            {
+              class: 'btn btn-sm btn-ghost btn-danger',
+              type: 'button',
+              onclick: () =>
+                confirmDialog('Excluir cotação', `"${q.label}" sai da faixa e o histórico de valores é apagado.`, async () => {
+                  renderQuotes(await api(`/api/admin/quotes/${q.id}`, { method: 'DELETE', body: {} }));
+                  toast('Cotação excluída.');
+                }),
+            },
+            'Excluir',
+          ),
+        ),
+      );
+    }),
+    'Nenhuma cotação lançada pela equipe. Use "Nova cotação".',
+  );
+  const autoList = h(
+    'div',
+    { class: 'checkbox-list quote-auto' },
+    data.auto.map((q) => {
+      const box2 = h('input', {
+        type: 'checkbox',
+        checked: q.on,
+        onchange: async () => renderQuotes(await api('/api/admin/quotes/options', { method: 'PUT', body: { auto: { [q.id]: box2.checked } } })),
+      });
+      return h(
+        'label',
+        { class: 'check' },
+        box2,
+        h('span', {}, h('strong', {}, q.label), h('span', { class: 'muted' }, ` · ${q.unit}${q.last ? ` · último ${fmtQuote(q.last.value, q.unit === 'pts' ? 0 : 3)} ${fmtPct(q.last.changePct)}` : ''}`)),
+      );
+    }),
+  );
+  box.replaceChildren(
+    h('label', { class: 'check', style: 'margin-top: 16px' }, enabled, h('span', {}, h('strong', {}, 'Mostrar a faixa de cotações no portal'), h('br'), h('span', { class: 'muted' }, 'Rola no rodapé de todas as telas do portal; para ao passar o mouse.'))),
+    sectionTitle('Lançadas pela equipe (preços brasileiros)'),
+    h('div', { class: 'table-wrap' }, manualTable),
+    h('p', { class: 'muted usage-hint' }, 'Dica: o CEPEA publica os indicadores do dia no fim da tarde. Lançar outra vez na mesma data corrige o valor daquele dia.'),
+    sectionTitle('Automáticas'),
+    autoList,
+  );
+}
+
 // ---------- Mensagens ----------
 
 const chatState = { inbox: null, userId: null, conversation: null, timer: null };
@@ -2844,6 +2962,7 @@ function selectTab(name) {
   if (name === 'alerts') loadAlerts();
   if (name === 'ccv') loadCcvAlerts();
   if (name === 'chat') loadInbox();
+  if (name === 'quotes') loadQuotes();
   if (name === 'health') loadHealth();
   if (name === 'whatsapp') loadBot();
 }
@@ -2876,6 +2995,7 @@ async function init() {
   document.getElementById('chat-search').addEventListener('input', renderThreads);
   document.getElementById('chat-filter').addEventListener('change', renderThreads);
   document.getElementById('chat-new').addEventListener('click', () => newChatDialog());
+  document.getElementById('quote-new').addEventListener('click', () => quoteDialog());
   api('/api/admin/chat').then((inbox) => ((chatState.inbox = inbox), updateChatCount(inbox))).catch(() => {});
   startChatPolling();
   api('/api/admin/alerts').then(updateAlertCount).catch(() => {});

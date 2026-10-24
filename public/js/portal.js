@@ -1,6 +1,7 @@
 import { initAssistant } from './assistant.js';
 import { mountCcv } from './ccv.js';
 import { initChat } from './chat.js';
+import { initTicker } from './ticker.js';
 import { initNps } from './nps.js';
 import { openTeam } from './team.js';
 import { setupViews } from './views.js';
@@ -704,6 +705,8 @@ async function init() {
   } else if (me.mustChangePassword) {
     openPasswordDialog({ required: true });
   }
+
+  initTicker();
 
   // Mensagens com a equipe (só usuários de cliente; admin "entrando como" só lê).
   if (me.role === 'client') {

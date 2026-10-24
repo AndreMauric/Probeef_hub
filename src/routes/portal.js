@@ -9,6 +9,7 @@ import { imagePath, imageUrl, reportImageId } from '../images.js';
 import { answer as answerNps, dismiss as dismissNps, shouldAsk } from '../nps.js';
 import { deleteView, favoritesOf, getView, saveView, setFavorite, viewsOf } from '../personal.js';
 import { getEmbedConfig, getExportFile, getExportStatus, startExport } from '../powerbi.js';
+import { tickerQuotes } from '../quotes.js';
 import { db } from '../store.js';
 
 export const portalRouter = Router();
@@ -59,6 +60,13 @@ portalRouter.get('/views/:id', (req, res, next) => {
 portalRouter.delete('/views/:id', route(async (req, res) => {
   await deleteView(req.user, req.params.id);
   res.json({ views: viewsOf(req.user) });
+}));
+
+// ---------- Faixa de cotações (rodapé) ----------
+
+portalRouter.get('/quotes', route(async (_req, res) => {
+  res.set('Cache-Control', 'private, max-age=60');
+  res.json(await tickerQuotes());
 }));
 
 // ---------- Pesquisa de satisfação ----------

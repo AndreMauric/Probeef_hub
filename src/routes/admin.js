@@ -8,6 +8,7 @@ import { cleanPhoneInput, samePhone } from '../bot/phone.js';
 import { sendTemplate, whatsappStatus } from '../bot/whatsapp.js';
 import { isCcv } from '../access.js';
 import { computeCcvAlerts, listFarms, messageFor, oneLine, RULES } from '../ccv.js';
+import { adminQuotes, deleteManual, saveManual, setManualValue, setQuoteOptions } from '../quotes.js';
 import { adminConversation, adminInbox, adminMarkRead, adminSend, forgetChat, setThreadStatus } from '../chat.js';
 import { exportData, listSnapshots, snapshotPath, validateBackup } from '../backup.js';
 import { generatePassword, hashPassword, requireAdmin, validatePassword } from '../auth.js';
@@ -248,6 +249,35 @@ adminRouter.get('/ccv/log', (_req, res) => {
       .map((e) => ({ ...e, adminName: users.find((u) => u.id === e.adminId)?.name || null })),
   });
 });
+
+// ---------- Cotações (faixa do rodapé do portal) ----------
+
+adminRouter.get('/quotes', route(async (_req, res) => res.json(await adminQuotes())));
+
+adminRouter.put('/quotes/options', route(async (req, res) => {
+  await setQuoteOptions(req.body || {});
+  res.json(await adminQuotes());
+}));
+
+adminRouter.post('/quotes', route(async (req, res) => {
+  await saveManual(null, req.body || {});
+  res.status(201).json(await adminQuotes());
+}));
+
+adminRouter.put('/quotes/:id', route(async (req, res) => {
+  await saveManual(req.params.id, req.body || {});
+  res.json(await adminQuotes());
+}));
+
+adminRouter.delete('/quotes/:id', route(async (req, res) => {
+  await deleteManual(req.params.id);
+  res.json(await adminQuotes());
+}));
+
+adminRouter.post('/quotes/:id/value', route(async (req, res) => {
+  await setManualValue(req.params.id, req.body || {}, req.user);
+  res.json(await adminQuotes());
+}));
 
 // ---------- Mensagens com os usuários ----------
 
