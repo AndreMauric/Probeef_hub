@@ -11,6 +11,7 @@ import { assistantRouter } from './src/routes/assistant.js';
 import { authRouter } from './src/routes/auth.js';
 import { ccvRouter } from './src/routes/ccv.js';
 import { chatRouter } from './src/routes/chat.js';
+import { canUsePasto, pastoRouter } from './src/routes/pasto.js';
 import { confinamentoRouter } from './src/routes/confinamento.js';
 import { portalRouter } from './src/routes/portal.js';
 import { teamRouter } from './src/routes/team.js';
@@ -126,6 +127,7 @@ app.use('/api/team', teamRouter);
 app.use('/api/confinamento', confinamentoRouter);
 app.use('/api/ccv', ccvRouter);
 app.use('/api/chat', chatRouter);
+app.use('/api/pasto', pastoRouter);
 app.use('/api', portalRouter);
 app.use('/api', (_req, res) => res.status(404).json({ error: 'Rota não encontrada.' }));
 
@@ -134,6 +136,10 @@ app.get('/vendor/powerbi.min.js', (_req, res) => {
 });
 app.get('/vendor/chart.min.js', (_req, res) => {
   res.sendFile(path.join(config.root, 'node_modules/chart.js/dist/chart.umd.js'));
+});
+// Planilha Excel gerada no navegador (exportação da 3P).
+app.get('/vendor/exceljs.min.js', (_req, res) => {
+  res.sendFile(path.join(config.root, 'node_modules/exceljs/dist/exceljs.min.js'));
 });
 
 // 4M Confinamento: só para quem está logado e já foi liberado (ou é admin); ver src/routes/confinamento.js.
@@ -145,6 +151,17 @@ app.use(
     next();
   },
   express.static(path.join(config.root, 'public/confinamento'), { extensions: ['html'] }),
+);
+
+// 3P · Desempenho a Pasto: mesma regra (logado e liberado, ou admin); ver src/routes/pasto.js.
+app.use(
+  '/pasto',
+  (req, res, next) => {
+    if (!req.user) return res.redirect('/portal');
+    if (!canUsePasto(req.user)) return res.redirect('/portal#inicio');
+    next();
+  },
+  express.static(path.join(config.root, 'public/pasto'), { extensions: ['html'] }),
 );
 
 app.use(express.static(path.join(config.root, 'public'), { extensions: ['html'] }));

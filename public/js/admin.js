@@ -90,10 +90,11 @@ function renderCounts() {
   document.getElementById('count-reports').textContent = state.reports.length;
   document.getElementById('count-clients').textContent = state.clients.length;
   document.getElementById('count-users').textContent = state.users.length;
-  const pending = state.users.filter((u) => u.confinamento?.status === 'pending').length;
-  const confinamentoCount = document.getElementById('count-confinamento');
-  confinamentoCount.textContent = pending ? `${pending} pedido${pending > 1 ? 's' : ''} 4M` : '';
-  confinamentoCount.classList.toggle('has-high', pending > 0);
+  // Pedidos de acesso às ferramentas esperando decisão (ex.: "2 pedidos 4M · 1 pedido 3P").
+  const requests = TOOL_ACCESS.map((t) => [t.label, state.users.filter((u) => u[t.field]?.status === 'pending').length]).filter(([, n]) => n);
+  const toolCount = document.getElementById('count-confinamento');
+  toolCount.textContent = requests.map(([label, n]) => `${n} pedido${n > 1 ? 's' : ''} ${label}`).join(' · ');
+  toolCount.classList.toggle('has-high', requests.length > 0);
 }
 
 function renderReports() {
@@ -179,14 +180,15 @@ function renderUsers() {
   };
   table(
     document.getElementById('users-table'),
-    ['Usuário', 'Acesso', '4M Confinamento', 'Último login', 'Situação', ''],
+    ['Usuário', 'Acesso', '4M Confinamento', '3P Pasto', 'Último login', 'Situação', ''],
     [...state.users].filter((u) => matches('search-users', u.name, u.email, ...clientNames(u))).sort(byName).map((u) =>
       h(
         'tr',
         {},
         h('td', {}, h('strong', {}, u.name), h('span', { class: 'sub' }, u.email), u.phone ? h('span', { class: 'sub mono' }, `WhatsApp +${u.phone}`) : null, u.hasAssistant ? h('span', { class: 'sub' }, '✦ assistente ativo') : null),
         h('td', {}, access(u)),
-        h('td', {}, confinamentoCell(u)),
+        h('td', {}, toolCell(u, 'confinamento')),
+        h('td', {}, toolCell(u, 'pasto')),
         h('td', { class: 'mono' }, fmtDate(u.lastLoginAt)),
         h('td', {}, u.active ? h('span', { class: 'pill pill-ok' }, 'Ativo') : h('span', { class: 'pill pill-off' }, 'Desativado')),
         h(
@@ -210,16 +212,23 @@ function renderUsers() {
   );
 }
 
-// ---------- 4M Confinamento ----------
+// ---------- Ferramentas (4M Confinamento, 3P Pasto): pedido e aprovação de acesso ----------
 
-async function setConfinamentoAccess(user, action) {
-  await api(`/api/admin/users/${user.id}/confinamento`, { method: 'POST', body: { action } });
+// field: campo do usuário com {status}; também é o trecho da rota /api/admin/users/:id/<field>.
+const TOOL_ACCESS = [
+  { field: 'confinamento', label: '4M' },
+  { field: 'pasto', label: '3P' },
+];
+
+async function setToolAccess(user, field, action) {
+  await api(`/api/admin/users/${user.id}/${field}`, { method: 'POST', body: { action } });
   await refresh();
 }
 
-function confinamentoCell(u) {
+function toolCell(u, field) {
   if (u.role === 'admin') return h('span', { class: 'muted' }, '—');
-  const status = u.confinamento?.status || 'none';
+  const decide = (action) => setToolAccess(u, field, action);
+  const status = u[field]?.status || 'none';
   const pill =
     status === 'approved'
       ? h('span', { class: 'pill pill-ok' }, 'Aprovado')
@@ -230,10 +239,10 @@ function confinamentoCell(u) {
           : h('span', { class: 'muted' }, 'Sem acesso');
   const actions = [];
   if (status === 'approved') {
-    actions.push(h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => setConfinamentoAccess(u, 'revoke') }, 'Revogar'));
+    actions.push(h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => decide('revoke') }, 'Revogar'));
   } else {
-    actions.push(h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => setConfinamentoAccess(u, 'approve') }, 'Aprovar'));
-    if (status === 'pending') actions.push(h('button', { class: 'btn btn-sm btn-ghost btn-danger', type: 'button', onclick: () => setConfinamentoAccess(u, 'deny') }, 'Negar'));
+    actions.push(h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => decide('approve') }, 'Aprovar'));
+    if (status === 'pending') actions.push(h('button', { class: 'btn btn-sm btn-ghost btn-danger', type: 'button', onclick: () => decide('deny') }, 'Negar'));
   }
   return h('div', { style: 'display:flex; flex-direction:column; align-items:flex-start; gap:4px' }, pill, h('div', { class: 'actions' }, actions));
 }

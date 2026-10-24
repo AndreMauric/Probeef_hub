@@ -5,7 +5,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { config } from './config.js';
 
-const empty = () => ({ users: [], clients: [], reports: [], images: [], categories: [], tags: [], confinamentoSimulations: [], ccvAlertLog: [], chatThreads: [], chatMessages: [] });
+const empty = () => ({ users: [], clients: [], reports: [], images: [], categories: [], tags: [], confinamentoSimulations: [], ccvAlertLog: [], chatThreads: [], chatMessages: [], pastoSimulations: [] });
 
 // Usuários antigos tinham um único "clientId"; hoje cada usuário tem uma lista "clientIds".
 function normalize(raw) {
@@ -15,6 +15,8 @@ function normalize(raw) {
     clientIds: Array.isArray(user.clientIds) ? user.clientIds : clientId ? [clientId] : [],
     // Acesso à calculadora 4M Confinamento: pedido e aprovação, como o acesso a um relatório.
     confinamento: user.confinamento || { status: 'none', requestedAt: null, decidedAt: null },
+    // Acesso à 3P · Predição de Desempenho a Pasto (segunda ferramenta, mesmo fluxo do 4M).
+    pasto: user.pasto || { status: 'none', requestedAt: null, decidedAt: null },
     // Painel CCV: fazendas que o usuário vê, dentre as do cliente. Vazio = todas as do cliente.
     ccvFarms: Array.isArray(user.ccvFarms) ? user.ccvFarms : [],
   }));

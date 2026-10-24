@@ -39,7 +39,7 @@ const els = {
 };
 
 let me;
-let confinamentoStatus = 'none'; // calculadora 4M Confinamento: none | pending | approved | denied (admin sempre "approved")
+const toolStatus = {}; // por ferramenta: none | pending | approved | denied (admin sempre "approved")
 let reports = [];
 let clients = [];
 let views = []; // visões salvas da pessoa (sem os filtros, que vêm só ao aplicar)
@@ -186,10 +186,17 @@ function filteredReports() {
 
 // ---------- Tela inicial ----------
 
-// Card da calculadora 4M Confinamento: pedir acesso, aguardar aprovação ou abrir a ferramenta.
-async function requestConfinamento() {
+// Ferramentas fora do Power BI: cada uma tem acesso por pedido e aprovação (admin sempre usa).
+// id: rota da API (/api/<id>) e endereço da ferramenta (/<id>).
+const TOOL_CARDS = [
+  { id: 'confinamento', name: '4M Confinamento', description: 'Calculadora de risco e modelos de negócio para confinamento de bovinos.' },
+  { id: 'pasto', name: '3P · Desempenho a Pasto', description: 'Projeção de peso, GMD e resultado econômico na recria a pasto com suplementação Probeef, comparando dois cenários.' },
+];
+
+// Card de uma ferramenta: pedir acesso, aguardar aprovação ou abrir.
+async function requestTool(tool) {
   try {
-    ({ status: confinamentoStatus } = await api('/api/confinamento/request', { method: 'POST', body: {} }));
+    ({ status: toolStatus[tool.id] } = await api(`/api/${tool.id}/request`, { method: 'POST', body: {} }));
     toast('Pedido enviado. Você poderá usar a ferramenta assim que o administrador aprovar.');
   } catch (err) {
     toast(err.message, 'error');
@@ -197,14 +204,18 @@ async function requestConfinamento() {
   renderHome();
 }
 
-function confinamentoCard() {
-  const status = me.role === 'admin' ? 'approved' : confinamentoStatus;
+function toolsSection() {
+  return h('section', { class: 'home-group' }, h('h2', { class: 'label' }, 'Ferramentas'), h('div', { class: 'cards' }, TOOL_CARDS.map((t) => h('div', { class: 'card-wrap' }, toolCard(t)))));
+}
+
+function toolCard(tool) {
+  const status = me.role === 'admin' ? 'approved' : toolStatus[tool.id] || 'none';
   const media = h('span', { class: 'card-media placeholder', 'aria-hidden': 'true' });
-  const title = h('strong', {}, '4M Confinamento');
-  const desc = h('span', {}, 'Calculadora de risco e modelos de negócio para confinamento de bovinos.');
+  const title = h('strong', {}, tool.name);
+  const desc = h('span', {}, tool.description);
   let body;
   if (status === 'approved') {
-    body = h('a', { class: 'card', href: '/confinamento' }, media, h('span', { class: 'card-body' }, title, desc));
+    body = h('a', { class: 'card', href: `/${tool.id}` }, media, h('span', { class: 'card-body' }, title, desc));
   } else if (status === 'pending') {
     body = h('div', { class: 'card', style: 'opacity:.75' }, media, h('span', { class: 'card-body' }, title, h('span', {}, 'Pedido enviado — aguardando aprovação do administrador.')));
   } else {
@@ -217,11 +228,11 @@ function confinamentoCard() {
         { class: 'card-body' },
         title,
         status === 'denied' ? h('span', {}, 'Seu último pedido não foi aprovado.') : desc,
-        h('button', { class: 'btn btn-sm btn-primary', type: 'button', style: 'margin-top:6px', onclick: requestConfinamento }, status === 'denied' ? 'Pedir novamente' : 'Solicitar acesso'),
+        h('button', { class: 'btn btn-sm btn-primary', type: 'button', style: 'margin-top:6px', onclick: () => requestTool(tool) }, status === 'denied' ? 'Pedir novamente' : 'Solicitar acesso'),
       ),
     );
   }
-  return h('section', { class: 'home-group' }, h('h2', { class: 'label' }, 'Ferramentas'), h('div', { class: 'cards' }, h('div', { class: 'card-wrap' }, body)));
+  return body;
 }
 
 function renderHome() {
@@ -263,7 +274,7 @@ function renderHome() {
   // Favoritos primeiro, depois as visões salvas, depois as categorias.
   const favCount = groups[0]?.favorites ? 1 : 0;
   els.homeGroups.replaceChildren(
-    confinamentoCard(),
+    toolsSection(),
     ...(list.length
       ? [...groups.slice(0, favCount).map((g) => g.el), viewsSection(), ...groups.slice(favCount).map((g) => g.el)].filter(Boolean)
       : [h('p', { class: 'muted' }, els.search.value ? 'Nenhum relatório encontrado.' : 'Ainda não há relatórios liberados.')]),
@@ -676,11 +687,13 @@ async function init() {
     .catch(() => {});
   ({ user: me } = await api('/api/auth/me'));
   if (me.role !== 'admin') {
-    try {
-      ({ status: confinamentoStatus } = await api('/api/confinamento/status'));
-    } catch {
-      confinamentoStatus = 'none';
-    }
+    await Promise.all(
+      TOOL_CARDS.map((t) =>
+        api(`/api/${t.id}/status`)
+          .then((d) => (toolStatus[t.id] = d.status))
+          .catch(() => (toolStatus[t.id] = 'none')),
+      ),
+    );
   }
   document.getElementById('user-name').textContent = me.name;
   els.clientName.textContent = me.role === 'admin' ? 'Administrador' : '';
@@ -740,15 +753,13 @@ async function init() {
   }
   renderList();
 
-  if (!reports.length) {
-    showState(
-      'Nenhum relatório liberado',
-      me.role === 'admin' ? 'Cadastre relatórios na área de administração para vê-los aqui.' : 'Ainda não há relatórios liberados para a sua empresa. Fale com o administrador do portal.',
-      me.role === 'admin' ? { action: h('a', { class: 'btn btn-primary', href: '/admin' }, 'Ir para administração') } : {},
-    );
+  // Sem relatórios, a tela inicial ainda mostra as ferramentas (4M, 3P), que têm acesso próprio.
+  if (!reports.length && me.role === 'admin') {
+    showState('Nenhum relatório liberado', 'Cadastre relatórios na área de administração para vê-los aqui.', { action: h('a', { class: 'btn btn-primary', href: '/admin' }, 'Ir para administração') });
     return;
   }
   openFromHash();
+  if (!reports.length) return;
 
   // Assistente: cada usuário conversa sobre os relatórios dele (e da fazenda selecionada).
   assistant = initAssistant({

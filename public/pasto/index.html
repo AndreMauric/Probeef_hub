@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>3P · Desempenho a Pasto</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Saira:wght@500;600;700&display=swap" />
+    <script src="/js/theme.js"></script>
+    <link rel="icon" type="image/png" href="/img/probeef-symbol.png" />
+    <link rel="stylesheet" href="/css/app.css" />
+    <link rel="stylesheet" href="/pasto/pasto.css" />
+  </head>
+  <body>
+    <div class="impersonation" id="impersonation" role="status" hidden><span id="impersonation-text"></span></div>
+    <div class="app">
+      <header class="topbar">
+        <a class="brand" href="/portal#inicio"><img class="brand-logo logo-on-light" src="/img/probeef-horizontal.png" alt="Probeef" width="108" height="24" /><img class="brand-logo logo-on-dark" src="/img/probeef-horizontal-light.png" alt="Probeef" width="108" height="24" /><span class="brand-sub">3P</span></a>
+        <span class="p3-title">Predição de Desempenho a Pasto</span>
+        <span class="spacer"></span>
+        <a class="btn btn-sm" href="/portal#inicio">Voltar ao portal</a>
+        <div class="who"><strong id="user-name"></strong><span class="muted">Nutron · Cargill</span></div>
+        <button class="btn btn-sm btn-ghost theme-toggle" type="button" data-theme-toggle aria-label="Alternar tema claro/escuro">
+          <svg class="icon-sun" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="12" cy="12" r="4.2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 2.5v2.2M12 19.3v2.2M4.6 4.6l1.6 1.6M17.8 17.8l1.6 1.6M2.5 12h2.2M19.3 12h2.2M4.6 19.4l1.6-1.6M17.8 6.2l1.6-1.6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          <svg class="icon-moon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M20.2 14.6A8.5 8.5 0 0 1 9.4 3.8a8.5 8.5 0 1 0 10.8 10.8z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+        </button>
+      </header>
+
+      <main class="p3" id="p3">
+        <div class="p3-inner">
+          <div class="p3-head">
+            <div class="tabs" role="tablist">
+              <button class="tab" role="tab" type="button" data-tab="c1" aria-selected="true">Cenário 1</button>
+              <button class="tab" role="tab" type="button" data-tab="c2" aria-selected="false">Cenário 2</button>
+              <button class="tab" role="tab" type="button" data-tab="dashboard" aria-selected="false">Dashboard</button>
+              <button class="tab" role="tab" type="button" data-tab="dicas" aria-selected="false">Dicas</button>
+            </div>
+            <div class="viewer-actions">
+              <span class="muted p3-sim-name" id="sim-name"></span>
+              <button class="btn btn-sm" id="sim-open" type="button">Minhas simulações</button>
+              <button class="btn btn-sm btn-primary" id="sim-save" type="button">Salvar</button>
+            </div>
+          </div>
+
+          <section data-panel="c1"></section>
+          <section data-panel="c2" hidden></section>
+          <section data-panel="dashboard" hidden></section>
+          <section data-panel="dicas" hidden>
+            <div class="p3-card p3-tips">
+              <h2>Como usar a ferramenta</h2>
+              <ol>
+                <li>Preencha as variáveis zootécnicas e econômicas do <strong>Cenário 1</strong> e do <strong>Cenário 2</strong>. O Dashboard recalcula na hora, a cada mudança.</li>
+                <li>Pode digitar os decimais com vírgula ou ponto (ex.: 1,7 ou 1.7).</li>
+                <li>Defina bem as épocas do ano: os meses de transição e de seca devem ser diferentes. O período das águas é calculado "por diferença". Se houver sobreposição, a <strong>Seca tem prioridade</strong> sobre a Transição. Para ignorar uma fase, desmarque "Usar".</li>
+                <li>Os meses consideram até o fim do mês escolhido: mês 5 vai até 31/05.</li>
+                <li>O banco de dados usado para construir a equação tem suplementação de até <strong>1% do peso vivo</strong>; acima disso, as estimativas de GMD são menos precisas.</li>
+                <li>A faixa de GPD mostrada no Dashboard (±0,153 kg) é a variação média esperada dessa variável para o cenário planejado.</li>
+                <li>Use "Salvar" para guardar os dois cenários e reabrir depois em "Minhas simulações".</li>
+                <li>Dúvidas ou sugestões: andre_mauric@cargill.com.</li>
+              </ol>
+              <p class="alert">Este relatório contém estimativas de desempenho baseadas em informações de literatura em que se utilizaram animais, níveis de suplementação, composição de suplementos e épocas do ano similares ao projetado aqui. A Cargill não garante que as estimativas serão exatamente as mesmas.</p>
+            </div>
+          </section>
+        </div>
+      </main>
+    </div>
+
+    <div class="p3-print" id="print"></div>
+    <dialog id="dialog"></dialog>
+
+    <script src="/vendor/chart.min.js"></script>
+    <script type="module" src="/pasto/app.js"></script>
+  </body>
+</html>

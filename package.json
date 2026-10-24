@@ -18,6 +18,7 @@
     "@azure/msal-node": "^7.1.0",
     "chart.js": "^4.5.1",
     "cookie-session": "^2.1.1",
+    "exceljs": "^4.4.0",
     "express": "^4.22.3",
     "helmet": "^8.3.0",
     "powerbi-client": "^2.25.0"

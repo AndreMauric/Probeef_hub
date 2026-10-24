@@ -841,6 +841,7 @@ adminRouter.post('/users', route(async (req, res) => {
     id: newId(),
     ...fields,
     confinamento: { status: 'none', requestedAt: null, decidedAt: null },
+    pasto: { status: 'none', requestedAt: null, decidedAt: null },
     passwordHash: await hashPassword(password),
     mustChangePassword: true,
     sessionVersion: 1,
@@ -896,6 +897,16 @@ adminRouter.post('/users/:id/confinamento', route(async (req, res) => {
   const status = { approve: 'approved', deny: 'denied', revoke: 'none' }[action];
   if (!status) fail('Ação inválida.');
   user.confinamento = { ...(user.confinamento || {}), status, decidedAt: new Date().toISOString() };
+  await save();
+  res.json({ user: safeUser(user) });
+}));
+
+// Libera, nega ou revoga o acesso à 3P · Desempenho a Pasto.
+adminRouter.post('/users/:id/pasto', route(async (req, res) => {
+  const user = findOr404(db().users, req.params.id, 'Usuário');
+  const status = { approve: 'approved', deny: 'denied', revoke: 'none' }[req.body?.action];
+  if (!status) fail('Ação inválida.');
+  user.pasto = { ...(user.pasto || {}), status, decidedAt: new Date().toISOString() };
   await save();
   res.json({ user: safeUser(user) });
 }));

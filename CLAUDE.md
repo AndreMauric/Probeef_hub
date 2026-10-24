@@ -61,6 +61,21 @@ Esse é o padrão pra adicionar a próxima ferramenta:
    (`/api/usage/beat`, `/api/usage/end`, tabela "Ferramentas" na aba Uso do admin) já é
    genérico e funciona sozinho a partir daí.
 
+### 3P · Predição de Desempenho a Pasto (segunda ferramenta)
+
+Veio do app Shiny `relatorionutron.shinyapps.io/Probeef_Peformance_Pasto` (fonte em
+`C:\Users\andre\Downloads\P3`, `app.R`). Segue o padrão acima com o campo `user.pasto`, rotas
+`/api/pasto` e página `/pasto`. O cálculo roda no navegador em `public/pasto/model.js`, uma
+tradução fiel do `app.R` (equação de GMD, tabelas de produto, contas econômicas e
+arredondamentos). Foi conferida contra o relatório gerado pelo Shiny (`built_report.html`,
+padrões, entrada em 18/03/2026): os 110 valores da tabela por época batem quando o GMD adicional
+do PASTO BOM CROMO nas águas é 0,08, que era o valor da tabela naquele dia (o `app.R` atual,
+de 20/03, usa 0,10, e é esse que está no portal). Se mexer na equação ou nas tabelas, refaça
+essa conferência. No portal e no admin, as ferramentas já são listas (`TOOL_CARDS` em
+`portal.js`, `TOOL_ACCESS` em `admin.js`): uma terceira ferramenta entra nessas listas. O Excel
+é gerado no navegador com `exceljs` (`/vendor/exceljs.min.js`) e o relatório é uma página para
+imprimir/salvar em PDF (`@media print`).
+
 ## Painel CCV (relatório nativo, lido do modelo semântico)
 
 A "Ferramenta CCV" (leitura de cocho) não é incorporada: o portal consulta o modelo semântico

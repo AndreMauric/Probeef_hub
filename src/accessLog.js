@@ -11,7 +11,10 @@
 
 // Ferramentas fora do Power BI que o portal passou a distribuir (a primeira foi o 4M Confinamento).
 // Para adicionar uma nova, basta incluir aqui e usar esse id nas chamadas de recordToolAccess/startToolView.
-export const TOOLS = [{ id: 'confinamento', name: '4M Confinamento' }];
+export const TOOLS = [
+  { id: 'confinamento', name: '4M Confinamento' },
+  { id: 'pasto', name: '3P · Desempenho a Pasto' },
+];
 import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';

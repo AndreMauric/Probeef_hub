@@ -11,9 +11,15 @@ const CHECK_EVERY_MS = 6 * 60 * 60 * 1000;
 const NAME = /^db-\d{4}-\d{2}-\d{2}\.json$/;
 const today = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
 
+// Toda coleção nova do store precisa entrar aqui, senão some numa restauração de backup.
 export function exportData() {
-  const { users, clients, reports, images, categories, tags, settings, nps, confinamentoSimulations } = db();
-  return { app: 'bi-probeef', version: 1, exportedAt: new Date().toISOString(), data: { users, clients, reports, images, categories, tags, settings, nps, confinamentoSimulations } };
+  const { users, clients, reports, images, categories, tags, settings, nps, confinamentoSimulations, pastoSimulations, ccvAlertLog, chatThreads, chatMessages, quotes } = db();
+  return {
+    app: 'bi-probeef',
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    data: { users, clients, reports, images, categories, tags, settings, nps, confinamentoSimulations, pastoSimulations, ccvAlertLog, chatThreads, chatMessages, quotes },
+  };
 }
 
 // Confere se o arquivo enviado é um backup válido antes de substituir os cadastros.
