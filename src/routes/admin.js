@@ -8,6 +8,7 @@ import { cleanPhoneInput, samePhone } from '../bot/phone.js';
 import { sendTemplate, whatsappStatus } from '../bot/whatsapp.js';
 import { isCcv } from '../access.js';
 import { computeCcvAlerts, listFarms, messageFor, oneLine, RULES } from '../ccv.js';
+import { adminConversation, adminInbox, adminMarkRead, adminSend, forgetChat, setThreadStatus } from '../chat.js';
 import { exportData, listSnapshots, snapshotPath, validateBackup } from '../backup.js';
 import { generatePassword, hashPassword, requireAdmin, validatePassword } from '../auth.js';
 import { config } from '../config.js';
@@ -200,11 +201,19 @@ adminRouter.post('/ccv/alerts/decide', route(async (req, res) => {
     if (!message) fail('Escreva a mensagem.');
     const allowed = new Map(recipients.map((r) => [r.id, r]));
     const picked = [...new Set(Array.isArray(body.recipientIds) ? body.recipientIds : [])].map((id) => allowed.get(id)).filter(Boolean);
-    const channel = body.channel === 'whatsapp' ? 'whatsapp' : 'manual';
+    const channel = ['whatsapp', 'portal'].includes(body.channel) ? body.channel : 'manual';
     entry.text = message;
     entry.channel = channel;
     entry.recipients = picked.map((r) => ({ id: r.id, name: r.name }));
-    if (channel === 'whatsapp') {
+    if (channel === 'portal') {
+      // Chega como mensagem no portal (botão Mensagens), com link para o painel daquela fazenda.
+      if (!picked.length) fail('Marque ao menos uma pessoa.');
+      for (const r of picked) {
+        await adminSend(req.user, r.id, { text: message, context: { reportId: report.id, farm }, origin: { type: 'ccv', action, farm } }, { persist: false });
+      }
+      entry.sent = picked.length;
+      entry.failed = [];
+    } else if (channel === 'whatsapp') {
       const status = whatsappStatus();
       if (!status.configured || !status.ccvTemplate) fail('O WhatsApp não está pronto para enviar (falta configurar o modelo WHATSAPP_TEMPLATE_CCV).');
       const withPhone = picked.filter((r) => r.phone);
@@ -239,6 +248,26 @@ adminRouter.get('/ccv/log', (_req, res) => {
       .map((e) => ({ ...e, adminName: users.find((u) => u.id === e.adminId)?.name || null })),
   });
 });
+
+// ---------- Mensagens com os usuários ----------
+
+adminRouter.get('/chat', (_req, res) => res.json(adminInbox()));
+
+adminRouter.get('/chat/:userId', (req, res) => res.json(adminConversation(req.params.userId)));
+
+adminRouter.post('/chat/:userId', route(async (req, res) => {
+  res.status(201).json({ message: await adminSend(req.user, req.params.userId, { text: req.body?.text }) });
+}));
+
+adminRouter.post('/chat/:userId/read', route(async (req, res) => {
+  await adminMarkRead(req.params.userId);
+  res.json(adminInbox());
+}));
+
+adminRouter.post('/chat/:userId/status', route(async (req, res) => {
+  await setThreadStatus(req.params.userId, req.body?.status);
+  res.json(adminInbox());
+}));
 
 // ---------- Saúde dos dados ----------
 
@@ -847,6 +876,7 @@ adminRouter.delete('/users/:id', route(async (req, res) => {
   if (user.id === req.user.id) fail('Você não pode excluir o próprio usuário.');
   if (user.role === 'admin' && remainingAdmins(user.id) === 0) fail('É preciso manter pelo menos um administrador ativo.');
   data.users = data.users.filter((u) => u.id !== user.id);
+  forgetChat(user.id);
   await save();
   res.json({ ok: true });
 }));

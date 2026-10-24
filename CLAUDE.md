@@ -84,6 +84,17 @@ do relatório via DAX (`executeDax`, API `executeQueries`) e desenha o painel em
   modelo do WhatsApp `WHATSAPP_TEMPLATE_CCV`; sem ele, o admin copia o texto ou abre o WhatsApp
   dele e registra o envio.
 
+## Mensagens (chat usuário ↔ equipe)
+
+`src/chat.js` + `src/routes/chat.js` (usuário, `/api/chat`) + seção "Mensagens" em `admin.js`
+(`/api/admin/chat`); front em `public/js/chat.js` (botão "Mensagens" no topo do portal e a aba do
+admin reaproveitam `renderMessage`/`composer`). Uma conversa por usuário de cliente
+(`chatThreads`, `chatMessages` no store); qualquer admin responde. Sem WebSocket: o front
+consulta a cada 10 s com a conversa aberta e a cada 60 s só o contador. Cada mensagem do usuário
+guarda o contexto (relatório aberto e, no CCV, a fazenda — validada contra as dele). Admin
+"entrando como" só lê. Os Alertas CCV podem ser enviados pelo canal `portal`, que vira mensagem
+nessa conversa.
+
 ## Deploy
 
 - GitHub: `AndreMauric/Probeef_hub`, branch `main`, auto-deploy ativado no Railway.

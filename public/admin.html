@@ -36,6 +36,7 @@
         <div class="admin-inner">
           <div class="tabs" role="tablist">
             <button class="tab" role="tab" type="button" data-tab="alerts" aria-selected="false">Alertas<span class="count alert-count" id="count-alerts"></span></button>
+            <button class="tab" role="tab" type="button" data-tab="chat" aria-selected="false">Mensagens<span class="count alert-count" id="count-chat"></span></button>
             <button class="tab" role="tab" type="button" data-tab="ccv" aria-selected="false">Alertas CCV<span class="count alert-count" id="count-ccv"></span></button>
             <button class="tab" role="tab" type="button" data-tab="usage" aria-selected="false">Uso</button>
             <button class="tab" role="tab" type="button" data-tab="health" aria-selected="false">Saúde dos dados<span class="count" id="count-health"></span></button>
@@ -59,6 +60,32 @@
               </div>
             </div>
             <div id="alerts"></div>
+          </section>
+
+          <section data-panel="chat" hidden>
+            <div class="section-head">
+              <div>
+                <h2>Mensagens</h2>
+                <p>Conversas dos usuários com a equipe. Qualquer administrador pode responder; o usuário vê o nome de quem respondeu. Cada mensagem mostra o relatório (e a fazenda do CCV) que a pessoa estava vendo.</p>
+              </div>
+              <div class="viewer-actions">
+                <button class="btn" id="chat-new" type="button">Nova conversa</button>
+              </div>
+            </div>
+            <div class="chat-admin" id="chat-admin">
+              <div class="chat-threads">
+                <div class="toolbar">
+                  <input id="chat-search" type="search" placeholder="Buscar pessoa ou cliente" aria-label="Buscar conversa" />
+                  <select id="chat-filter" aria-label="Filtrar conversas">
+                    <option value="abertas">Abertas</option>
+                    <option value="todas">Todas</option>
+                    <option value="resolvida">Resolvidas</option>
+                  </select>
+                </div>
+                <div id="chat-thread-list"></div>
+              </div>
+              <div class="chat-conversation" id="chat-conversation"></div>
+            </div>
           </section>
 
           <section data-panel="ccv" hidden>

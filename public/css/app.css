@@ -3739,3 +3739,243 @@ pre.digest {
     font-size: 28px;
   }
 }
+
+/* ---------- Mensagens (public/js/chat.js) ---------- */
+
+.chat-button {
+  position: relative;
+}
+
+.chat-badge {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--danger);
+  color: #fff;
+  font: 700 11px/1 var(--font-ui);
+}
+
+/* O painel de mensagens desce do botão no topo (o canto de baixo é do assistente). */
+.chat-panel {
+  top: calc(var(--topbar-h) + 8px);
+  bottom: auto;
+  z-index: 61;
+  height: min(600px, calc(100dvh - var(--topbar-h) - 100px));
+}
+
+.chat-msg {
+  display: grid;
+  gap: 4px;
+  max-width: 85%;
+  padding: 9px 12px;
+  border-radius: 12px;
+  font-size: 14px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.chat-msg.mine {
+  align-self: flex-end;
+  background: var(--accent);
+  color: var(--on-accent);
+  border-bottom-right-radius: 4px;
+}
+
+.chat-msg.theirs {
+  align-self: flex-start;
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-bottom-left-radius: 4px;
+}
+
+.chat-text p {
+  margin: 0;
+}
+
+.chat-text .chat-gap {
+  height: 6px;
+}
+
+.chat-msg a {
+  color: inherit;
+  font-weight: 600;
+}
+
+.chat-context {
+  justify-self: start;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgb(127 127 127 / 16%);
+  font-size: 12px;
+  text-decoration: none;
+}
+
+.chat-origin {
+  justify-self: start;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.8;
+}
+
+.chat-meta {
+  font-size: 11.5px;
+  opacity: 0.7;
+}
+
+.chat-msg.mine .chat-meta {
+  justify-self: end;
+}
+
+/* Admin: lista de conversas + conversa aberta */
+
+.chat-admin {
+  display: grid;
+  grid-template-columns: minmax(240px, 340px) minmax(0, 1fr);
+  height: min(680px, calc(100dvh - 260px));
+  min-height: 420px;
+  margin-top: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.chat-threads {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  border-right: 1px solid var(--line);
+  min-height: 0;
+}
+
+.chat-threads .toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  padding: 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.chat-threads .toolbar select {
+  width: auto;
+}
+
+#chat-thread-list {
+  overflow-y: auto;
+}
+
+.chat-thread {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  padding: 10px 14px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.chat-thread:hover,
+.chat-thread.on {
+  background: var(--selected);
+}
+
+.chat-thread .sub {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.chat-thread-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.chat-thread-last {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 13px;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.chat-thread.unread .chat-thread-last {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.chat-conversation {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  min-height: 0;
+}
+
+.chat-conversation > .muted,
+.chat-conversation > .alert {
+  margin: 16px;
+}
+
+.chat-conv-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.chat-conv-head > div:first-child {
+  display: grid;
+}
+
+.chat-conv-head .sub {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.chat-seen {
+  margin: 0;
+  padding: 4px 14px 0;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: right;
+}
+
+.chat-input {
+  padding-bottom: 10px;
+}
+
+@media (max-width: 860px) {
+  .chat-admin {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: 240px minmax(0, 1fr);
+    height: auto;
+  }
+
+  .chat-threads {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .chat-conversation {
+    min-height: 460px;
+  }
+}
+
+@media (max-width: 600px) {
+  .chat-panel {
+    top: 0;
+    height: 100%;
+  }
+}

@@ -1,3 +1,4 @@
+import { composer, renderMessage } from './chat.js';
 import { api, copyText, h, loadConfig, logout, openPasswordDialog, setupMenu, toast } from './common.js';
 
 const state = { reports: [], clients: [], users: [], status: null, me: null, backups: [], images: [], categories: [], tags: [] };
@@ -194,6 +195,9 @@ function renderUsers() {
           h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => userDialog(u) }, 'Editar'),
           u.role === 'client' && u.active
             ? h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => impersonate(u) }, 'Entrar como')
+            : null,
+          u.role === 'client' && u.active
+            ? h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => (selectTab('chat'), openThread(u.id)) }, 'Mensagem')
             : null,
           h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => resetPassword(u) }, 'Nova senha'),
           u.id !== state.me.id
@@ -1039,6 +1043,168 @@ async function copyDigest() {
   }
 }
 
+// ---------- Mensagens ----------
+
+const chatState = { inbox: null, userId: null, conversation: null, timer: null };
+
+function updateChatCount(inbox) {
+  const el = document.getElementById('count-chat');
+  el.textContent = inbox.waiting || '';
+  el.classList.toggle('has-high', inbox.waiting > 0);
+}
+
+async function loadInbox() {
+  try {
+    chatState.inbox = await api('/api/admin/chat');
+    updateChatCount(chatState.inbox);
+    renderThreads();
+  } catch (err) {
+    document.getElementById('chat-thread-list').replaceChildren(h('p', { class: 'alert' }, err.message));
+  }
+}
+
+function renderThreads() {
+  const filter = document.getElementById('chat-filter').value;
+  const list = (chatState.inbox?.threads || [])
+    .filter((t) => (filter === 'todas' ? true : filter === 'resolvida' ? t.status === 'resolvida' : t.status !== 'resolvida' || t.unread))
+    .filter((t) => matches('chat-search', t.name, t.email, ...t.clients));
+  document.getElementById('chat-thread-list').replaceChildren(
+    ...(list.length
+      ? list.map((t) =>
+          h(
+            'button',
+            { class: `chat-thread${t.userId === chatState.userId ? ' on' : ''}${t.unread ? ' unread' : ''}`, type: 'button', onclick: () => openThread(t.userId) },
+            h('span', { class: 'chat-thread-top' }, h('strong', {}, t.name), t.unread ? h('span', { class: 'chat-badge' }, t.unread) : t.status === 'resolvida' ? h('span', { class: 'pill pill-ok' }, 'Resolvida') : null),
+            h('span', { class: 'sub' }, t.clients.join(', ') || t.email),
+            t.last ? h('span', { class: 'chat-thread-last' }, `${t.last.from === 'admin' ? 'Você: ' : ''}${t.last.text}`) : null,
+            t.lastAt ? h('span', { class: 'sub' }, fmtDate(t.lastAt)) : null,
+          ),
+        )
+      : [h('p', { class: 'muted', style: 'padding: 12px' }, chatState.inbox?.threads.length ? 'Nenhuma conversa neste filtro.' : 'Nenhuma conversa ainda. Quando um usuário escrever pelo botão Mensagens do portal, a conversa aparece aqui.')]),
+  );
+}
+
+async function openThread(userId) {
+  chatState.userId = userId;
+  renderThreads();
+  const box = document.getElementById('chat-conversation');
+  box.replaceChildren(h('p', { class: 'muted', style: 'padding: 16px' }, 'Carregando conversa…'));
+  await refreshThread({ scroll: true });
+  api(`/api/admin/chat/${userId}/read`, { method: 'POST', body: {} })
+    .then((inbox) => {
+      chatState.inbox = inbox;
+      updateChatCount(inbox);
+      renderThreads();
+    })
+    .catch(() => {});
+}
+
+async function refreshThread({ scroll = false } = {}) {
+  const userId = chatState.userId;
+  if (!userId) return;
+  let data;
+  try {
+    data = await api(`/api/admin/chat/${userId}`);
+  } catch (err) {
+    document.getElementById('chat-conversation').replaceChildren(h('p', { class: 'alert' }, err.message));
+    return;
+  }
+  if (userId !== chatState.userId) return;
+  const changed = !chatState.conversation || chatState.conversation.user.id !== userId || chatState.conversation.messages.length !== data.messages.length || chatState.conversation.status !== data.status;
+  chatState.conversation = data;
+  if (changed) renderConversation({ scroll });
+}
+
+function renderConversation({ scroll }) {
+  const data = chatState.conversation;
+  const box = document.getElementById('chat-conversation');
+  const old = box.querySelector('.ai-messages');
+  const atBottom = !old || old.scrollHeight - old.scrollTop - old.clientHeight < 40;
+  const draft = box.querySelector('textarea')?.value || '';
+  const typing = document.activeElement === box.querySelector('textarea');
+  const list = h(
+    'div',
+    { class: 'ai-messages' },
+    data.messages.length ? data.messages.map((m) => renderMessage(m, { mine: m.from === 'admin', newTab: true })) : h('p', { class: 'muted' }, `Nenhuma mensagem ainda. Escreva para ${data.user.name}: a mensagem aparece no botão Mensagens do portal dele.`),
+  );
+  const lastAdmin = [...data.messages].reverse().find((m) => m.from === 'admin');
+  const seen = lastAdmin && data.userReadAt && data.userReadAt >= lastAdmin.at;
+  const box2 = composer({
+    placeholder: `Responder para ${data.user.name}…`,
+    onSend: async (text) => {
+      await api(`/api/admin/chat/${data.user.id}`, { method: 'POST', body: { text } });
+      await refreshThread({ scroll: true });
+      loadInbox();
+    },
+  });
+  box2.input.value = draft;
+  const resolved = data.status === 'resolvida';
+  box.replaceChildren(
+    h(
+      'header',
+      { class: 'chat-conv-head' },
+      h('div', {}, h('strong', {}, data.user.name), h('span', { class: 'sub' }, data.user.email)),
+      h(
+        'div',
+        { class: 'viewer-actions' },
+        h(
+          'button',
+          {
+            class: 'btn btn-sm',
+            type: 'button',
+            onclick: async () => {
+              chatState.inbox = await api(`/api/admin/chat/${data.user.id}/status`, { method: 'POST', body: { status: resolved ? 'aberta' : 'resolvida' } });
+              updateChatCount(chatState.inbox);
+              await refreshThread();
+              renderThreads();
+            },
+          },
+          resolved ? 'Reabrir' : 'Marcar como resolvida',
+        ),
+      ),
+    ),
+    list,
+    lastAdmin ? h('p', { class: 'chat-seen' }, seen ? '✓ Visto pelo usuário' : 'Ainda não visto pelo usuário') : null,
+    box2.form,
+  );
+  if (scroll || atBottom) list.scrollTop = list.scrollHeight;
+  if (typing) box2.input.focus();
+}
+
+// Começar uma conversa com qualquer usuário de cliente.
+function newChatDialog(preselect) {
+  const people = state.users.filter((u) => u.role === 'client' && u.active).sort(byName);
+  const pick = h(
+    'select',
+    { id: 'chat-user' },
+    people.map((u) => h('option', { value: u.id, selected: u.id === preselect }, `${u.name} · ${u.clientIds.map((id) => state.clients.find((c) => c.id === id)?.name).filter(Boolean).join(', ')}`)),
+  );
+  formDialog('Nova conversa', [field('Com quem', pick)], {
+    submitLabel: 'Abrir conversa',
+    onSubmit: async () => {
+      selectTab('chat');
+      await openThread(pick.value);
+    },
+  });
+}
+
+function startChatPolling() {
+  clearInterval(chatState.timer);
+  // Aba aberta: conversa a cada 10 s e lista a cada 30 s; fora da aba, só o contador a cada minuto.
+  let tick = 0;
+  chatState.timer = setInterval(() => {
+    if (document.visibilityState !== 'visible') return;
+    tick += 1;
+    const onTab = !document.querySelector('[data-panel="chat"]').hidden;
+    if (onTab) {
+      refreshThread();
+      if (tick % 3 === 0) loadInbox();
+    } else if (tick % 6 === 0) {
+      api('/api/admin/chat').then((inbox) => ((chatState.inbox = inbox), updateChatCount(inbox))).catch(() => {});
+    }
+  }, 10 * 1000);
+}
+
 // ---------- Alertas CCV ----------
 
 const ccvState = { data: null, loading: false };
@@ -1080,8 +1246,15 @@ function sendCcvDialog(report, f, kind) {
   const wa = ccvState.data.whatsapp;
   const ready = wa.configured && wa.ccvTemplate;
   const text = h('textarea', { name: 'text', rows: 12, style: 'font: 13px/1.45 var(--font-data)' }, f.messages[kind]);
+  // Por onde vai: mensagem no portal (sempre disponível), WhatsApp oficial (se configurado) ou só registrar um envio feito por fora.
+  const channels = [
+    { value: 'portal', label: 'Pelo portal (botão Mensagens do usuário)' },
+    ready ? { value: 'whatsapp', label: 'Pelo WhatsApp oficial' } : null,
+    { value: 'manual', label: 'Já enviei por fora (só registrar)' },
+  ].filter(Boolean);
+  const channel = h('select', { name: 'channel' }, channels.map((c) => h('option', { value: c.value }, c.label)));
   const rows = f.recipients.map((r) => {
-    const box = h('input', { type: 'checkbox', value: r.id, checked: Boolean(r.phone) || !ready });
+    const box = h('input', { type: 'checkbox', value: r.id, checked: true });
     const wame = r.phone ? h('a', { class: 'btn btn-sm btn-ghost', target: '_blank', rel: 'noopener', href: '#', onclick: (e) => (e.currentTarget.href = `https://wa.me/${r.phone}?text=${encodeURIComponent(text.value)}`) }, 'Abrir no WhatsApp') : null;
     return { r, box, row: h('label', { class: 'check', style: 'align-items: center' }, box, h('span', { style: 'flex: 1' }, r.name, h('span', { class: 'muted' }, r.phone ? ` · +${r.phone}` : ' · sem WhatsApp cadastrado')), wame) };
   });
@@ -1095,25 +1268,26 @@ function sendCcvDialog(report, f, kind) {
         h('span', {}, 'Quem recebe'),
         rows.length ? h('div', { class: 'checkbox-list' }, rows.map((x) => x.row)) : h('small', {}, 'Nenhum usuário ativo vê esta fazenda no painel. Cadastre usuários no cliente (ou libere a fazenda para eles).'),
       ),
-      ready
-        ? h('p', { class: 'muted', style: 'margin: 0; font-size: 13px' }, 'Vai pelo WhatsApp oficial, com o modelo de mensagem aprovado. Quem não tem telefone cadastrado não recebe.')
-        : h(
-            'p',
-            { class: 'alert', style: 'margin: 0' },
-            'O envio automático pelo WhatsApp ainda não está configurado (falta o modelo WHATSAPP_TEMPLATE_CCV). Copie o texto ou use "Abrir no WhatsApp" e depois registre o envio aqui.',
-          ),
+      field('Enviar', channel, ready ? 'No WhatsApp, quem não tem telefone cadastrado não recebe.' : 'O WhatsApp oficial ainda não está configurado (falta o modelo WHATSAPP_TEMPLATE_CCV). Para mandar pelo seu WhatsApp, use "Abrir no WhatsApp" ou copie o texto e registre o envio.'),
       h('div', {}, h('button', { class: 'btn btn-sm', type: 'button', onclick: () => copyText(text.value, text) }, 'Copiar texto')),
     ],
     {
-      submitLabel: ready ? 'Enviar pelo WhatsApp' : 'Registrar envio',
+      submitLabel: 'Enviar',
       onSubmit: async () => {
         const recipientIds = rows.filter((x) => x.box.checked).map((x) => x.r.id);
         if (!recipientIds.length) throw new Error('Marque ao menos uma pessoa.');
         const { entry } = await api('/api/admin/ccv/alerts/decide', {
           method: 'POST',
-          body: { reportId: report.id, key: f.key, farm: f.farm, action: kind, text: text.value, recipientIds, channel: ready ? 'whatsapp' : 'manual' },
+          body: { reportId: report.id, key: f.key, farm: f.farm, action: kind, text: text.value, recipientIds, channel: channel.value },
         });
-        toast(entry.channel === 'whatsapp' ? `Enviado para ${entry.sent} ${entry.sent === 1 ? 'pessoa' : 'pessoas'}${entry.failed.length ? ` (falhou: ${entry.failed.join(', ')})` : ''}.` : 'Envio registrado.');
+        const people = (n) => `${n} ${n === 1 ? 'pessoa' : 'pessoas'}`;
+        toast(
+          entry.channel === 'portal'
+            ? `Mensagem enviada no portal para ${people(entry.sent)}.`
+            : entry.channel === 'whatsapp'
+              ? `Enviado para ${people(entry.sent)}${entry.failed.length ? ` (falhou: ${entry.failed.join(', ')})` : ''}.`
+              : 'Envio registrado.',
+        );
         await loadCcvAlerts();
       },
     },
@@ -1145,7 +1319,7 @@ function ccvFarmCard(report, f) {
         h('strong', {}, CCV_ACTION[f.decision.action] || f.decision.action),
         ` por ${f.decision.adminName || 'admin'} em ${fmtDate(f.decision.at)}`,
         f.decision.recipients?.length ? ` · para ${f.decision.recipients.map((r) => r.name).join(', ')}` : '',
-        f.decision.channel === 'manual' ? ' (envio manual)' : '',
+        { manual: ' (envio manual)', portal: ' (pelo portal)', whatsapp: ' (pelo WhatsApp)' }[f.decision.channel] || '',
         f.decision.note ? ` · “${f.decision.note}”` : '',
       )
     : f.snoozedUntil
@@ -1245,7 +1419,12 @@ async function ccvHistory() {
           {},
           h('td', { class: 'mono' }, fmtDate(e.at)),
           h('td', {}, e.farm),
-          h('td', {}, CCV_ACTION[e.action] || e.action, e.channel === 'manual' ? h('span', { class: 'sub' }, 'envio manual') : e.channel === 'whatsapp' ? h('span', { class: 'sub' }, `WhatsApp · ${e.sent || 0} enviada(s)`) : null),
+          h(
+            'td',
+            {},
+            CCV_ACTION[e.action] || e.action,
+            e.channel === 'manual' ? h('span', { class: 'sub' }, 'envio manual') : e.channel === 'whatsapp' ? h('span', { class: 'sub' }, `WhatsApp · ${e.sent || 0} enviada(s)`) : e.channel === 'portal' ? h('span', { class: 'sub' }, 'mensagem no portal') : null,
+          ),
           h('td', {}, e.adminName || '—'),
           h('td', {}, e.recipients?.length ? `Para ${e.recipients.map((r) => r.name).join(', ')}` : e.until ? `Até ${fmtDate(e.until)}` : e.note || ''),
         ),
@@ -2664,6 +2843,7 @@ function selectTab(name) {
   if (name === 'usage') loadUsage();
   if (name === 'alerts') loadAlerts();
   if (name === 'ccv') loadCcvAlerts();
+  if (name === 'chat') loadInbox();
   if (name === 'health') loadHealth();
   if (name === 'whatsapp') loadBot();
 }
@@ -2693,6 +2873,11 @@ async function init() {
   document.getElementById('alerts-digest').addEventListener('click', copyDigest);
   document.getElementById('ccv-refresh').addEventListener('click', () => loadCcvAlerts({ refresh: true }));
   document.getElementById('ccv-history').addEventListener('click', ccvHistory);
+  document.getElementById('chat-search').addEventListener('input', renderThreads);
+  document.getElementById('chat-filter').addEventListener('change', renderThreads);
+  document.getElementById('chat-new').addEventListener('click', () => newChatDialog());
+  api('/api/admin/chat').then((inbox) => ((chatState.inbox = inbox), updateChatCount(inbox))).catch(() => {});
+  startChatPolling();
   api('/api/admin/alerts').then(updateAlertCount).catch(() => {});
   // Contador de problemas na aba, mesmo antes de abri-la.
   api('/api/admin/data-health')

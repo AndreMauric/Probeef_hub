@@ -1,5 +1,6 @@
 import { initAssistant } from './assistant.js';
 import { mountCcv } from './ccv.js';
+import { initChat } from './chat.js';
 import { initNps } from './nps.js';
 import { openTeam } from './team.js';
 import { setupViews } from './views.js';
@@ -702,6 +703,20 @@ async function init() {
     };
   } else if (me.mustChangePassword) {
     openPasswordDialog({ required: true });
+  }
+
+  // Mensagens com a equipe (só usuários de cliente; admin "entrando como" só lê).
+  if (me.role === 'client') {
+    initChat({
+      button: document.getElementById('chat-button'),
+      badge: document.getElementById('chat-badge'),
+      readOnly: Boolean(me.impersonatedBy),
+      getContext: () => {
+        if (!current) return null;
+        const farm = ccv?.farm() || null;
+        return { reportId: current.id, farm, label: `${current.name}${farm ? ` · ${farm}` : ''}` };
+      },
+    });
   }
 
   if (me.role === 'admin') {
