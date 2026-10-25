@@ -14,6 +14,7 @@
 export const TOOLS = [
   { id: 'confinamento', name: '4M Confinamento' },
   { id: 'pasto', name: '3P · Desempenho a Pasto' },
+  { id: 'benchmark', name: 'Benchmarking Confinamento' },
 ];
 import crypto from 'node:crypto';
 import fs from 'node:fs/promises';

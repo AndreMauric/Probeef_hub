@@ -9,6 +9,7 @@ import { sendTemplate, whatsappStatus } from '../bot/whatsapp.js';
 import { isCcv } from '../access.js';
 import { computeCcvAlerts, listFarms, messageFor, oneLine, RULES } from '../ccv.js';
 import { adminQuotes, deleteManual, saveManual, setManualValue, setQuoteOptions } from '../quotes.js';
+import { adminList as bmkList, exportAll as bmkExport, saveSettings as saveBmkSettings, settings as bmkSettings } from '../benchmark.js';
 import { adminConversation, adminInbox, adminMarkRead, adminSend, forgetChat, setThreadStatus } from '../chat.js';
 import { exportData, listSnapshots, snapshotPath, validateBackup } from '../backup.js';
 import { generatePassword, hashPassword, requireAdmin, validatePassword } from '../auth.js';
@@ -249,6 +250,17 @@ adminRouter.get('/ccv/log', (_req, res) => {
       .map((e) => ({ ...e, adminName: users.find((u) => u.id === e.adminId)?.name || null })),
   });
 });
+
+// ---------- Benchmarking Confinamento ----------
+
+adminRouter.get('/benchmark', (_req, res) => res.json({ settings: bmkSettings(), clients: bmkList() }));
+
+adminRouter.put('/benchmark/settings', route(async (req, res) => {
+  res.json({ settings: await saveBmkSettings(req.body || {}) });
+}));
+
+// Dados de todos os clientes do ano, para o Excel consolidado (montado no navegador).
+adminRouter.get('/benchmark/export', (_req, res) => res.json(bmkExport()));
 
 // ---------- Cotações (faixa do rodapé do portal) ----------
 
@@ -696,6 +708,8 @@ function readClient(body) {
   }
   // Fazendas do painel CCV (nomes exatamente como estão no modelo). Mesma regra das tags.
   if (Array.isArray(body.ccvFarms)) client.ccvFarms = farmList(body.ccvFarms);
+  // Participa do Benchmarking Confinamento (só muda quando o formulário envia o campo).
+  if (typeof body.benchmark === 'boolean') client.benchmark = body.benchmark;
   if (!client.name) fail('Informe o nome do cliente.');
   if (client.rlsRoles.length && !client.rlsUsername) fail('Informe o usuário RLS junto com as funções.');
   return client;
@@ -766,7 +780,7 @@ adminRouter.delete('/tags/:id', route(async (req, res) => {
 }));
 
 adminRouter.post('/clients', route(async (req, res) => {
-  const client = { id: newId(), ...readClient(req.body || {}), createdAt: new Date().toISOString() };
+  const client = { id: newId(), tagIds: [], ccvFarms: [], benchmark: false, ...readClient(req.body || {}), createdAt: new Date().toISOString() };
   db().clients.push(client);
   await save();
   res.status(201).json({ client });

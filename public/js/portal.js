@@ -205,7 +205,28 @@ async function requestTool(tool) {
 }
 
 function toolsSection() {
-  return h('section', { class: 'home-group' }, h('h2', { class: 'label' }, 'Ferramentas'), h('div', { class: 'cards' }, TOOL_CARDS.map((t) => h('div', { class: 'card-wrap' }, toolCard(t)))));
+  return h(
+    'section',
+    { class: 'home-group' },
+    h('h2', { class: 'label' }, 'Ferramentas'),
+    h('div', { class: 'cards' }, benchmarkCard(), TOOL_CARDS.map((t) => h('div', { class: 'card-wrap' }, toolCard(t)))),
+  );
+}
+
+// Benchmarking Confinamento: aparece para quem é de um cliente participante (sem pedido de acesso).
+let benchmarkInfo = null;
+function benchmarkCard() {
+  if (!benchmarkInfo?.clients.length) return null;
+  return h(
+    'div',
+    { class: 'card-wrap' },
+    h(
+      'a',
+      { class: 'card', href: '/benchmark' },
+      h('span', { class: 'card-media placeholder', 'aria-hidden': 'true' }),
+      h('span', { class: 'card-body' }, h('strong', {}, `Benchmarking Confinamento ${benchmarkInfo.ano}`), h('span', {}, me.role === 'admin' ? `Acompanhe e valide a coleta de ${benchmarkInfo.clients.length} cliente(s).` : 'Envie os dados dos lotes e o questionário do benchmarking, com validação na hora.')),
+    ),
+  );
 }
 
 function toolCard(tool) {
@@ -686,6 +707,7 @@ async function init() {
     })
     .catch(() => {});
   ({ user: me } = await api('/api/auth/me'));
+  benchmarkInfo = await api('/api/benchmark/clients').catch(() => null);
   if (me.role !== 'admin') {
     await Promise.all(
       TOOL_CARDS.map((t) =>

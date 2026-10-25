@@ -12,6 +12,8 @@ import { authRouter } from './src/routes/auth.js';
 import { ccvRouter } from './src/routes/ccv.js';
 import { chatRouter } from './src/routes/chat.js';
 import { canUsePasto, pastoRouter } from './src/routes/pasto.js';
+import { benchmarkRouter } from './src/routes/benchmark.js';
+import { canUseBenchmark } from './src/benchmark.js';
 import { confinamentoRouter } from './src/routes/confinamento.js';
 import { portalRouter } from './src/routes/portal.js';
 import { teamRouter } from './src/routes/team.js';
@@ -95,9 +97,13 @@ app.use(loadUser);
 // todas as outras requisições aceitam apenas corpos pequenos.
 const smallJson = express.json({ limit: '100kb' });
 const largeJson = express.json({ limit: '20mb' });
+// Uma coleta do benchmarking com centenas de lotes passa de 100 KB.
+const benchmarkJson = express.json({ limit: '3mb' });
 app.use((req, res, next) => {
   const restore = req.path === '/api/admin/restore' && req.user?.role === 'admin';
-  return (restore ? largeJson : smallJson)(req, res, next);
+  if (restore) return largeJson(req, res, next);
+  if (req.user && req.method === 'PUT' && req.path.startsWith('/api/benchmark/')) return benchmarkJson(req, res, next);
+  return smallJson(req, res, next);
 });
 
 // Envio de imagens: corpo bruto, só para administradores logados.
@@ -128,6 +134,7 @@ app.use('/api/confinamento', confinamentoRouter);
 app.use('/api/ccv', ccvRouter);
 app.use('/api/chat', chatRouter);
 app.use('/api/pasto', pastoRouter);
+app.use('/api/benchmark', benchmarkRouter);
 app.use('/api', portalRouter);
 app.use('/api', (_req, res) => res.status(404).json({ error: 'Rota não encontrada.' }));
 
@@ -136,6 +143,10 @@ app.get('/vendor/powerbi.min.js', (_req, res) => {
 });
 app.get('/vendor/chart.min.js', (_req, res) => {
   res.sendFile(path.join(config.root, 'node_modules/chart.js/dist/chart.umd.js'));
+});
+// Leitura de .xlsb/.xlsx no navegador (importar a planilha atual do benchmarking).
+app.get('/vendor/xlsx.full.min.js', (_req, res) => {
+  res.sendFile(path.join(config.root, 'node_modules/xlsx/dist/xlsx.full.min.js'));
 });
 // Planilha Excel gerada no navegador (exportação da 3P).
 app.get('/vendor/exceljs.min.js', (_req, res) => {
@@ -162,6 +173,18 @@ app.use(
     next();
   },
   express.static(path.join(config.root, 'public/pasto'), { extensions: ['html'] }),
+);
+
+// Benchmarking Confinamento: quem é de um cliente participante (ou admin); ver src/benchmark.js.
+// fields.js também é carregado pelo servidor, mas aqui só é servido para quem pode usar.
+app.use(
+  '/benchmark',
+  (req, res, next) => {
+    if (!req.user) return res.redirect('/portal');
+    if (!canUseBenchmark(req.user)) return res.redirect('/portal#inicio');
+    next();
+  },
+  express.static(path.join(config.root, 'public/benchmark'), { extensions: ['html'] }),
 );
 
 app.use(express.static(path.join(config.root, 'public'), { extensions: ['html'] }));

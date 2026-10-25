@@ -5,7 +5,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { config } from './config.js';
 
-const empty = () => ({ users: [], clients: [], reports: [], images: [], categories: [], tags: [], confinamentoSimulations: [], ccvAlertLog: [], chatThreads: [], chatMessages: [], pastoSimulations: [] });
+const empty = () => ({ users: [], clients: [], reports: [], images: [], categories: [], tags: [], confinamentoSimulations: [], ccvAlertLog: [], chatThreads: [], chatMessages: [], pastoSimulations: [], bmkSubmissions: [] });
 
 // Usuários antigos tinham um único "clientId"; hoje cada usuário tem uma lista "clientIds".
 function normalize(raw) {
@@ -40,7 +40,8 @@ function normalize(raw) {
     return category;
   };
   // Tags dos clientes (ex.: Porte → Grande, Médio, Pequeno) e fazendas do painel CCV que cada cliente vê.
-  next.clients = next.clients.map((c) => ({ ...c, tagIds: Array.isArray(c.tagIds) ? c.tagIds : [], ccvFarms: Array.isArray(c.ccvFarms) ? c.ccvFarms : [] }));
+  // benchmark: o cliente participa do Benchmarking Confinamento (ver src/benchmark.js).
+  next.clients = next.clients.map((c) => ({ ...c, tagIds: Array.isArray(c.tagIds) ? c.tagIds : [], ccvFarms: Array.isArray(c.ccvFarms) ? c.ccvFarms : [], benchmark: Boolean(c.benchmark) }));
   // Relatórios antigos são todos do Power BI incorporado.
   next.reports = next.reports.map((r) => ({ ...r, kind: r.kind === 'ccv' ? 'ccv' : 'powerbi' }));
   next.reports = next.reports.map((r) => {

@@ -21,6 +21,7 @@
     "exceljs": "^4.4.0",
     "express": "^4.22.3",
     "helmet": "^8.3.0",
-    "powerbi-client": "^2.25.0"
+    "powerbi-client": "^2.25.0",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   }
 }

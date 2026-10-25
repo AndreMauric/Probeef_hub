@@ -76,6 +76,28 @@ essa conferência. No portal e no admin, as ferramentas já são listas (`TOOL_C
 é gerado no navegador com `exceljs` (`/vendor/exceljs.min.js`) e o relatório é uma página para
 imprimir/salvar em PDF (`@media print`).
 
+### Benchmarking Confinamento (coleta com validação)
+
+Substitui a coleta pela planilha "Benchmarking Confinamento Probeef 2026 Feed Manager.xlsb"
+(`Documentos\`). Não usa pedido de acesso: o admin marca `client.benchmark` e os usuários desse
+cliente veem o card. Página `/benchmark` (`public/benchmark/`), API `/api/benchmark`
+(`src/routes/benchmark.js`), regras em `src/benchmark.js`; rotas só de admin em `admin.js`.
+
+- `public/benchmark/fields.js` é a fonte única das regras — campos dos lotes (com a letra da
+  coluna da planilha original, usada para colar e importar), validações (coerência com
+  tolerância, faixas mín/máx e listas, as mesmas da aba Configurações; o bug da planilha em
+  que a tolerância de carcaça apontava para `$C$7` da própria aba foi corrigido), questionário
+  (as 90 perguntas da aba Formulário/Q1) e o resultado por categoria (abas FINAL e FINAL
+  RECRIA). É importado pelo navegador e pelo servidor (Node importa de `public/`).
+- Dados: `db().bmkSubmissions` (um por cliente por ano; `version` evita sobrescrever o trabalho
+  de outra pessoa) e `db().bmkSettings` (limites e listas, editáveis no admin). Fluxo
+  rascunho → enviado → correção/aprovado; devolver/aprovar avisa os usuários pelo chat.
+- Importar a planilha atual é feito no navegador com SheetJS (`/vendor/xlsx.full.min.js`,
+  pacote oficial de cdn.sheetjs.com — a versão do npm é antiga): lê BD_Zootec_Feed,
+  BD_Econom_Feed, BD_Zootec_Feed_ Recria_Conf e Q1. As abas TGC não são importadas.
+- As opções das perguntas de múltipla escolha foram montadas a partir das respostas de um
+  cliente e precisam de revisão da equipe (sempre há "Outro").
+
 ## Painel CCV (relatório nativo, lido do modelo semântico)
 
 A "Ferramenta CCV" (leitura de cocho) não é incorporada: o portal consulta o modelo semântico

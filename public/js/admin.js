@@ -1052,6 +1052,194 @@ async function copyDigest() {
   }
 }
 
+// ---------- Benchmarking Confinamento ----------
+
+const BMK_STATUS = {
+  nao_iniciado: ['Não iniciado', 'pill'],
+  rascunho: ['Em preenchimento', 'pill'],
+  enviado: ['Enviado · validar', 'pill pill-warn'],
+  correcao: ['Em correção', 'pill pill-danger'],
+  aprovado: ['Aprovado', 'pill pill-ok'],
+};
+const bmkState = { data: null };
+
+async function loadBenchmark() {
+  const box = document.getElementById('benchmark');
+  try {
+    bmkState.data = await api('/api/admin/benchmark');
+  } catch (err) {
+    box.replaceChildren(h('p', { class: 'alert' }, err.message));
+    return;
+  }
+  renderBenchmark();
+}
+
+function renderBenchmark() {
+  const { clients, settings } = bmkState.data;
+  const box = document.getElementById('benchmark');
+  const waiting = clients.filter((c) => c.status === 'enviado').length;
+  const counter = document.getElementById('count-benchmark');
+  counter.textContent = waiting || '';
+  counter.classList.toggle('has-high', waiting > 0);
+  const count = (s) => clients.filter((c) => c.status === s).length;
+  const tableEl = h('table');
+  table(
+    tableEl,
+    ['Cliente', 'Situação', 'Lotes', 'Erros / alertas', 'Questionário', 'Última alteração', ''],
+    clients.map((c) => {
+      const [label, cls] = BMK_STATUS[c.status] || BMK_STATUS.nao_iniciado;
+      return h(
+        'tr',
+        {},
+        h('td', {}, h('strong', {}, c.client), c.active ? null : h('span', { class: 'sub' }, 'cliente desativado')),
+        h('td', {}, h('span', { class: cls }, label), c.submittedAt ? h('span', { class: 'sub' }, `enviado ${fmtDate(c.submittedAt)}`) : null),
+        h('td', { class: 'mono' }, `${c.lotesEngorda} eng. · ${c.lotesRecria} rec.`),
+        h('td', {}, c.erros ? h('span', { class: 'pill pill-danger' }, `${c.erros} erros`) : h('span', { class: 'muted' }, '0 erros'), ' ', c.alertas ? h('span', { class: 'pill pill-warn' }, `${c.alertas} alertas`) : null),
+        h('td', { class: 'mono' }, `${c.questionario.respondidas}/${c.questionario.visiveis}`, c.questionario.faltando ? h('span', { class: 'sub' }, `faltam ${c.questionario.faltando} obrigatórias`) : null),
+        h('td', { class: 'mono' }, c.updatedAt ? fmtDate(c.updatedAt) : '—', c.updatedBy ? h('span', { class: 'sub' }, c.updatedBy) : null),
+        h('td', { class: 'actions' }, h('a', { class: `btn btn-sm${c.status === 'enviado' ? ' btn-primary' : ' btn-ghost'}`, href: `/benchmark?cliente=${c.clientId}`, target: '_blank', rel: 'noopener' }, c.status === 'enviado' ? 'Validar' : 'Abrir')),
+      );
+    }),
+    'Nenhum cliente no benchmarking. Em Clientes → Editar, marque "Participa do Benchmarking Confinamento".',
+  );
+  box.replaceChildren(
+    h(
+      'div',
+      { class: 'stats' },
+      statTile(`Clientes no benchmarking ${settings.ano}`, num(clients.length), settings.prazo ? h('span', { class: 'muted' }, `prazo ${fmtDateOnly(`${settings.prazo}T12:00:00`)}`) : null),
+      statTile('Enviados para validar', num(waiting)),
+      statTile('Em correção', num(count('correcao'))),
+      statTile('Aprovados', num(count('aprovado'))),
+      statTile('Em preenchimento / não iniciados', `${num(count('rascunho'))} / ${num(count('nao_iniciado'))}`),
+    ),
+    h('div', { class: 'table-wrap' }, tableEl),
+  );
+}
+
+function benchmarkSettingsDialog() {
+  const s = bmkState.data.settings;
+  import('/benchmark/fields.js').then(({ TOLERANCIA_LABELS, FAIXA_LABELS, LIST_LABELS }) => {
+    const numIn = (v) => h('input', { type: 'text', inputmode: 'decimal', value: String(v).replace('.', ','), style: 'max-width: 110px' });
+    const tol = Object.entries(TOLERANCIA_LABELS).map(([k, [label, unit]]) => ({ k, el: numIn(s.tolerancias[k]), label, unit }));
+    const fx = Object.entries(FAIXA_LABELS).map(([k, [label, unit]]) => ({ k, min: numIn(s.faixas[k][0]), max: numIn(s.faixas[k][1]), label, unit }));
+    const ls = Object.entries(LIST_LABELS).map(([k, label]) => ({ k, label, el: h('textarea', { rows: 6 }, s.listas[k].join('\n')) }));
+    const ano = input('bmk-ano', { value: String(s.ano), type: 'text' });
+    const prazo = h('input', { type: 'date', value: s.prazo || '' });
+    const parse = (el) => Number(String(el.value).trim().replace(/\./g, '').replace(',', '.'));
+    formDialog(
+      'Limites e listas do benchmarking',
+      [
+        h('div', { class: 'grid-2' }, field('Ano do benchmarking', ano, 'Os dados se referem ao ano anterior.'), field('Prazo de envio (opcional)', prazo)),
+        h('h3', { class: 'usage-title' }, 'Tolerâncias de coerência (valor informado × recalculado)'),
+        h('div', { class: 'table-wrap' }, h('table', {}, h('tbody', {}, tol.map((t) => h('tr', {}, h('td', {}, t.label), h('td', {}, t.el), h('td', { class: 'muted' }, t.unit)))))),
+        h('h3', { class: 'usage-title' }, 'Faixas esperadas dos indicadores econômicos (mínimo e máximo)'),
+        h('div', { class: 'table-wrap' }, h('table', {}, h('tbody', {}, fx.map((f) => h('tr', {}, h('td', {}, f.label), h('td', {}, f.min), h('td', {}, f.max), h('td', { class: 'muted' }, f.unit)))))),
+        h('h3', { class: 'usage-title' }, 'Listas (um item por linha)'),
+        h('div', { class: 'grid-2' }, ls.map((l) => field(l.label, l.el))),
+        h('p', { class: 'muted', style: 'margin: 0; font-size: 13px' }, 'Mudanças valem na hora para todas as fazendas: os alertas são recalculados quando a coleta é aberta.'),
+      ],
+      {
+        submitLabel: 'Salvar',
+        onSubmit: async () => {
+          const body = {
+            ano: parse(ano),
+            prazo: prazo.value || null,
+            tolerancias: Object.fromEntries(tol.map((t) => [t.k, parse(t.el)])),
+            faixas: Object.fromEntries(fx.map((f) => [f.k, [parse(f.min), parse(f.max)]])),
+            listas: Object.fromEntries(ls.map((l) => [l.k, l.el.value.split('\n').map((x) => x.trim()).filter(Boolean)])),
+          };
+          await api('/api/admin/benchmark/settings', { method: 'PUT', body });
+          await loadBenchmark();
+          toast('Limites e listas salvos.');
+        },
+      },
+    );
+  });
+}
+
+// Excel com tudo do ano: andamento, lotes (com indicadores e alertas), questionário e resultados.
+async function exportBenchmark() {
+  try {
+    toast('Montando o Excel consolidado…');
+    const [data, m, ExcelJS] = await Promise.all([api('/api/admin/benchmark/export'), import('/benchmark/fields.js'), loadExcelJs()]);
+    const wb = new ExcelJS.Workbook();
+    const sheet = (name, columns, rows) => {
+      const ws = wb.addWorksheet(name);
+      ws.columns = columns.map(([key, header, width]) => ({ key, header, width: width || Math.max(10, Math.min(40, String(header).length + 2)) }));
+      rows.forEach((r) => ws.addRow(r));
+      const head = ws.getRow(1);
+      head.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      head.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF094140' } };
+      head.alignment = { vertical: 'middle', wrapText: true };
+      ws.views = [{ state: 'frozen', ySplit: 1 }];
+      return ws;
+    };
+    const calcCols = [['pesoEntradaArroba', 'Peso entrada (@)'], ['pesoSaidaArroba', 'Peso saída (@)'], ['custoArrobaEntrada', 'Custo @ entrada (R$)'], ['valorArrobaVenda', 'Valor @ venda (R$)'], ['custoAlimentarDia', 'Custo alim. (R$/cab/d)'], ['custoOperacional', 'Custo oper. (R$/cab/d)'], ['lucroCab', 'Lucro (R$/cab)']];
+    const loteSheet = (name, kind, recria) => {
+      const fields = recria ? m.ZOO_FIELDS : [...m.ZOO_FIELDS, ...m.ECO_FIELDS];
+      const rows = [];
+      for (const s of data.submissions) {
+        const v = m.validateLotes(s[kind], data.settings, { recria });
+        s[kind].forEach((l, i) => {
+          const c = m.calcLote(l);
+          rows.push({ cliente: s.client, status: s.status, ...l, ...Object.fromEntries(calcCols.map(([k]) => [`c_${k}`, Number.isFinite(c[k]) ? Number(c[k].toFixed(3)) : null])), erros: v.porLote[i].filter((x) => x.level === 'erro').map((x) => x.msg).join(' | '), alertas: v.porLote[i].filter((x) => x.level === 'alerta').map((x) => x.msg).join(' | ') });
+        });
+      }
+      sheet(name, [['cliente', 'Cliente', 28], ['status', 'Situação', 14], ...fields.map((f) => [f.key, `${f.label}${f.unit ? ` (${f.unit})` : ''}`]), ...(recria ? [] : calcCols.map(([k, label]) => [`c_${k}`, label])), ['erros', 'Erros', 50], ['alertas', 'Alertas', 60]], rows);
+    };
+    sheet(
+      'Andamento',
+      [['cliente', 'Cliente', 30], ['status', 'Situação', 18], ['eng', 'Lotes engorda'], ['rec', 'Lotes recria'], ['erros', 'Erros'], ['alertas', 'Alertas'], ['quest', 'Questionário respondido']],
+      bmkState.data.clients.map((c) => ({ cliente: c.client, status: (BMK_STATUS[c.status] || BMK_STATUS.nao_iniciado)[0], eng: c.lotesEngorda, rec: c.lotesRecria, erros: c.erros, alertas: c.alertas, quest: `${c.questionario.respondidas}/${c.questionario.visiveis}` })),
+    );
+    loteSheet('Lotes Engorda', 'engorda', false);
+    loteSheet('Lotes Recria', 'recria', true);
+    const qText = (q) => `${q.n}. ${m.questionText(q, data.settings)}`;
+    sheet(
+      'Questionário',
+      [['cliente', 'Cliente', 28], ...m.QUESTIONS.map((q) => [q.id, qText(q), 24])],
+      data.submissions.map((s) => ({ cliente: s.client, ...Object.fromEntries(m.QUESTIONS.map((q) => [q.id, Array.isArray(s.respostas[q.id]) ? s.respostas[q.id].join('; ') : (s.respostas[q.id] ?? null)])) })),
+    );
+    const resultRows = [];
+    const recriaRows = [];
+    for (const s of data.submissions) {
+      for (const cat of data.settings.listas.categorias) {
+        const r = m.resultadoEngorda(s.engorda, s.respostas, cat);
+        if (r) resultRows.push({ cliente: s.client, status: s.status, categoria: cat, ...r.zootecnico, ...r.economico });
+        const rr = m.resultadoRecria(s.recria, cat);
+        if (rr) recriaRows.push({ cliente: s.client, status: s.status, categoria: cat, ...rr.zootecnico });
+      }
+    }
+    const resCols = (rows) => [['cliente', 'Cliente', 28], ['status', 'Situação', 14], ['categoria', 'Categoria', 18], ...rows.map(([k, label]) => [k, label])];
+    const round = (rows) => rows.map((r) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, typeof v === 'number' && Number.isFinite(v) ? Number(v.toFixed(4)) : v])));
+    sheet('Resultado Engorda', resCols([...m.ZOO_RESULT_ROWS, ...m.ECO_RESULT_ROWS.filter(([k]) => k !== 'dias')]), round(resultRows));
+    sheet('Resultado Recria', resCols(m.ZOO_RESULT_ROWS), round(recriaRows));
+    const blob = new Blob([await wb.xlsx.writeBuffer()], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const a = h('a', { href: URL.createObjectURL(blob), download: `Benchmarking-Confinamento-${data.ano}-consolidado.xlsx` });
+    document.body.append(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  } catch (err) {
+    toast(err.message, 'error');
+  }
+}
+
+let excelJsLoading = null;
+function loadExcelJs() {
+  excelJsLoading ??= new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = '/vendor/exceljs.min.js';
+    s.onload = () => resolve(window.ExcelJS);
+    s.onerror = () => {
+      excelJsLoading = null;
+      reject(new Error('Não foi possível carregar o gerador de Excel.'));
+    };
+    document.head.append(s);
+  });
+  return excelJsLoading;
+}
+
 // ---------- Cotações ----------
 
 const todayIso = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
@@ -2710,6 +2898,7 @@ function farmPicker({ label, hint, selected = [], options }) {
 
 function clientDialog(client) {
   const active = h('input', { id: 'active', type: 'checkbox', checked: client ? client.active : true });
+  const benchmark = h('input', { type: 'checkbox', checked: Boolean(client?.benchmark) });
   const tagPicker = h(
     'div',
     { class: 'tag-picker' },
@@ -2775,6 +2964,7 @@ function clientDialog(client) {
         h('span', {}, 'Tags'),
         state.tags.length ? tagPicker : h('small', {}, 'Crie tags em Clientes → Tags (ex.: Porte: Grande, Médio, Pequeno).'),
       ),
+      h('label', { class: 'check' }, benchmark, h('span', {}, h('strong', {}, 'Participa do Benchmarking Confinamento'), h('br'), h('span', { class: 'muted' }, 'Os usuários deste cliente veem a ferramenta de coleta no portal.'))),
       h('label', { class: 'check' }, active, h('span', {}, 'Cliente ativo (desmarque para bloquear o acesso de todos os usuários dele)')),
     ],
     {
@@ -2786,6 +2976,7 @@ function clientDialog(client) {
           rlsRoles: form.elements['rlsRoles'].value,
           reportIds: [...form.querySelectorAll('#client-reports input:checked')].map((i) => i.value),
           ccvFarms: farms.values(),
+          benchmark: benchmark.checked,
           active: active.checked,
         };
         if (client) await api(`/api/admin/clients/${client.id}`, { method: 'PUT', body });
@@ -2972,6 +3163,7 @@ function selectTab(name) {
   if (name === 'ccv') loadCcvAlerts();
   if (name === 'chat') loadInbox();
   if (name === 'quotes') loadQuotes();
+  if (name === 'benchmark') loadBenchmark();
   if (name === 'health') loadHealth();
   if (name === 'whatsapp') loadBot();
 }
@@ -3005,6 +3197,18 @@ async function init() {
   document.getElementById('chat-filter').addEventListener('change', renderThreads);
   document.getElementById('chat-new').addEventListener('click', () => newChatDialog());
   document.getElementById('quote-new').addEventListener('click', () => quoteDialog());
+  document.getElementById('bmk-settings').addEventListener('click', () => (bmkState.data ? benchmarkSettingsDialog() : loadBenchmark().then(benchmarkSettingsDialog)));
+  document.getElementById('bmk-export').addEventListener('click', exportBenchmark);
+  // Contador de coletas esperando validação na aba, mesmo antes de abri-la.
+  api('/api/admin/benchmark')
+    .then((d) => {
+      bmkState.data = d;
+      const waiting = d.clients.filter((c) => c.status === 'enviado').length;
+      const el = document.getElementById('count-benchmark');
+      el.textContent = waiting || '';
+      el.classList.toggle('has-high', waiting > 0);
+    })
+    .catch(() => {});
   api('/api/admin/chat').then((inbox) => ((chatState.inbox = inbox), updateChatCount(inbox))).catch(() => {});
   startChatPolling();
   api('/api/admin/alerts').then(updateAlertCount).catch(() => {});

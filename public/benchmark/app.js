@@ -1,0 +1,1102 @@
+// Benchmarking Confinamento Probeef: coleta por cliente, com validação na hora (antes: planilha
+// "Benchmarking Confinamento Probeef 2026 Feed Manager.xlsb"). As regras ficam em fields.js,
+// as mesmas que o servidor usa. Fluxo: rascunho → enviado → correção/aprovado (ver src/benchmark.js).
+import { api, h, toast } from '/js/common.js';
+import { initTicker } from '/js/ticker.js';
+import {
+  calcLote,
+  cleanAnswer,
+  cleanLote,
+  colIndex,
+  COLUNAS_ECO,
+  COLUNAS_ZOO,
+  ECO_FIELDS,
+  ECO_RESULT_ROWS,
+  editableStatus,
+  OPTIONS,
+  QUESTIONARIO,
+  QUESTIONS,
+  questionText,
+  questionVisible,
+  resultadoEngorda,
+  resultadoRecria,
+  STATUS,
+  validateLotes,
+  validateQuestionario,
+  ZOO_FIELDS,
+  ZOO_RESULT_ROWS,
+} from './fields.js';
+
+const state = {
+  me: null,
+  isAdmin: false,
+  clients: [],
+  clientId: null,
+  ano: null,
+  prazo: null,
+  view: null, // resposta do servidor (submission, summary, settings)
+  data: null, // cópia em edição: { engorda, recria, respostas }
+  version: 0,
+  dirty: false,
+  saving: false,
+  conflict: false,
+  savedAt: null,
+  tab: 'engorda',
+  group: { engorda: 'zoo', recria: 'zoo' },
+  filter: { engorda: 'todos', recria: 'todos' },
+  search: { engorda: '', recria: '' },
+  qSection: QUESTIONARIO[0].id,
+};
+const dialog = document.getElementById('dialog');
+const fill = (el, ...children) => el.replaceChildren(...children.flat(Infinity).filter((c) => c !== null && c !== undefined && c !== false));
+const nf = (v, d = 2) => (v === null || v === undefined || !Number.isFinite(v) ? '—' : v.toLocaleString('pt-BR', { minimumFractionDigits: d, maximumFractionDigits: d }));
+const fmtDateTime = (iso) => (iso ? new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '—');
+const settings = () => state.view.settings;
+const status = () => state.view.submission.status;
+const canEdit = () => !state.me.impersonatedBy && (state.isAdmin || editableStatus(status()));
+
+// ---------- Salvamento automático ----------
+
+let saveTimer = null;
+function changed() {
+  state.dirty = true;
+  renderStatus();
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveNow, 1500);
+}
+
+async function saveNow() {
+  clearTimeout(saveTimer);
+  if (!state.dirty || state.saving || state.conflict || !canEdit()) return;
+  state.saving = true;
+  state.dirty = false;
+  renderStatus();
+  try {
+    const view = await api(`/api/benchmark/${state.clientId}`, { method: 'PUT', body: { ...state.data, version: state.version } });
+    state.view = view;
+    state.version = view.submission.version;
+    state.savedAt = new Date();
+  } catch (err) {
+    state.dirty = true;
+    if (/Outra pessoa salvou/.test(err.message)) state.conflict = true;
+    toast(err.message, 'error');
+  } finally {
+    state.saving = false;
+    renderStatus();
+    if (state.dirty && !state.conflict) saveTimer = setTimeout(saveNow, 4000);
+  }
+}
+
+window.addEventListener('beforeunload', (e) => {
+  if (state.dirty || state.saving) {
+    saveNow();
+    e.preventDefault();
+  }
+});
+
+// ---------- Faixa de situação (status, resumo e ações) ----------
+
+function localSummary() {
+  const s = settings();
+  const eng = validateLotes(state.data.engorda, s);
+  const rec = validateLotes(state.data.recria, s, { recria: true });
+  const q = validateQuestionario(state.data.respostas);
+  return { eng, rec, q, erros: eng.erros + rec.erros, alertas: eng.alertas + rec.alertas, total: state.data.engorda.length + state.data.recria.length };
+}
+
+function renderStatus() {
+  const box = document.getElementById('status');
+  if (!state.view) return;
+  const sub = state.view.submission;
+  const st = STATUS[sub.status] || STATUS.rascunho;
+  const sum = localSummary();
+  const ready = sum.total > 0 && sum.erros === 0 && sum.q.faltando.length === 0;
+  document.getElementById('count-engorda').textContent = state.data.engorda.length || '';
+  document.getElementById('count-recria').textContent = state.data.recria.length || '';
+  document.getElementById('count-questionario').textContent = `${sum.q.respondidas}/${sum.q.visiveis}`;
+  const saveText = state.conflict
+    ? 'Outra pessoa salvou: recarregue a página'
+    : state.saving
+      ? 'Salvando…'
+      : state.dirty
+        ? 'Alterações não salvas'
+        : state.savedAt
+          ? `Salvo às ${state.savedAt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`
+          : sub.updatedAt
+            ? `Última alteração ${fmtDateTime(sub.updatedAt)}${sub.updatedByName ? ` por ${sub.updatedByName}` : ''}`
+            : 'Nada salvo ainda';
+  const lastMsg = [...sub.messages].reverse().find((m) => m.action === 'devolver');
+  const actions = [];
+  if (!state.me.impersonatedBy && editableStatus(sub.status)) {
+    actions.push(h('button', { class: 'btn btn-primary', type: 'button', disabled: !ready || state.conflict, title: ready ? 'Enviar para a Cargill validar' : 'Corrija os erros e responda as perguntas obrigatórias antes de enviar', onclick: submitDialog }, 'Enviar para validação'));
+  }
+  if (state.isAdmin) {
+    if (sub.status === 'enviado') {
+      actions.push(h('button', { class: 'btn', type: 'button', onclick: () => reviewDialog('devolver') }, 'Devolver para correção'));
+      actions.push(h('button', { class: 'btn btn-primary', type: 'button', onclick: () => reviewDialog('aprovar') }, 'Aprovar'));
+    }
+    if (sub.status === 'aprovado' || sub.status === 'enviado') actions.push(h('button', { class: 'btn btn-ghost', type: 'button', onclick: () => reviewDialog('reabrir') }, 'Reabrir para edição'));
+  }
+  const chip = (cls, text) => h('span', { class: `bmk-chip ${cls}` }, text);
+  fill(
+    box,
+    h(
+      'div',
+      { class: 'bmk-status-main' },
+      h('span', { class: `bmk-pill ${st.cls}` }, st.label),
+      h('div', { class: 'bmk-status-text' }, h('strong', {}, state.view.client.name), h('span', { class: 'muted' }, `Benchmarking ${state.ano}${state.prazo ? ` · prazo ${new Date(`${state.prazo}T12:00:00`).toLocaleDateString('pt-BR')}` : ''} · ${saveText}`)),
+      h('div', { class: 'bmk-actions' }, actions),
+    ),
+    h(
+      'div',
+      { class: 'bmk-chips' },
+      chip('neutral', `${state.data.engorda.length} lotes de engorda · ${state.data.recria.length} de recria`),
+      sum.erros ? chip('crit', `✕ ${sum.erros} ${sum.erros === 1 ? 'erro' : 'erros'} para corrigir`) : chip('ok', '✓ Sem erros nos lotes'),
+      sum.alertas ? chip('warn', `⚠ ${sum.alertas} ${sum.alertas === 1 ? 'alerta' : 'alertas'} para conferir`) : null,
+      sum.q.faltando.length ? chip('warn', `Questionário: faltam ${sum.q.faltando.length} obrigatórias`) : chip('ok', `Questionário: ${sum.q.respondidas} de ${sum.q.visiveis} respondidas`),
+    ),
+    sub.status === 'correcao' && lastMsg ? h('div', { class: 'bmk-callout crit' }, h('strong', {}, `Devolvido para correção por ${lastMsg.byName || 'Cargill'} em ${fmtDateTime(lastMsg.at)}:`), h('p', {}, lastMsg.text)) : null,
+    sub.status === 'enviado' && !state.isAdmin ? h('div', { class: 'bmk-callout warn' }, 'Enviado para a Cargill validar. Enquanto isso a edição fica travada; se precisar mudar algo, fale com o seu coordenador pelo botão Mensagens do portal.') : null,
+    sub.status === 'aprovado' ? h('div', { class: 'bmk-callout ok' }, `Aprovado em ${fmtDateTime(sub.decidedAt)}${sub.decidedByName ? ` por ${sub.decidedByName}` : ''}.`) : null,
+    state.me.impersonatedBy ? h('div', { class: 'bmk-callout warn' }, 'Você está vendo como o cliente: nada do que mudar aqui é salvo.') : null,
+  );
+}
+
+// ---------- Tabela de lotes ----------
+
+const GROUPS = {
+  zoo: { label: 'Zootécnico', fields: ZOO_FIELDS },
+  eco: { label: 'Econômico', fields: ECO_FIELDS },
+};
+// Indicadores recalculados mostrados ao lado (só leitura).
+const CALC_COLS = {
+  zoo: [
+    ['mortesPct', 'Mortes', '%', 2],
+    ['retPastoPct', 'Ret. pasto', '%', 2],
+  ],
+  eco: [
+    ['pesoEntradaArroba', 'Entrada', '@', 2],
+    ['pesoSaidaArroba', 'Saída', '@', 2],
+    ['custoArrobaEntrada', 'Custo @ entrada', 'R$/@', 2],
+    ['valorArrobaVenda', 'Valor @ venda', 'R$/@', 2],
+    ['custoAlimentarDia', 'Custo alim.', 'R$/cab/d', 2],
+    ['custoOperacional', 'Custo oper.', 'R$/cab/d', 2],
+    ['lucroCab', 'Lucro', 'R$/cab', 2],
+  ],
+};
+
+function lotesPanel(kind) {
+  const recria = kind === 'recria';
+  const panel = document.querySelector(`[data-panel="${kind}"]`);
+  const lotes = state.data[kind];
+  const group = recria ? 'zoo' : state.group[kind];
+  const val = validateLotes(lotes, settings(), { recria });
+  const editable = canEdit();
+  const fields = GROUPS[group].fields;
+  const lead = group === 'eco' ? ZOO_FIELDS.slice(0, 1) : [];
+  const shownFields = [...lead.map((f) => ({ ...f, readonly: true })), ...fields];
+  const term = state.search[kind].trim().toLowerCase();
+  const rows = lotes
+    .map((l, i) => ({ l, i, issues: val.porLote[i] }))
+    .filter(({ issues }) => (state.filter[kind] === 'erro' ? issues.some((x) => x.level === 'erro') : state.filter[kind] === 'alerta' ? issues.some((x) => x.level === 'alerta') : true))
+    .filter(({ l }) => !term || `${l.lote || ''} ${l.curral || ''}`.toLowerCase().includes(term));
+
+  const head = h(
+    'tr',
+    {},
+    h('th', { class: 'bmk-sticky0', scope: 'col' }, ''),
+    shownFields.map((f, k) => h('th', { scope: 'col', class: k === 0 ? 'bmk-sticky1' : '', style: `min-width:${f.w || 80}px` }, f.label, f.unit ? h('small', {}, f.unit) : null, (recria ? f.reqRecria : f.req) ? h('span', { class: 'bmk-req', title: 'Obrigatório' }, '*') : null)),
+    CALC_COLS[group].map(([, label, unit]) => h('th', { scope: 'col', class: 'bmk-calc-h', title: 'Calculado' }, label, h('small', {}, unit))),
+    editable ? h('th', { scope: 'col' }, '') : null,
+  );
+
+  const body = rows.map(({ l, i, issues }) => {
+    const byField = new Map();
+    for (const x of issues) {
+      if (!byField.has(x.field)) byField.set(x.field, []);
+      byField.get(x.field).push(x);
+    }
+    const level = issues.some((x) => x.level === 'erro') ? 'erro' : issues.some((x) => x.level === 'alerta') ? 'alerta' : 'ok';
+    const c = calcLote(l);
+    const icon = h(
+      'button',
+      { class: `bmk-row-icon ${level}`, type: 'button', title: issues.length ? issues.map((x) => `${x.level === 'erro' ? '✕' : '⚠'} ${x.msg}`).join('\n') : 'Sem problemas', onclick: () => issuesDialog(kind, i) },
+      level === 'erro' ? '✕' : level === 'alerta' ? '⚠' : '✓',
+    );
+    return h(
+      'tr',
+      { class: `lvl-${level}` },
+      h('td', { class: 'bmk-sticky0' }, icon),
+      shownFields.map((f, k) => {
+        const fi = byField.get(f.key) || [];
+        const cls = fi.some((x) => x.level === 'erro') ? 'has-erro' : fi.length ? 'has-alerta' : '';
+        return h('td', { class: `${k === 0 ? 'bmk-sticky1 ' : ''}${cls}`, title: fi.map((x) => x.msg).join('\n') || null }, cellInput(kind, i, f, editable && !f.readonly));
+      }),
+      CALC_COLS[group].map(([key, , , d]) => h('td', { class: 'bmk-calc num' }, nf(c[key], d))),
+      editable ? h('td', {}, h('button', { class: 'btn btn-sm btn-ghost btn-danger', type: 'button', title: `Excluir o lote ${l.lote || ''}`, 'aria-label': 'Excluir lote', onclick: () => removeLote(kind, i) }, '×')) : null,
+    );
+  });
+
+  const filterSel = h(
+    'select',
+    { 'aria-label': 'Filtrar lotes', onchange: (e) => ((state.filter[kind] = e.target.value), lotesPanel(kind)) },
+    [['todos', `Todos (${lotes.length})`], ['erro', `Com erro (${val.lotesComErro})`], ['alerta', 'Com alerta']].map(([v, t]) => h('option', { value: v, selected: state.filter[kind] === v }, t)),
+  );
+  const search = h('input', {
+    type: 'search',
+    placeholder: 'Buscar lote ou curral',
+    value: state.search[kind],
+    'aria-label': 'Buscar lote',
+    oninput: (e) => {
+      state.search[kind] = e.target.value;
+      clearTimeout(search._t);
+      search._t = setTimeout(() => {
+        lotesPanel(kind);
+        document.querySelector(`[data-panel="${kind}"] input[type=search]`)?.focus();
+      }, 250);
+    },
+  });
+
+  fill(
+    panel,
+    h(
+      'div',
+      { class: 'bmk-toolbar' },
+      editable ? h('button', { class: 'btn btn-sm btn-primary', type: 'button', onclick: () => addLote(kind) }, '+ Novo lote') : null,
+      editable ? h('button', { class: 'btn btn-sm', type: 'button', onclick: () => pasteDialog(kind) }, 'Colar do Excel') : null,
+      editable ? h('button', { class: 'btn btn-sm', type: 'button', onclick: importDialog }, 'Importar planilha') : null,
+      editable && lotes.length ? h('button', { class: 'btn btn-sm', type: 'button', onclick: () => standardizeDialog(kind) }, 'Padronizar listas') : null,
+      recria
+        ? null
+        : h(
+            'div',
+            { class: 'bmk-seg', role: 'radiogroup', 'aria-label': 'Grupo de colunas' },
+            Object.entries(GROUPS).map(([key, g]) => h('button', { type: 'button', role: 'radio', 'aria-checked': String(group === key), class: group === key ? 'on' : '', onclick: () => ((state.group[kind] = key), lotesPanel(kind)) }, g.label)),
+          ),
+      h('span', { class: 'spacer' }),
+      filterSel,
+      search,
+    ),
+    lotes.length
+      ? h('div', { class: 'bmk-grid-wrap' }, h('table', { class: 'bmk-grid' }, h('thead', {}, head), h('tbody', {}, body.length ? body : h('tr', {}, h('td', { colspan: 99, class: 'muted bmk-empty' }, 'Nenhum lote neste filtro.')))))
+      : h(
+          'div',
+          { class: 'bmk-blank' },
+          h('h3', {}, recria ? 'Nenhum lote de recria confinada' : 'Nenhum lote de engorda ainda'),
+          h('p', { class: 'muted' }, recria ? 'Se a fazenda faz recria confinada, inclua os lotes aqui (mesmas colunas da aba "BD_Zootec_Feed_ Recria_Conf" da planilha).' : 'Inclua os lotes encerrados no ano: digite, cole do Excel (mesma ordem de colunas da planilha de benchmarking) ou importe a planilha inteira.'),
+          editable ? h('div', { class: 'bmk-blank-actions' }, h('button', { class: 'btn btn-primary', type: 'button', onclick: () => addLote(kind) }, '+ Novo lote'), h('button', { class: 'btn', type: 'button', onclick: () => pasteDialog(kind) }, 'Colar do Excel'), h('button', { class: 'btn', type: 'button', onclick: importDialog }, 'Importar planilha')) : null,
+        ),
+    lotes.length ? h('p', { class: 'muted bmk-legend' }, '* obrigatório · ✕ erro (impede o envio) · ⚠ alerta (confira: o valor informado não bate com o recalculado ou está fora da faixa esperada) · colunas cinza são calculadas. Passe o mouse ou clique no ícone para ver o motivo.') : null,
+  );
+}
+
+// Uma célula editável. Atualiza o lote e revalida a linha sem redesenhar a tabela inteira a cada tecla.
+function cellInput(kind, i, f, editable) {
+  const l = state.data[kind][i];
+  const value = l[f.key] ?? '';
+  // cleanLote descarta campos vazios, então apagar a célula remove o valor.
+  const commit = (raw) => {
+    state.data[kind][i] = cleanLote({ ...l, [f.key]: raw });
+    changed();
+  };
+  if (f.type === 'list') {
+    const opts = settings().listas[f.list];
+    const sel = h(
+      'select',
+      { disabled: !editable, 'aria-label': f.label, onchange: (e) => (commit(e.target.value), lotesPanel(kind)) },
+      h('option', { value: '' }, '—'),
+      opts.map((o) => h('option', { value: o, selected: value === o }, o)),
+      value && !opts.includes(value) ? h('option', { value, selected: true }, `${value} (fora da lista)`) : null,
+    );
+    return sel;
+  }
+  const input = h('input', {
+    type: f.type === 'date' ? 'date' : 'text',
+    inputmode: f.type === 'num' || f.type === 'int' ? 'decimal' : undefined,
+    value: typeof value === 'number' ? String(value).replace('.', ',') : value,
+    disabled: !editable,
+    'aria-label': f.label,
+    class: f.type === 'num' || f.type === 'int' ? 'num' : '',
+    onchange: (e) => {
+      commit(e.target.value.trim());
+      // Redesenha para atualizar os ícones e as colunas calculadas, mantendo o foco na próxima célula.
+      const pos = [...document.querySelectorAll(`[data-panel="${kind}"] .bmk-grid input, [data-panel="${kind}"] .bmk-grid select`)].indexOf(document.activeElement);
+      lotesPanel(kind);
+      if (pos >= 0) document.querySelectorAll(`[data-panel="${kind}"] .bmk-grid input, [data-panel="${kind}"] .bmk-grid select`)[pos]?.focus();
+    },
+  });
+  return input;
+}
+
+function addLote(kind) {
+  state.data[kind].push({});
+  state.filter[kind] = 'todos';
+  state.search[kind] = '';
+  changed();
+  lotesPanel(kind);
+  const inputs = document.querySelectorAll(`[data-panel="${kind}"] .bmk-grid tbody tr:last-child input`);
+  inputs[0]?.focus();
+}
+
+function removeLote(kind, i) {
+  const l = state.data[kind][i];
+  if (Object.keys(l).length > 1 && !confirm(`Excluir o lote ${l.lote || '(sem identificação)'}?`)) return;
+  state.data[kind].splice(i, 1);
+  changed();
+  lotesPanel(kind);
+}
+
+function issuesDialog(kind, i) {
+  const l = state.data[kind][i];
+  const issues = validateLotes(state.data[kind], settings(), { recria: kind === 'recria' }).porLote[i];
+  const c = calcLote(l);
+  fill(
+    dialog,
+    h(
+      'div',
+      { class: 'bmk-dialog' },
+      h('h2', {}, `Lote ${l.lote || '(sem identificação)'}`),
+      issues.length
+        ? h('ul', { class: 'bmk-issues' }, issues.map((x) => h('li', { class: x.level }, h('strong', {}, x.level === 'erro' ? '✕ Erro · ' : '⚠ Alerta · '), x.msg)))
+        : h('p', { class: 'bmk-callout ok' }, 'Sem problemas neste lote.'),
+      h('h3', {}, 'Recalculado a partir dos dados'),
+      h(
+        'table',
+        { class: 'bmk-mini' },
+        h(
+          'tbody',
+          {},
+          [
+            ['Peso de carcaça (kg)', c.pesoCarc, 1],
+            ['GPD (kg/dia)', c.gpd, 3],
+            ['Ganho (@/cab)', c.ganhoArroba, 2],
+            ['Rendimento de carcaça (%)', c.rc, 1],
+            ['Eficiência alimentar (kgMS/@)', c.eficAlim, 1],
+            ['Conversão alimentar (kgMS/kgPV)', c.convAlim, 2],
+            ['Dias de trato', c.diasTrato, 0],
+          ].map(([label, v, d]) => h('tr', {}, h('th', {}, label), h('td', { class: 'num' }, nf(v, d)))),
+        ),
+      ),
+      h('div', { class: 'dialog-actions' }, h('button', { class: 'btn btn-primary', type: 'button', onclick: () => dialog.close() }, 'Fechar')),
+    ),
+  );
+  dialog.showModal();
+}
+
+// ---------- Colar do Excel (mesma ordem de colunas da planilha) ----------
+
+// Lê linhas coladas (separadas por tabulação) usando a letra de coluna de cada campo.
+function rowsFromTsv(text, columns) {
+  const lines = text.replace(/\r/g, '').split('\n').filter((line) => line.trim());
+  return lines
+    .map((line) => line.split('\t'))
+    .filter((cells) => !/^lote$/i.test(String(cells[0] || '').trim()) && !/^identifica/i.test(String(cells[0] || '').trim()))
+    .map((cells) => {
+      const raw = {};
+      for (const f of columns) {
+        const v = cells[colIndex(f.col)];
+        if (v !== undefined && String(v).trim() !== '') raw[f.key] = String(v).trim();
+      }
+      return raw;
+    })
+    .filter((r) => r.lote);
+}
+
+// Junta lotes novos aos atuais pelo identificador do lote (atualiza os existentes, inclui os novos).
+function mergeLotes(kind, incoming) {
+  const list = state.data[kind];
+  let added = 0;
+  let updated = 0;
+  for (const raw of incoming) {
+    const i = list.findIndex((l) => String(l.lote) === String(raw.lote));
+    if (i >= 0) {
+      list[i] = cleanLote({ ...list[i], ...raw });
+      updated += 1;
+    } else {
+      list.push(cleanLote(raw));
+      added += 1;
+    }
+  }
+  return { added, updated };
+}
+
+function pasteDialog(kind) {
+  const recria = kind === 'recria';
+  const area = h('textarea', { rows: 12, placeholder: 'Copie as linhas no Excel (Ctrl+C) e cole aqui (Ctrl+V)…', class: 'bmk-paste' });
+  let which = 'zoo';
+  const info = h('p', { class: 'muted' });
+  const showInfo = () => {
+    const cols = which === 'zoo' ? COLUNAS_ZOO : COLUNAS_ECO;
+    info.textContent = `Ordem esperada (como na aba ${which === 'zoo' ? (recria ? 'BD_Zootec_Feed_ Recria_Conf' : 'BD_Zootec_Feed') : 'BD_Econom_Feed'}, a partir da coluna A): ${cols.map((f) => `${f.col} ${f.label || 'Lote'}`).join(' · ')}. Colunas que não estão na lista (como Mortes % e as calculadas) são ignoradas. Lotes já existentes são atualizados pelo número do lote.`;
+  };
+  showInfo();
+  fill(
+    dialog,
+    h(
+      'form',
+      {
+        class: 'bmk-dialog',
+        onsubmit: (e) => {
+          e.preventDefault();
+          const rows = rowsFromTsv(area.value, which === 'zoo' ? COLUNAS_ZOO : COLUNAS_ECO);
+          if (!rows.length) return toast('Nenhuma linha com número de lote foi encontrada.', 'error');
+          const { added, updated } = mergeLotes(kind, rows);
+          changed();
+          dialog.close();
+          lotesPanel(kind);
+          toast(`${added} lote(s) incluído(s), ${updated} atualizado(s).`);
+        },
+      },
+      h('h2', {}, `Colar do Excel · ${recria ? 'recria confinada' : 'engorda'}`),
+      recria
+        ? null
+        : h(
+            'div',
+            { class: 'bmk-seg' },
+            [['zoo', 'Dados zootécnicos'], ['eco', 'Dados econômicos']].map(([v, label]) =>
+              h(
+                'button',
+                {
+                  type: 'button',
+                  class: v === which ? 'on' : '',
+                  onclick: (e) => {
+                    which = v;
+                    e.target.parentElement.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b === e.target));
+                    showInfo();
+                  },
+                },
+                label,
+              ),
+            ),
+          ),
+      info,
+      area,
+      h('div', { class: 'dialog-actions' }, h('button', { class: 'btn', type: 'button', onclick: () => dialog.close() }, 'Cancelar'), h('button', { class: 'btn btn-primary', type: 'submit' }, 'Incluir lotes')),
+    ),
+  );
+  dialog.showModal();
+  area.focus();
+}
+
+// ---------- Importar a planilha atual (.xlsb/.xlsx) ----------
+
+let xlsxLoading = null;
+function loadXlsx() {
+  xlsxLoading ??= new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = '/vendor/xlsx.full.min.js';
+    s.onload = () => resolve(window.XLSX);
+    s.onerror = () => {
+      xlsxLoading = null;
+      reject(new Error('Não foi possível carregar o leitor de planilhas.'));
+    };
+    document.head.append(s);
+  });
+  return xlsxLoading;
+}
+
+// Linha da aba Q1 (1 a 100) → pergunta do questionário (as sem número ficam pela posição).
+const Q1_ROWS = [
+  ...Array.from({ length: 39 }, (_, i) => `q${i + 1}`),
+  'q40a', 'q40b', 'q40c', 'q41', 'q42', 'q43', 'q44',
+  ...Array.from({ length: 12 }, (_, i) => `q${45 + i}`),
+  'q57', 'q58', 'q59', 'q60', 'q61', 'q62', 'q62b', 'q63', 'q63b', 'q63c', 'q64', 'q65', 'q66', 'q66b', 'q67', 'q68',
+  'q69a', 'q69b', 'q69c', 'q69d', 'q69e', 'q70',
+  ...Array.from({ length: 16 }, (_, i) => `q${71 + i}`),
+  'q87', 'q88', 'q89', 'q90',
+];
+
+function excelDate(v, XLSX) {
+  if (typeof v === 'number') {
+    const d = XLSX.SSF.parse_date_code(v);
+    return d ? `${d.y}-${String(d.m).padStart(2, '0')}-${String(d.d).padStart(2, '0')}` : null;
+  }
+  const m = String(v).match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  return m ? `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` : String(v);
+}
+
+function sheetRows(XLSX, ws, columns, firstRow = 4) {
+  if (!ws) return [];
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 'A', range: firstRow - 1, raw: true, defval: null });
+  return rows
+    .map((r) => {
+      const raw = {};
+      for (const f of columns) {
+        const v = r[f.col];
+        if (v === null || v === undefined || v === '') continue;
+        raw[f.key] = f.type === 'date' ? excelDate(v, XLSX) : v;
+      }
+      return raw;
+    })
+    .filter((r) => r.lote !== undefined && String(r.lote).trim() !== '');
+}
+
+function answerFromCell(q, v) {
+  if (v === null || v === undefined || v === '') return null;
+  if (q.type === 'multi') return String(v).split(';').map((x) => x.trim()).filter(Boolean);
+  const { value } = cleanAnswer(q, v);
+  return value ?? String(v).trim();
+}
+
+async function readWorkbook(file) {
+  const XLSX = await loadXlsx();
+  const wb = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+  const engZoo = sheetRows(XLSX, wb.Sheets.BD_Zootec_Feed, COLUNAS_ZOO);
+  const engEco = sheetRows(XLSX, wb.Sheets.BD_Econom_Feed, COLUNAS_ECO);
+  const recria = sheetRows(XLSX, wb.Sheets['BD_Zootec_Feed_ Recria_Conf'], COLUNAS_ZOO);
+  const ecoById = new Map(engEco.map((r) => [String(r.lote), r]));
+  const engorda = engZoo.map((r) => ({ ...r, ...(ecoById.get(String(r.lote)) || {}) }));
+  for (const r of engEco) if (!engZoo.some((z) => String(z.lote) === String(r.lote))) engorda.push(r);
+  const respostas = {};
+  const q1 = wb.Sheets.Q1;
+  if (q1) {
+    const rows = XLSX.utils.sheet_to_json(q1, { header: 'A', raw: true, defval: null });
+    Q1_ROWS.forEach((id, i) => {
+      const q = QUESTIONS.find((x) => x.id === id);
+      const a = answerFromCell(q, rows[i]?.B);
+      if (q && a !== null && !(typeof a === 'number' && a === 0 && ['q45', 'q46', 'q52', 'q53', 'q54'].includes(id))) respostas[id] = a;
+    });
+  }
+  return { engorda, recria, respostas, sheets: wb.SheetNames };
+}
+
+function importDialog() {
+  const fileInput = h('input', { type: 'file', accept: '.xlsb,.xlsx,.xlsm,.xls' });
+  const result = h('div', { class: 'bmk-import-result' });
+  let parsed = null;
+  const modes = h(
+    'div',
+    { class: 'bmk-import-modes', hidden: true },
+    h('label', { class: 'check' }, h('input', { type: 'radio', name: 'mode', value: 'merge', checked: true }), h('span', {}, h('strong', {}, 'Juntar'), ' — atualiza os lotes com o mesmo número e inclui os novos')),
+    h('label', { class: 'check' }, h('input', { type: 'radio', name: 'mode', value: 'replace' }), h('span', {}, h('strong', {}, 'Substituir'), ' — apaga os lotes atuais e fica só com os da planilha')),
+    h('label', { class: 'check' }, h('input', { type: 'checkbox', name: 'respostas', checked: true }), h('span', {}, 'Trazer também as respostas do questionário (aba Q1)')),
+  );
+  const submitBtn = h('button', { class: 'btn btn-primary', type: 'submit', disabled: true }, 'Importar');
+  fileInput.addEventListener('change', async () => {
+    const file = fileInput.files[0];
+    if (!file) return;
+    fill(result, h('p', { class: 'muted' }, 'Lendo a planilha… (arquivos grandes podem levar alguns segundos)'));
+    try {
+      parsed = await readWorkbook(file);
+      const nResp = Object.keys(parsed.respostas).length;
+      fill(
+        result,
+        h(
+          'ul',
+          { class: 'bmk-import-list' },
+          h('li', {}, h('strong', {}, parsed.engorda.length), ' lotes de engorda (BD_Zootec_Feed + BD_Econom_Feed)'),
+          h('li', {}, h('strong', {}, parsed.recria.length), ' lotes de recria confinada'),
+          h('li', {}, h('strong', {}, nResp), ' respostas do questionário (aba Q1)'),
+        ),
+        !parsed.engorda.length && !parsed.recria.length && !nResp ? h('p', { class: 'alert' }, `Não encontrei as abas do modelo de benchmarking neste arquivo (abas: ${parsed.sheets.join(', ')}).`) : null,
+      );
+      modes.hidden = false;
+      submitBtn.disabled = !parsed.engorda.length && !parsed.recria.length && !nResp;
+    } catch (err) {
+      parsed = null;
+      fill(result, h('p', { class: 'alert' }, `Não consegui ler o arquivo: ${err.message}`));
+    }
+  });
+  fill(
+    dialog,
+    h(
+      'form',
+      {
+        class: 'bmk-dialog',
+        onsubmit: (e) => {
+          e.preventDefault();
+          if (!parsed) return;
+          const form = e.target;
+          const mode = form.elements.mode.value;
+          if (mode === 'replace' && (state.data.engorda.length || state.data.recria.length) && !confirm('Apagar os lotes atuais e ficar só com os da planilha?')) return;
+          if (mode === 'replace') {
+            state.data.engorda = [];
+            state.data.recria = [];
+          }
+          const a = mergeLotes('engorda', parsed.engorda);
+          const b = mergeLotes('recria', parsed.recria);
+          if (form.elements.respostas.checked) state.data.respostas = { ...state.data.respostas, ...parsed.respostas };
+          changed();
+          dialog.close();
+          renderAll();
+          toast(`Importado: ${a.added + a.updated} lotes de engorda, ${b.added + b.updated} de recria. Confira os erros e alertas.`);
+          const sum = localSummary();
+          if (sum.erros) setTimeout(() => standardizeDialog(state.tab === 'recria' ? 'recria' : 'engorda', { auto: true }), 400);
+        },
+      },
+      h('h2', {}, 'Importar a planilha de benchmarking'),
+      h('p', { class: 'muted' }, 'Escolha o arquivo no modelo atual ("Benchmarking Confinamento Probeef … Feed Manager", .xlsb ou .xlsx). O arquivo é lido aqui no seu navegador; só os dados vão para o portal.'),
+      fileInput,
+      result,
+      modes,
+      h('div', { class: 'dialog-actions' }, h('button', { class: 'btn', type: 'button', onclick: () => dialog.close() }, 'Cancelar'), submitBtn),
+    ),
+  );
+  dialog.showModal();
+}
+
+// ---------- Padronizar listas (o "Validação e Classificação" da planilha) ----------
+
+function standardizeDialog(kind, { auto = false } = {}) {
+  const listFields = ZOO_FIELDS.filter((f) => f.type === 'list');
+  const lists = settings().listas;
+  const unknown = [];
+  for (const f of listFields) {
+    const values = new Map();
+    for (const l of state.data[kind]) {
+      const v = l[f.key];
+      if (v && !lists[f.list].includes(v)) values.set(v, (values.get(v) || 0) + 1);
+    }
+    for (const [v, n] of values) unknown.push({ f, v, n });
+  }
+  if (!unknown.length) {
+    if (!auto) toast('Todos os valores de raça, categoria, origem e tipo de entrada já estão nas listas.');
+    return;
+  }
+  const guess = (v, opts) => {
+    const fold = (t) => String(t).normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+    return opts.find((o) => fold(o) === fold(v)) || opts.find((o) => fold(v).includes(fold(o).split(/[ (]/)[0])) || '';
+  };
+  const rows = unknown.map((u) => {
+    const sel = h('select', {}, h('option', { value: '' }, 'Deixar como está'), lists[u.f.list].map((o) => h('option', { value: o, selected: guess(u.v, lists[u.f.list]) === o }, o)));
+    return { u, sel, el: h('tr', {}, h('td', {}, u.f.label), h('td', {}, h('code', {}, u.v)), h('td', { class: 'num' }, u.n), h('td', {}, sel)) };
+  });
+  fill(
+    dialog,
+    h(
+      'form',
+      {
+        class: 'bmk-dialog',
+        onsubmit: (e) => {
+          e.preventDefault();
+          let n = 0;
+          for (const { u, sel } of rows) {
+            if (!sel.value) continue;
+            for (const l of state.data[kind]) if (l[u.f.key] === u.v) {
+              l[u.f.key] = sel.value;
+              n += 1;
+            }
+          }
+          if (n) changed();
+          dialog.close();
+          renderAll();
+          toast(n ? `${n} valor(es) padronizado(s).` : 'Nada alterado.');
+        },
+      },
+      h('h2', {}, 'Padronizar raça, categoria, origem e tipo de entrada'),
+      h('p', { class: 'muted' }, 'Estes valores não estão nas listas do benchmarking. Escolha o equivalente de cada um (as sugestões já vêm marcadas) e aplique em todos os lotes de uma vez.'),
+      h('div', { class: 'table-wrap' }, h('table', { class: 'bmk-mini' }, h('thead', {}, h('tr', {}, h('th', {}, 'Campo'), h('th', {}, 'Valor encontrado'), h('th', {}, 'Lotes'), h('th', {}, 'Usar'))), h('tbody', {}, rows.map((r) => r.el)))),
+      h('div', { class: 'dialog-actions' }, h('button', { class: 'btn', type: 'button', onclick: () => dialog.close() }, 'Agora não'), h('button', { class: 'btn btn-primary', type: 'submit' }, 'Aplicar')),
+    ),
+  );
+  dialog.showModal();
+}
+
+// ---------- Questionário ----------
+
+function questionInput(q, editable) {
+  const r = state.data.respostas;
+  const value = r[q.id];
+  const set = (v) => {
+    r[q.id] = v;
+    changed();
+  };
+  const error = h('small', { class: 'bmk-q-error' });
+  const showError = (v) => {
+    const { error: e } = cleanAnswer(q, v);
+    error.textContent = e || '';
+  };
+  if (['text', 'email', 'int', 'num', 'pct'].includes(q.type)) {
+    const input = h('input', {
+      type: q.type === 'email' ? 'email' : 'text',
+      inputmode: ['int', 'num', 'pct'].includes(q.type) ? 'decimal' : undefined,
+      value: typeof value === 'number' ? String(value).replace('.', ',') : (value ?? ''),
+      disabled: !editable,
+      onchange: (e) => {
+        const v = e.target.value.trim();
+        showError(v);
+        const { value: clean } = cleanAnswer(q, v);
+        set(clean ?? (v || null));
+        renderQuestionProgress();
+      },
+    });
+    if (value !== undefined && value !== null) showError(value);
+    return h('div', { class: 'bmk-q-input' }, h('span', { class: 'bmk-input-unit' }, input, q.unit ? h('span', {}, q.unit) : null), error);
+  }
+  if (q.type === 'uf') {
+    return h('select', { disabled: !editable, onchange: (e) => (set(e.target.value || null), renderQuestionProgress()) }, h('option', { value: '' }, '—'), OPTIONS.UFS.map((u) => h('option', { value: u, selected: value === u }, u)));
+  }
+  if (q.type === 'textarea') {
+    return h('textarea', { rows: 4, disabled: !editable, onchange: (e) => (set(e.target.value.trim() || null), renderQuestionProgress()) }, value || '');
+  }
+  if (q.type === 'sn' || q.type === 'choice') {
+    const opts = q.type === 'sn' ? OPTIONS.SN : q.options;
+    const isOther = value && !opts.includes(value);
+    const other = h('input', { type: 'text', placeholder: 'Qual?', value: isOther ? value : '', disabled: !editable, hidden: !isOther, onchange: (e) => (set(e.target.value.trim() || null), renderQuestionProgress()) });
+    return h(
+      'div',
+      { class: 'bmk-options' },
+      opts.map((o) =>
+        h(
+          'label',
+          { class: `bmk-opt${value === o ? ' on' : ''}` },
+          h('input', {
+            type: 'radio',
+            name: q.id,
+            value: o,
+            checked: value === o,
+            disabled: !editable,
+            onchange: () => {
+              set(o);
+              renderQuestions();
+            },
+          }),
+          o,
+        ),
+      ),
+      q.other
+        ? h(
+            'label',
+            { class: `bmk-opt${isOther ? ' on' : ''}` },
+            h('input', {
+              type: 'radio',
+              name: q.id,
+              checked: Boolean(isOther),
+              disabled: !editable,
+              onchange: () => {
+                other.hidden = false;
+                other.focus();
+              },
+            }),
+            'Outro',
+          )
+        : null,
+      q.other ? other : null,
+    );
+  }
+  if (q.type === 'multi') {
+    const list = Array.isArray(value) ? value : [];
+    const extra = list.filter((v) => !q.options.includes(v));
+    const other = h('input', {
+      type: 'text',
+      placeholder: 'Outros (separe por ponto e vírgula)',
+      value: extra.join('; '),
+      disabled: !editable,
+      onchange: (e) => {
+        const typed = e.target.value.split(';').map((x) => x.trim()).filter(Boolean);
+        set([...list.filter((v) => q.options.includes(v)), ...typed]);
+        renderQuestionProgress();
+      },
+    });
+    return h(
+      'div',
+      { class: 'bmk-options' },
+      q.options.map((o) =>
+        h(
+          'label',
+          { class: `bmk-opt${list.includes(o) ? ' on' : ''}` },
+          h('input', {
+            type: 'checkbox',
+            checked: list.includes(o),
+            disabled: !editable,
+            onchange: (e) => {
+              const next = e.target.checked ? [...list, o] : list.filter((x) => x !== o);
+              if (q.max && next.filter((x) => q.options.includes(x)).length > q.max) {
+                e.target.checked = false;
+                return toast(`Escolha no máximo ${q.max}.`, 'error');
+              }
+              set(next);
+              renderQuestions();
+            },
+          }),
+          o,
+        ),
+      ),
+      q.other ? other : null,
+      q.max ? h('small', { class: 'muted' }, `Escolha até ${q.max}.`) : null,
+    );
+  }
+  return null;
+}
+
+function renderQuestionProgress() {
+  renderStatus();
+  const v = validateQuestionario(state.data.respostas);
+  for (const s of QUESTIONARIO) {
+    const el = document.querySelector(`[data-qsection="${s.id}"] .bmk-qnav-count`);
+    if (!el) continue;
+    const qs = s.questions.filter((q) => questionVisible(q, state.data.respostas));
+    const done = qs.filter((q) => {
+      const a = state.data.respostas[q.id];
+      return !(a === null || a === undefined || a === '' || (Array.isArray(a) && !a.length));
+    }).length;
+    el.textContent = `${done}/${qs.length}`;
+    el.classList.toggle('done', done === qs.length);
+    el.classList.toggle('missing', s.questions.some((q) => v.faltando.includes(q.id)));
+  }
+}
+
+function renderQuestions() {
+  const panel = document.querySelector('[data-panel="questionario"]');
+  const editable = canEdit();
+  const v = validateQuestionario(state.data.respostas);
+  const section = QUESTIONARIO.find((s) => s.id === state.qSection) || QUESTIONARIO[0];
+  const idx = QUESTIONARIO.indexOf(section);
+  const scrollY = document.getElementById('bmk').scrollTop;
+  fill(
+    panel,
+    h(
+      'div',
+      { class: 'bmk-q-layout' },
+      h(
+        'nav',
+        { class: 'bmk-qnav', 'aria-label': 'Seções do questionário' },
+        QUESTIONARIO.map((s) =>
+          h('button', { type: 'button', 'data-qsection': s.id, class: s.id === section.id ? 'on' : '', onclick: () => ((state.qSection = s.id), renderQuestions(), document.getElementById('bmk').scrollTo({ top: 0 })) }, h('span', {}, s.title), h('span', { class: 'bmk-qnav-count' })),
+        ),
+      ),
+      h(
+        'div',
+        { class: 'bmk-q-section' },
+        h('h2', {}, section.title),
+        section.note ? h('p', { class: 'muted' }, section.note) : null,
+        section.questions
+          .filter((q) => questionVisible(q, state.data.respostas))
+          .map((q) =>
+            h(
+              'div',
+              { class: `bmk-q${v.faltando.includes(q.id) ? ' missing' : ''}` },
+              h('label', { class: 'bmk-q-label' }, h('span', { class: 'bmk-q-n' }, q.n), h('span', {}, questionText(q, settings()), q.req ? h('span', { class: 'bmk-req' }, ' *') : null)),
+              q.hint ? h('small', { class: 'muted' }, questionText({ text: q.hint }, settings())) : null,
+              questionInput(q, editable),
+              v.alertas.filter((a) => a.id === q.id).map((a) => h('small', { class: 'bmk-q-warn' }, `⚠ ${a.msg}`)),
+            ),
+          ),
+        h(
+          'div',
+          { class: 'bmk-q-nav' },
+          idx > 0 ? h('button', { class: 'btn', type: 'button', onclick: () => ((state.qSection = QUESTIONARIO[idx - 1].id), renderQuestions(), document.getElementById('bmk').scrollTo({ top: 0 })) }, `← ${QUESTIONARIO[idx - 1].title}`) : h('span'),
+          idx < QUESTIONARIO.length - 1 ? h('button', { class: 'btn btn-primary', type: 'button', onclick: () => ((state.qSection = QUESTIONARIO[idx + 1].id), renderQuestions(), document.getElementById('bmk').scrollTo({ top: 0 })) }, `${QUESTIONARIO[idx + 1].title} →`) : null,
+        ),
+      ),
+    ),
+  );
+  document.getElementById('bmk').scrollTop = scrollY;
+  renderQuestionProgress();
+}
+
+// ---------- Resultado (abas FINAL e FINAL RECRIA) ----------
+
+function renderResult() {
+  const panel = document.querySelector('[data-panel="resultado"]');
+  const cats = settings().listas.categorias;
+  const eng = cats.map((c) => resultadoEngorda(state.data.engorda, state.data.respostas, c)).filter(Boolean);
+  const rec = cats.map((c) => resultadoRecria(state.data.recria, c)).filter(Boolean);
+  const table = (rows, obj, fonte = {}) =>
+    h(
+      'table',
+      { class: 'bmk-result-table' },
+      h(
+        'tbody',
+        {},
+        rows.map(([key, label, d, src]) => h('tr', {}, h('th', {}, label, src && fonte[src] === 'questionário' ? h('span', { class: 'bmk-src', title: 'Valor informado no questionário' }, 'questionário') : null), h('td', { class: 'num' }, nf(obj[key], d)))),
+      ),
+    );
+  const engCard = (r) =>
+    h(
+      'section',
+      { class: 'bmk-card' },
+      h('header', { class: 'bmk-card-head' }, h('h2', {}, r.categoria), h('span', { class: 'muted' }, `${nf(r.zootecnico.animais, 0)} animais em ${r.zootecnico.lotes} lote(s)`)),
+      h(
+        'div',
+        { class: 'bmk-hero-row' },
+        [
+          ['Lucro', r.economico.lucro, 'R$/cab', 2],
+          ['Rentabilidade', r.economico.rentabilidadeMensal, '% ao mês', 2],
+          ['Custo total da @', r.economico.custoTotalArroba, 'R$/@', 2],
+          ['GDC', r.zootecnico.gdc, 'kg/dia', 3],
+        ].map(([label, v, unit, d]) => h('div', { class: 'bmk-hero' }, h('span', {}, label), h('strong', { class: v < 0 ? 'neg' : '' }, nf(v, d)), h('small', {}, unit))),
+      ),
+      h('div', { class: 'bmk-result-cols' }, h('div', {}, h('h3', {}, 'Zootécnico'), table(ZOO_RESULT_ROWS, r.zootecnico)), h('div', {}, h('h3', {}, 'Econômico'), table(ECO_RESULT_ROWS, r.economico, r.fonte))),
+    );
+  const recCard = (r) => h('section', { class: 'bmk-card' }, h('header', { class: 'bmk-card-head' }, h('h2', {}, `Recria · ${r.categoria}`), h('span', { class: 'muted' }, `${nf(r.zootecnico.animais, 0)} animais em ${r.zootecnico.lotes} lote(s)`)), table(ZOO_RESULT_ROWS, r.zootecnico));
+  const sum = localSummary();
+  fill(
+    panel,
+    sum.erros ? h('div', { class: 'bmk-callout warn' }, `Há ${sum.erros} erro(s) nos lotes: o resultado abaixo pode mudar depois das correções.`) : null,
+    h('p', { class: 'muted' }, 'Médias ponderadas pelo número de animais de cada lote, por categoria (como a aba FINAL da planilha). Os custos marcados "questionário" vêm das respostas da seção Comercialização; os demais, dos lotes.'),
+    eng.length || rec.length ? [eng.map(engCard), rec.map(recCard)] : h('div', { class: 'bmk-blank' }, h('h3', {}, 'Ainda sem resultado'), h('p', { class: 'muted' }, 'Inclua lotes com categoria e número de animais para ver o resultado.')),
+  );
+}
+
+// ---------- Histórico ----------
+
+const ACTION_LABEL = { enviado: 'Enviado para validação', devolver: 'Devolvido para correção', aprovar: 'Aprovado', reabrir: 'Reaberto para edição' };
+
+function renderHistory() {
+  const panel = document.querySelector('[data-panel="historico"]');
+  const msgs = [...state.view.submission.messages].reverse();
+  fill(
+    panel,
+    msgs.length
+      ? h('ol', { class: 'bmk-history' }, msgs.map((m) => h('li', {}, h('strong', {}, ACTION_LABEL[m.action] || m.action), h('span', { class: 'muted' }, ` · ${m.byName || '—'} · ${fmtDateTime(m.at)}`), m.text ? h('p', {}, m.text) : null)))
+      : h('p', { class: 'muted' }, 'Nenhum envio ainda.'),
+  );
+}
+
+// ---------- Envio e validação ----------
+
+function submitDialog() {
+  const sum = localSummary();
+  const text = h('textarea', { rows: 3, placeholder: 'Observações para a Cargill (opcional), por exemplo a explicação de algum alerta.' });
+  fill(
+    dialog,
+    h(
+      'form',
+      {
+        class: 'bmk-dialog',
+        onsubmit: async (e) => {
+          e.preventDefault();
+          try {
+            await saveNow();
+            const view = await api(`/api/benchmark/${state.clientId}/submit`, { method: 'POST', body: { text: text.value } });
+            applyView(view);
+            dialog.close();
+            toast('Enviado! A Cargill vai validar e você recebe a resposta pelo botão Mensagens do portal.');
+          } catch (err) {
+            toast(err.message, 'error');
+          }
+        },
+      },
+      h('h2', {}, 'Enviar para validação'),
+      h('p', {}, `${sum.total} lote(s), ${sum.q.respondidas} resposta(s) no questionário.`),
+      sum.alertas ? h('p', { class: 'bmk-callout warn' }, `Ainda há ${sum.alertas} alerta(s). Pode enviar mesmo assim, mas explique abaixo se forem valores corretos.`) : null,
+      text,
+      h('p', { class: 'muted' }, 'Depois do envio a edição fica travada até a Cargill aprovar ou devolver para correção.'),
+      h('div', { class: 'dialog-actions' }, h('button', { class: 'btn', type: 'button', onclick: () => dialog.close() }, 'Cancelar'), h('button', { class: 'btn btn-primary', type: 'submit' }, 'Enviar')),
+    ),
+  );
+  dialog.showModal();
+}
+
+function reviewDialog(action) {
+  const titles = { devolver: 'Devolver para correção', aprovar: 'Aprovar benchmarking', reabrir: 'Reabrir para edição' };
+  const text = h('textarea', { rows: 4, required: action === 'devolver', placeholder: action === 'devolver' ? 'O que precisa ser corrigido? (o cliente recebe esta mensagem)' : 'Mensagem para o cliente (opcional)' });
+  fill(
+    dialog,
+    h(
+      'form',
+      {
+        class: 'bmk-dialog',
+        onsubmit: async (e) => {
+          e.preventDefault();
+          try {
+            const view = await api(`/api/benchmark/${state.clientId}/review`, { method: 'POST', body: { action, text: text.value } });
+            applyView(view);
+            dialog.close();
+            toast({ devolver: 'Devolvido. O cliente recebeu a mensagem no portal.', aprovar: 'Aprovado.', reabrir: 'Reaberto para edição.' }[action]);
+          } catch (err) {
+            toast(err.message, 'error');
+          }
+        },
+      },
+      h('h2', {}, titles[action]),
+      text,
+      h('p', { class: 'muted' }, 'A mensagem chega para os usuários do cliente pelo botão Mensagens do portal.'),
+      h('div', { class: 'dialog-actions' }, h('button', { class: 'btn', type: 'button', onclick: () => dialog.close() }, 'Cancelar'), h('button', { class: `btn ${action === 'devolver' ? 'btn-danger' : 'btn-primary'}`, type: 'submit' }, titles[action])),
+    ),
+  );
+  dialog.showModal();
+  text.focus();
+}
+
+// ---------- Abas e carregamento ----------
+
+function renderAll() {
+  renderStatus();
+  if (state.tab === 'engorda' || state.tab === 'recria') lotesPanel(state.tab);
+  if (state.tab === 'questionario') renderQuestions();
+  if (state.tab === 'resultado') renderResult();
+  if (state.tab === 'historico') renderHistory();
+}
+
+function selectTab(name) {
+  state.tab = name;
+  document.querySelectorAll('[data-tab]').forEach((t) => t.setAttribute('aria-selected', String(t.dataset.tab === name)));
+  document.querySelectorAll('[data-panel]').forEach((p) => (p.hidden = p.dataset.panel !== name));
+  history.replaceState(null, '', `#${name}`);
+  renderAll();
+}
+
+function applyView(view) {
+  state.view = view;
+  state.version = view.submission.version;
+  state.data = { engorda: structuredClone(view.submission.engorda), recria: structuredClone(view.submission.recria), respostas: structuredClone(view.submission.respostas) };
+  // Primeira vez: já preenche nome, e-mail e empresa a partir do portal.
+  const r = state.data.respostas;
+  if (!view.submission.updatedAt && canEdit() && !state.isAdmin) {
+    r.q1 ??= view.client.name;
+    r.q5 ??= state.me.name;
+    r.q6 ??= state.me.email;
+  }
+  state.dirty = false;
+  state.conflict = false;
+  renderAll();
+}
+
+async function loadClient(id) {
+  await saveNow();
+  state.clientId = id;
+  try {
+    localStorage.setItem('bi-probeef:bmk-cliente', id);
+  } catch {
+    // Sem armazenamento local: só não lembra o cliente.
+  }
+  applyView(await api(`/api/benchmark/${id}`));
+}
+
+async function init() {
+  const { user } = await api('/api/auth/me');
+  state.me = user;
+  initTicker();
+  if (user.impersonatedBy) {
+    document.getElementById('impersonation-text').textContent = `Você (${user.impersonatedBy.name}) está vendo o benchmarking como ${user.name}. Nada é salvo.`;
+    document.getElementById('impersonation').hidden = false;
+  }
+  const info = await api('/api/benchmark/clients');
+  Object.assign(state, { clients: info.clients, isAdmin: info.isAdmin, ano: info.ano, prazo: info.prazo });
+  document.getElementById('bmk-title').textContent = `Benchmarking Confinamento ${info.ano}`;
+  document.title = `Benchmarking ${info.ano}`;
+  if (!info.clients.length) {
+    fill(document.getElementById('status'), h('div', { class: 'bmk-blank' }, h('h3', {}, 'Nenhum cliente no benchmarking'), h('p', { class: 'muted' }, info.isAdmin ? 'Marque "Participa do Benchmarking" no cadastro dos clientes (Admin → Clientes).' : 'A sua empresa ainda não está no benchmarking. Fale com o seu coordenador Cargill.')));
+    document.querySelectorAll('.tabs, [data-panel]').forEach((el) => (el.hidden = true));
+    return;
+  }
+  const select = document.getElementById('client-select');
+  fill(select, info.clients.map((c) => h('option', { value: c.id }, c.name)));
+  document.getElementById('client-field').hidden = info.clients.length < 2;
+  const params = new URLSearchParams(location.search);
+  let saved = null;
+  try {
+    saved = localStorage.getItem('bi-probeef:bmk-cliente');
+  } catch {
+    saved = null;
+  }
+  const first = [params.get('cliente'), saved].find((id) => info.clients.some((c) => c.id === id)) || info.clients[0].id;
+  select.value = first;
+  select.onchange = () => loadClient(select.value).catch((err) => toast(err.message, 'error'));
+  document.querySelectorAll('[data-tab]').forEach((t) => (t.onclick = () => selectTab(t.dataset.tab)));
+  state.tab = ['engorda', 'recria', 'questionario', 'resultado', 'historico'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'engorda';
+  await loadClient(first);
+  selectTab(state.tab);
+  api('/api/benchmark/open', { method: 'POST', body: {} })
+    .then((d) => {
+      if (!d.viewId) return;
+      const post = (path, body) => fetch(path, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), keepalive: true }).catch(() => {});
+      setInterval(() => document.visibilityState === 'visible' && post('/api/usage/beat', { viewId: d.viewId }), 60 * 1000);
+      window.addEventListener('pagehide', () => post('/api/usage/end', { viewId: d.viewId }));
+    })
+    .catch(() => {});
+}
+
+init().catch((err) => toast(err.message, 'error'));

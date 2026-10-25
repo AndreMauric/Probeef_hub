@@ -13,12 +13,12 @@ const today = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Pa
 
 // Toda coleção nova do store precisa entrar aqui, senão some numa restauração de backup.
 export function exportData() {
-  const { users, clients, reports, images, categories, tags, settings, nps, confinamentoSimulations, pastoSimulations, ccvAlertLog, chatThreads, chatMessages, quotes } = db();
+  const { users, clients, reports, images, categories, tags, settings, nps, confinamentoSimulations, pastoSimulations, ccvAlertLog, chatThreads, chatMessages, quotes, bmkSubmissions, bmkSettings } = db();
   return {
     app: 'bi-probeef',
     version: 1,
     exportedAt: new Date().toISOString(),
-    data: { users, clients, reports, images, categories, tags, settings, nps, confinamentoSimulations, pastoSimulations, ccvAlertLog, chatThreads, chatMessages, quotes },
+    data: { users, clients, reports, images, categories, tags, settings, nps, confinamentoSimulations, pastoSimulations, ccvAlertLog, chatThreads, chatMessages, quotes, bmkSubmissions, bmkSettings },
   };
 }
 

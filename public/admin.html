@@ -45,6 +45,7 @@
             <button class="tab" role="tab" type="button" data-tab="users" aria-selected="false">Usuários<span class="count" id="count-users"></span><span class="count" id="count-confinamento"></span></button>
             <button class="tab" role="tab" type="button" data-tab="categories" aria-selected="false">Categorias<span class="count" id="count-categories"></span></button>
             <button class="tab" role="tab" type="button" data-tab="images" aria-selected="false">Imagens<span class="count" id="count-images"></span></button>
+            <button class="tab" role="tab" type="button" data-tab="benchmark" aria-selected="false">Benchmarking<span class="count alert-count" id="count-benchmark"></span></button>
             <button class="tab" role="tab" type="button" data-tab="quotes" aria-selected="false">Cotações</button>
             <button class="tab" role="tab" type="button" data-tab="whatsapp" aria-selected="false">WhatsApp</button>
             <button class="tab" role="tab" type="button" data-tab="setup" aria-selected="false">Configuração</button>
@@ -208,6 +209,20 @@
             </div>
             <div class="drop-zone" id="drop-zone">Arraste imagens para cá ou use o botão "Enviar imagens".</div>
             <div class="image-grid" id="image-grid"></div>
+          </section>
+
+          <section data-panel="benchmark" hidden>
+            <div class="section-head">
+              <div>
+                <h2>Benchmarking Confinamento</h2>
+                <p>Andamento da coleta de cada cliente participante (marque "Participa do Benchmarking" no cadastro do cliente). Abra a coleta para revisar os alertas, devolver para correção ou aprovar. Os limites de validação valem para todas as fazendas.</p>
+              </div>
+              <div class="viewer-actions">
+                <button class="btn" id="bmk-settings" type="button">Limites e listas</button>
+                <button class="btn btn-primary" id="bmk-export" type="button">Excel consolidado</button>
+              </div>
+            </div>
+            <div id="benchmark"></div>
           </section>
 
           <section data-panel="quotes" hidden>

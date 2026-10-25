@@ -40,6 +40,7 @@ export function renderMessage(m, { mine, newTab = false, showAuthor = true }) {
     'div',
     { class: `chat-msg ${mine ? 'mine' : 'theirs'}` },
     m.origin?.type === 'ccv' ? h('span', { class: 'chat-origin' }, m.origin.action === 'relatorio' ? 'Resumo CCV' : 'Alerta CCV') : null,
+    m.origin?.type === 'benchmark' ? h('span', { class: 'chat-origin' }, 'Benchmarking') : null,
     richText(m.text, { newTab }),
     m.context
       ? h('a', { class: 'chat-context', href: contextHref(m.context), ...(newTab ? { target: '_blank', rel: 'noopener' } : {}) }, `📍 ${m.context.reportName}${m.context.farm ? ` · ${m.context.farm}` : ''}`)

@@ -1,0 +1,242 @@
+// Benchmarking Confinamento: coleta por cliente (fazenda), validação e aprovação pela Cargill.
+// As regras de campos, validação e resultado ficam em public/benchmark/fields.js (as mesmas no
+// navegador e aqui). Um envio por cliente por ano: db().bmkSubmissions. Limites e listas
+// editáveis pelo admin: db().bmkSettings (o padrão é o da aba Configurações da planilha).
+//
+// Fluxo: rascunho → enviado → (correcao ↔ enviado) → aprovado. O cliente edita em rascunho e
+// correcao; o admin pode editar sempre e reabrir um aprovado.
+import { adminSend, userSend } from './chat.js';
+import { cleanAnswer, cleanLote, editableStatus, mergeSettings, QUESTIONS, validateLotes, validateQuestionario } from '../public/benchmark/fields.js';
+import { db, newId, save } from './store.js';
+
+const MAX_LOTES = 2000;
+
+class BenchmarkError extends Error {
+  constructor(message, status = 400) {
+    super(message);
+    this.status = status;
+  }
+}
+
+export const settings = () => mergeSettings(db().bmkSettings || {});
+
+// Clientes do benchmarking que o usuário pode abrir (admin: todos os participantes).
+export function participantClients(user) {
+  const list = db().clients.filter((c) => c.benchmark && c.active !== false);
+  if (user.role === 'admin') return list;
+  return list.filter((c) => user.clientIds?.includes(c.id));
+}
+
+export const canUseBenchmark = (user) => user.role === 'admin' || participantClients(user).length > 0;
+
+function clientOr404(user, clientId) {
+  const client = participantClients(user).find((c) => c.id === clientId);
+  if (!client) throw new BenchmarkError('Cliente não encontrado ou fora do benchmarking.', 404);
+  return client;
+}
+
+function submissionOf(clientId, { create = false } = {}) {
+  const data = db();
+  const ano = settings().ano;
+  let sub = data.bmkSubmissions.find((s) => s.clientId === clientId && s.ano === ano);
+  if (!sub && create) {
+    sub = { id: newId(), clientId, ano, status: 'rascunho', version: 0, engorda: [], recria: [], respostas: {}, messages: [], createdAt: new Date().toISOString(), updatedAt: null };
+    data.bmkSubmissions.push(sub);
+  }
+  return sub;
+}
+
+const userName = (id) => db().users.find((u) => u.id === id)?.name || null;
+
+// Situação resumida: o que falta e quantos problemas há (usada na tela e na lista do admin).
+export function summary(sub) {
+  const s = settings();
+  const eng = validateLotes(sub?.engorda || [], s);
+  const rec = validateLotes(sub?.recria || [], s, { recria: true });
+  const q = validateQuestionario(sub?.respostas || {});
+  return {
+    lotesEngorda: sub?.engorda.length || 0,
+    lotesRecria: sub?.recria.length || 0,
+    erros: eng.erros + rec.erros,
+    alertas: eng.alertas + rec.alertas,
+    lotesComErro: eng.lotesComErro + rec.lotesComErro,
+    questionario: { respondidas: q.respondidas, visiveis: q.visiveis, faltando: q.faltando.length },
+    prontoParaEnviar: (sub?.engorda.length || 0) + (sub?.recria.length || 0) > 0 && eng.erros + rec.erros === 0 && q.faltando.length === 0,
+  };
+}
+
+function view(client, sub) {
+  return {
+    client: { id: client.id, name: client.name },
+    submission: sub
+      ? {
+          ...sub,
+          messages: sub.messages.map((m) => ({ ...m, byName: userName(m.by) })),
+          updatedByName: userName(sub.updatedBy),
+          decidedByName: userName(sub.decidedBy),
+        }
+      : { status: 'rascunho', version: 0, engorda: [], recria: [], respostas: {}, messages: [] },
+    summary: summary(sub),
+    settings: settings(),
+  };
+}
+
+export function getForUser(user, clientId) {
+  const client = clientOr404(user, clientId);
+  return view(client, submissionOf(clientId));
+}
+
+function cleanRespostas(raw = {}) {
+  const out = {};
+  for (const q of QUESTIONS) {
+    if (!(q.id in raw)) continue;
+    const { value } = cleanAnswer(q, raw[q.id]);
+    // Resposta inválida não é salva como lixo: guarda o texto para a pessoa corrigir.
+    out[q.id] = value ?? (raw[q.id] === null || raw[q.id] === '' ? null : String(raw[q.id]).slice(0, 300));
+  }
+  return out;
+}
+
+function cleanLotes(list, label) {
+  if (!Array.isArray(list)) return null;
+  if (list.length > MAX_LOTES) throw new BenchmarkError(`Máximo de ${MAX_LOTES} lotes de ${label}.`);
+  return list.map(cleanLote).filter((l) => Object.keys(l).length);
+}
+
+// Salva o rascunho. version evita que duas pessoas sobrescrevam o trabalho uma da outra.
+export async function saveDraft(user, clientId, body = {}) {
+  const client = clientOr404(user, clientId);
+  const sub = submissionOf(clientId, { create: true });
+  if (user.role !== 'admin' && !editableStatus(sub.status)) throw new BenchmarkError('Este benchmarking já foi enviado e está travado para edição.', 409);
+  if (Number(body.version) !== sub.version) throw new BenchmarkError('Outra pessoa salvou alterações neste benchmarking. Recarregue a página para ver a versão mais nova.', 409);
+  const engorda = cleanLotes(body.engorda, 'engorda');
+  const recria = cleanLotes(body.recria, 'recria');
+  if (engorda) sub.engorda = engorda;
+  if (recria) sub.recria = recria;
+  if (body.respostas && typeof body.respostas === 'object') sub.respostas = { ...sub.respostas, ...cleanRespostas(body.respostas) };
+  sub.version += 1;
+  sub.updatedAt = new Date().toISOString();
+  sub.updatedBy = user.id;
+  await save();
+  return view(client, sub);
+}
+
+function log(sub, user, action, text = '') {
+  sub.messages.push({ id: newId(), at: new Date().toISOString(), by: user.id, role: user.role, action, text: String(text || '').trim().slice(0, 2000) });
+}
+
+// Cliente envia para a Cargill validar: sem erros e com o questionário obrigatório respondido.
+export async function submit(user, clientId, { text, impersonating = false } = {}) {
+  const client = clientOr404(user, clientId);
+  const sub = submissionOf(clientId);
+  if (!sub) throw new BenchmarkError('Preencha os dados antes de enviar.');
+  if (!editableStatus(sub.status)) throw new BenchmarkError('Este benchmarking já foi enviado.', 409);
+  const s = summary(sub);
+  if (!s.prontoParaEnviar) {
+    throw new BenchmarkError(
+      s.erros ? `Corrija os ${s.erros} erro(s) nos lotes antes de enviar.` : s.questionario.faltando ? `Faltam ${s.questionario.faltando} pergunta(s) obrigatória(s) no questionário.` : 'Inclua ao menos um lote.',
+    );
+  }
+  sub.status = 'enviado';
+  sub.submittedAt = new Date().toISOString();
+  log(sub, user, 'enviado', text);
+  await save();
+  // Avisa a equipe pelas Mensagens do portal (não quando é o admin "entrando como").
+  if (user.role === 'client' && !impersonating) {
+    await userSend(user, { text: `Enviei o Benchmarking Confinamento ${sub.ano} de ${client.name} para validação.${text ? `\n\n${text}` : ''}` }).catch(() => {});
+  }
+  return view(client, sub);
+}
+
+// Decisão da Cargill: devolver para correção (com o motivo), aprovar ou reabrir.
+export async function review(admin, clientId, { action, text }) {
+  const client = clientOr404(admin, clientId);
+  const sub = submissionOf(clientId);
+  if (!sub) throw new BenchmarkError('Este cliente ainda não começou o benchmarking.');
+  const next = { devolver: 'correcao', aprovar: 'aprovado', reabrir: 'rascunho' }[action];
+  if (!next) throw new BenchmarkError('Ação inválida.');
+  if (action === 'devolver' && !String(text || '').trim()) throw new BenchmarkError('Explique o que precisa ser corrigido.');
+  sub.status = next;
+  sub.decidedAt = new Date().toISOString();
+  sub.decidedBy = admin.id;
+  log(sub, admin, action, text);
+  // Quem preenche fica sabendo pelo botão Mensagens do portal, com o link da ferramenta.
+  const aviso = {
+    devolver: `O Benchmarking Confinamento ${sub.ano} de ${client.name} voltou para correção:\n\n${String(text).trim()}`,
+    aprovar: `O Benchmarking Confinamento ${sub.ano} de ${client.name} foi aprovado. Obrigado pelo envio!${text ? `\n\n${String(text).trim()}` : ''}`,
+    reabrir: `O Benchmarking Confinamento ${sub.ano} de ${client.name} foi reaberto para edição.${text ? `\n\n${String(text).trim()}` : ''}`,
+  }[action];
+  const people = db().users.filter((u) => u.role === 'client' && u.active && u.clientIds?.includes(clientId));
+  for (const u of people) await adminSend(admin, u.id, { text: aviso, origin: { type: 'benchmark', action } }, { persist: false });
+  await save();
+  return view(client, sub);
+}
+
+// Lista do admin: todos os clientes participantes e o andamento de cada um.
+export function adminList() {
+  const ano = settings().ano;
+  return db()
+    .clients.filter((c) => c.benchmark)
+    .map((c) => {
+      const sub = db().bmkSubmissions.find((s) => s.clientId === c.id && s.ano === ano) || null;
+      return {
+        clientId: c.id,
+        client: c.name,
+        active: c.active !== false,
+        status: sub?.status || 'nao_iniciado',
+        updatedAt: sub?.updatedAt || null,
+        updatedBy: userName(sub?.updatedBy),
+        submittedAt: sub?.submittedAt || null,
+        ...summary(sub),
+      };
+    })
+    .sort((a, b) => a.client.localeCompare(b.client, 'pt-BR'));
+}
+
+// Tudo do ano, para o Excel consolidado (os cálculos são refeitos no navegador do admin).
+export function exportAll() {
+  const ano = settings().ano;
+  const clients = new Map(db().clients.map((c) => [c.id, c.name]));
+  return {
+    ano,
+    settings: settings(),
+    submissions: db()
+      .bmkSubmissions.filter((s) => s.ano === ano && clients.has(s.clientId))
+      .map((s) => ({ client: clients.get(s.clientId), clientId: s.clientId, status: s.status, engorda: s.engorda, recria: s.recria, respostas: s.respostas, submittedAt: s.submittedAt || null })),
+  };
+}
+
+const numOr = (v, fallback) => (Number.isFinite(Number(v)) ? Number(v) : fallback);
+
+// Limites e listas (aba Configurações da planilha), editados no admin.
+export async function saveSettings(body = {}) {
+  const cur = settings();
+  const next = { ...cur };
+  if (body.ano !== undefined) {
+    const ano = Number.parseInt(body.ano, 10);
+    if (!(ano >= 2020 && ano <= 2100)) throw new BenchmarkError('Ano inválido.');
+    next.ano = ano;
+  }
+  if (body.prazo !== undefined) next.prazo = /^\d{4}-\d{2}-\d{2}$/.test(body.prazo || '') ? body.prazo : null;
+  if (body.tolerancias) for (const k of Object.keys(cur.tolerancias)) next.tolerancias[k] = Math.max(0, numOr(body.tolerancias[k], cur.tolerancias[k]));
+  if (body.faixas) {
+    for (const k of Object.keys(cur.faixas)) {
+      const [min, max] = Array.isArray(body.faixas[k]) ? body.faixas[k] : cur.faixas[k];
+      const a = numOr(min, cur.faixas[k][0]);
+      const b = numOr(max, cur.faixas[k][1]);
+      if (a >= b) throw new BenchmarkError('Em cada faixa, o mínimo precisa ser menor que o máximo.');
+      next.faixas[k] = [a, b];
+    }
+  }
+  if (body.listas) {
+    for (const k of Object.keys(cur.listas)) {
+      if (!Array.isArray(body.listas[k])) continue;
+      const items = [...new Set(body.listas[k].map((x) => String(x).trim().slice(0, 60)).filter(Boolean))];
+      if (!items.length) throw new BenchmarkError('Cada lista precisa de ao menos um item.');
+      next.listas[k] = items;
+    }
+  }
+  db().bmkSettings = next;
+  await save();
+  return next;
+}
