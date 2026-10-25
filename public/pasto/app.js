@@ -40,22 +40,29 @@ function setPath(obj, path, value) {
   keys.reduce((o, k) => o[k], obj)[last] = value;
 }
 
-function numField(key, path, label, { unit, hint } = {}) {
+// Campo numérico com a unidade dentro da caixa (kg, %, R$/kg). Recalcula ao sair do campo e
+// também enquanto digita, para a prévia acompanhar.
+function numInput(key, path, label, { unit, compact = false } = {}) {
   const c = state[key];
-  const input = h('input', {
-    type: 'text',
-    inputmode: 'decimal',
-    value: String(getPath(c, path)).replace('.', ','),
-    'aria-label': label,
-    onchange: () => {
-      const v = parseNum(input.value);
-      input.classList.toggle('invalid', !Number.isFinite(v));
-      if (!Number.isFinite(v)) return toast(`"${label}": informe um número.`, 'error');
-      setPath(c, path, v);
-      recalc();
-    },
-  });
-  return h('label', { class: 'field' }, h('span', {}, label, unit ? h('small', { class: 'unit' }, ` ${unit}`) : null), input, hint ? h('small', {}, hint) : null);
+  const input = h('input', { type: 'text', inputmode: 'decimal', value: String(getPath(c, path)).replace('.', ','), 'aria-label': label });
+  const apply = (strict) => {
+    const v = parseNum(input.value);
+    const ok = Number.isFinite(v);
+    input.classList.toggle('invalid', !ok && strict);
+    if (!ok) {
+      if (strict) toast(`"${label}": informe um número.`, 'error');
+      return;
+    }
+    setPath(c, path, v);
+    recalc();
+  };
+  input.addEventListener('input', () => apply(false));
+  input.addEventListener('change', () => apply(true));
+  return h('span', { class: `p3-input${compact ? ' compact' : ''}` }, input, unit ? h('span', { class: 'p3-suffix', 'aria-hidden': 'true' }, unit) : null);
+}
+
+function numField(key, path, label, opts = {}) {
+  return h('label', { class: 'field' }, h('span', {}, label), numInput(key, path, label, opts), opts.hint ? h('small', {}, opts.hint) : null);
 }
 
 function dateField(key, path, label) {
@@ -67,76 +74,41 @@ function dateField(key, path, label) {
       if (!input.value) return;
       setPath(c, path, input.value);
       recalc();
+      renderScenario(key);
     },
   });
   return h('label', { class: 'field' }, h('span', {}, label), input);
 }
 
-function radioField(key, path, label, options) {
+// Botões em pílula (um só escolhido), no lugar dos rádios do app original.
+function segmented(key, path, label, options) {
   const c = state[key];
-  const name = `${key}-${path}`;
-  return h(
-    'fieldset',
-    { class: 'field p3-radios' },
-    h('legend', {}, label),
+  const group = h(
+    'div',
+    { class: 'p3-seg', role: 'radiogroup', 'aria-label': label },
     options.map((o) =>
       h(
-        'label',
-        { class: 'check' },
-        h('input', {
-          type: 'radio',
-          name,
-          value: o,
-          checked: getPath(c, path) === o,
-          onchange: () => {
+        'button',
+        {
+          type: 'button',
+          role: 'radio',
+          'aria-checked': String(getPath(c, path) === o),
+          class: getPath(c, path) === o ? 'on' : '',
+          onclick: () => {
             setPath(c, path, o);
+            group.querySelectorAll('button').forEach((b) => {
+              const on = b.textContent === o;
+              b.classList.toggle('on', on);
+              b.setAttribute('aria-checked', String(on));
+            });
             recalc();
           },
-        }),
-        h('span', {}, o),
+        },
+        o,
       ),
     ),
   );
-}
-
-// Faixa de meses (de/até) com "Usar", como os sliders do app original.
-function monthRange(key, part, label) {
-  const c = state[key];
-  const r = c[part];
-  const sel = (which) =>
-    h(
-      'select',
-      {
-        'aria-label': `${label}: mês ${which === 'de' ? 'inicial' : 'final'}`,
-        disabled: !r.usar,
-        onchange: (e) => {
-          r[which] = Number(e.target.value);
-          recalc();
-          renderScenario(key);
-        },
-      },
-      MESES.slice(1).map((m, i) => h('option', { value: i + 1, selected: r[which] === i + 1 }, `${i + 1} · ${m}`)),
-    );
-  return h(
-    'div',
-    { class: 'field' },
-    h('span', {}, label),
-    h('div', { class: 'p3-range' }, sel('de'), h('span', { class: 'muted' }, 'a'), sel('ate')),
-    h(
-      'label',
-      { class: 'check' },
-      h('input', {
-        type: 'checkbox',
-        checked: r.usar,
-        onchange: (e) => {
-          r.usar = e.target.checked;
-          recalc();
-          renderScenario(key);
-        },
-      }),
-      h('span', {}, 'Usar'),
-    ),
-  );
+  return h('div', { class: 'field' }, h('span', {}, label), group);
 }
 
 // Faixa de 12 meses mostrando a época de cada mês (o que o modelo vai usar).
@@ -145,101 +117,243 @@ function calendarStrip(c) {
   return h(
     'div',
     { class: 'p3-calendar', 'aria-label': 'Épocas do ano usadas no cálculo' },
-    MESES.slice(1).map((m, i) => h('span', { class: `p3-month ${EPOCA_CLASS[ep[i + 1]]}`, title: `${m}: ${ep[i + 1]}` }, h('strong', {}, m), h('small', {}, ep[i + 1].replace('Águas 1°s', 'Águas 1ª').replace('Águas 2°s', 'Águas 2ª')))),
+    MESES.slice(1).map((m, i) => h('span', { class: `p3-month ${EPOCA_CLASS[ep[i + 1]]}`, title: `${m}: ${ep[i + 1]}` }, h('strong', {}, m), h('small', {}, ep[i + 1].replace('Águas 1°s', 'Águas').replace('Águas 2°s', 'Águas 2ª')))),
   );
 }
 
-function productField(key, epoca, label) {
-  const c = state[key];
-  const info = h('small', {});
-  const showInfo = () => {
-    const p = PRODUTOS[c.produto[epoca]];
-    info.textContent = p ? `Dose ${nf(p.dose, p.dose < 0.1 ? 3 : 2)}% do PV · PB ${nf(p.pb, 1)}%` : '';
-  };
-  const select = h(
+// Uma linha por época: meses, PB do pasto, standard, produto e custo, tudo junto.
+const SEASONS = [
+  { key: 'aguas', label: 'Águas', cls: 'ep-aguas1', hint: 'O resto do ano' },
+  { key: 'transicao', label: 'Transição', cls: 'ep-trans', range: 'transicao' },
+  { key: 'seca', label: 'Seca', cls: 'ep-seca', range: 'seca' },
+];
+
+function monthSelect(key, part, which) {
+  const r = state[key][part];
+  return h(
     'select',
     {
-      'aria-label': label,
+      'aria-label': `${part === 'seca' ? 'Seca' : 'Transição'}: mês ${which === 'de' ? 'inicial' : 'final'}`,
+      disabled: !r.usar,
+      onchange: (e) => {
+        r[which] = Number(e.target.value);
+        recalc();
+        renderScenario(key);
+      },
+    },
+    MESES.slice(1).map((m, i) => h('option', { value: i + 1, selected: r[which] === i + 1 }, m)),
+  );
+}
+
+function seasonRow(key, s) {
+  const c = state[key];
+  const r = s.range ? c[s.range] : null;
+  const off = r && !r.usar;
+  const product = h(
+    'select',
+    {
+      'aria-label': `Produto de ${s.label.toLowerCase()}`,
       onchange: () => {
-        c.produto[epoca] = select.value;
-        showInfo();
+        c.produto[s.key] = product.value;
+        info.textContent = productInfo(product.value);
         recalc();
       },
     },
-    OPCOES[epoca].map((p) => h('option', { value: p, selected: c.produto[epoca] === p }, p)),
+    OPCOES[s.key].map((p) => h('option', { value: p, selected: c.produto[s.key] === p }, p.replace(/^PROBEEF /, ''))),
   );
-  showInfo();
-  return h('label', { class: 'field' }, h('span', {}, label), select, info);
+  const info = h('small', { class: 'p3-prod-info' }, productInfo(c.produto[s.key]));
+  const months = r
+    ? h(
+        'div',
+        { class: 'p3-months' },
+        h(
+          'label',
+          { class: 'p3-switch' },
+          h('input', {
+            type: 'checkbox',
+            checked: r.usar,
+            'aria-label': `Usar ${s.label.toLowerCase()}`,
+            onchange: (e) => {
+              r.usar = e.target.checked;
+              recalc();
+              renderScenario(key);
+            },
+          }),
+          h('span', { 'aria-hidden': 'true' }),
+        ),
+        monthSelect(key, s.range, 'de'),
+        h('span', { class: 'muted' }, 'a'),
+        monthSelect(key, s.range, 'ate'),
+      )
+    : h('span', { class: 'muted p3-months-auto' }, s.hint);
+  const cell = (label, content) => h('div', { class: 'p3-cell' }, h('span', { class: 'p3-cell-label' }, label), content);
+  return h(
+    'div',
+    { class: `p3-season ${s.cls}${off ? ' off' : ''}` },
+    h('div', { class: 'p3-season-name' }, h('strong', {}, s.label), off ? h('small', {}, 'não usada') : null),
+    cell('Meses', months),
+    cell('PB do pasto', numInput(key, `pb.${s.key}`, `PB do pasto (${s.label})`, { unit: '%', compact: true })),
+    cell('Standard', numInput(key, `standard.${s.key}`, `Standard (${s.label})`, { compact: true })),
+    cell('Produto Probeef', h('div', { class: 'p3-prod' }, product, info)),
+    cell('Custo', numInput(key, `custo.${s.key}`, `Custo do produto (${s.label})`, { unit: 'R$/kg', compact: true })),
+  );
+}
+
+function productInfo(name) {
+  const p = PRODUTOS[name];
+  return p ? `${nf(p.dose, p.dose < 0.1 ? 3 : 2)}% do PV · PB ${nf(p.pb, 0)}%` : '';
+}
+
+function card(title, subtitle, ...children) {
+  return h('section', { class: 'p3-card' }, h('header', { class: 'p3-card-title' }, h('h2', {}, title), subtitle ? h('p', {}, subtitle) : null), ...children);
+}
+
+function group(title, ...fields) {
+  return h('div', { class: 'p3-group' }, h('h3', {}, title), h('div', { class: 'p3-group-fields' }, ...fields));
 }
 
 function renderScenario(key) {
   const c = state[key];
   const n = key === 'c1' ? 1 : 2;
   const panel = document.querySelector(`[data-panel="${key}"]`);
-  const overlap = sobreposicao(c);
+  const days = Math.round((Date.parse(c.dataSaida) - Date.parse(c.dataEntrada)) / 86400000);
+  const name = h('input', {
+    class: 'p3-name',
+    type: 'text',
+    value: c.nome || '',
+    placeholder: `Cenário ${n}`,
+    maxlength: 40,
+    'aria-label': `Nome do cenário ${n}`,
+    oninput: () => {
+      c.nome = name.value.trim();
+      renderPreview(key);
+    },
+  });
   fill(
     panel,
     h(
       'div',
-      { class: 'p3-card' },
-      h('div', { class: 'p3-card-head' }, h('h2', {}, `Cenário ${n} · Variáveis zootécnicas`), key === 'c2' ? h('button', { class: 'btn btn-sm', type: 'button', onclick: copyC1 }, 'Copiar tudo do Cenário 1') : null),
-      h(
-        'div',
-        { class: 'p3-grid' },
-        h(
-          'div',
-          { class: 'p3-col' },
-          numField(key, 'pesoEntrada', 'Peso de entrada', { unit: 'kg' }),
-          numField(key, 'animais', 'Número de animais'),
-          dateField(key, 'dataEntrada', 'Data de entrada'),
-          dateField(key, 'dataSaida', 'Data de saída'),
-        ),
-        h('div', { class: 'p3-col' }, numField(key, 'area', 'Área', { unit: 'ha' }), radioField(key, 'sexo', 'Sexo', ['Macho', 'Fêmea']), numField(key, 'standard.aguas', 'Standard águas', { hint: 'De 0 a 1 (1 = sem ajuste).' }), numField(key, 'standard.transicao', 'Standard transição'), numField(key, 'standard.seca', 'Standard seca')),
-        h('div', { class: 'p3-col' }, radioField(key, 'pasto', 'Pasto', Object.keys(PASTOS)), numField(key, 'pb.aguas', 'PB do pasto nas águas', { unit: '%' }), numField(key, 'pb.transicao', 'PB do pasto na transição águas-seca', { unit: '%' }), numField(key, 'pb.seca', 'PB do pasto na seca', { unit: '%' })),
-        h(
-          'div',
-          { class: 'p3-col' },
-          productField(key, 'aguas', 'Produto de águas'),
-          numField(key, 'custo.aguas', 'Custo do produto de águas', { unit: 'R$/kg' }),
-          productField(key, 'transicao', 'Produto de transição'),
-          numField(key, 'custo.transicao', 'Custo do produto de transição', { unit: 'R$/kg' }),
-          productField(key, 'seca', 'Produto de seca'),
-          numField(key, 'custo.seca', 'Custo do produto de seca', { unit: 'R$/kg' }),
-        ),
-      ),
-      h('h3', { class: 'p3-sub' }, 'Épocas do ano'),
-      h('div', { class: 'p3-grid p3-grid-2' }, monthRange(key, 'transicao', 'Meses de transição'), monthRange(key, 'seca', 'Meses de seca')),
-      calendarStrip(c),
-      overlap ? h('p', { class: 'alert' }, 'Transição e Seca estão sobrepostas: nos meses em comum, vale a Seca.') : null,
-      h('p', { class: 'muted p3-note' }, 'Os meses vão até o fim do mês escolhido (mês 5 vai até 31/05). Depois do último mês de transição/seca, o ano volta às "Águas 2ª".'),
+      { class: 'p3-scenario-head' },
+      h('span', { class: `p3-badge c${n}` }, `C${n}`),
+      h('div', {}, name, h('p', { class: 'muted' }, 'Dê um nome curto (ex.: "Topmost" ou "Pasto Bom") para reconhecer no Dashboard.')),
+      key === 'c2' ? h('button', { class: 'btn btn-sm', type: 'button', onclick: copyC1 }, 'Copiar tudo do Cenário 1') : null,
     ),
     h(
       'div',
-      { class: 'p3-card' },
-      h('h2', {}, `Cenário ${n} · Variáveis econômicas`),
+      { class: 'p3-layout' },
       h(
         'div',
-        { class: 'p3-grid p3-grid-econ' },
-        numField(key, 'econ.compra', 'Valor de compra', { unit: 'R$/cab.' }),
-        numField(key, 'econ.freteCompra', 'Frete na compra', { unit: 'R$/cab.' }),
-        numField(key, 'econ.comissao', 'Comissão na compra', { unit: 'R$/cab.' }),
-        numField(key, 'econ.aluguelDia', 'Aluguel de pasto', { unit: 'R$/cab./dia' }),
-        numField(key, 'econ.salario', 'Salário de funcionários', { unit: 'R$/mês' }),
-        numField(key, 'econ.animaisPorFuncionario', 'Animais por funcionário'),
-        numField(key, 'econ.salgaDia', 'Custo de salga', { unit: 'R$/cab./dia' }),
-        numField(key, 'econ.sanitario', 'Custos sanitários', { unit: 'R$/cab.' }),
-        numField(key, 'econ.rastreabilidade', 'Rastreabilidade', { unit: 'R$/cab.' }),
-        numField(key, 'econ.outros', 'Outros custos', { unit: 'R$/cab.' }),
-        numField(key, 'econ.freteVenda', 'Frete na venda', { unit: 'R$/cab.' }),
-        numField(key, 'econ.valorVenda', 'Valor de venda', { unit: 'R$/@' }),
+        { class: 'p3-forms' },
+        card(
+          'Lote e período',
+          null,
+          h(
+            'div',
+            { class: 'p3-fields' },
+            numField(key, 'pesoEntrada', 'Peso de entrada', { unit: 'kg' }),
+            numField(key, 'animais', 'Número de animais', { unit: 'cab.' }),
+            numField(key, 'area', 'Área', { unit: 'ha' }),
+            segmented(key, 'sexo', 'Sexo', ['Macho', 'Fêmea']),
+            dateField(key, 'dataEntrada', 'Entrada'),
+            dateField(key, 'dataSaida', 'Saída'),
+            h('div', { class: 'field' }, h('span', {}, 'Duração'), h('strong', { class: 'p3-duration' }, Number.isFinite(days) ? `${days} dias · ${nf(days / 30.42, 1)} meses` : '—')),
+          ),
+        ),
+        card(
+          'Pasto e épocas do ano',
+          'Cada época tem o seu pasto, produto e custo. Na sobreposição, a Seca vale sobre a Transição; depois do último mês de transição/seca o ano volta às águas.',
+          segmented(key, 'pasto', 'Pasto', Object.keys(PASTOS)),
+          h('div', { class: 'p3-seasons' }, SEASONS.map((s) => seasonRow(key, s))),
+          calendarStrip(c),
+          sobreposicao(c) ? h('p', { class: 'alert' }, 'Transição e Seca estão sobrepostas: nos meses em comum, vale a Seca.') : null,
+        ),
+        card(
+          'Custos e venda',
+          'Valores por cabeça.',
+          h(
+            'div',
+            { class: 'p3-groups' },
+            group('Compra', numField(key, 'econ.compra', 'Valor de compra', { unit: 'R$' }), numField(key, 'econ.freteCompra', 'Frete', { unit: 'R$' }), numField(key, 'econ.comissao', 'Comissão', { unit: 'R$' })),
+            group('Custos diários', numField(key, 'econ.aluguelDia', 'Aluguel de pasto', { unit: 'R$/dia' }), numField(key, 'econ.salgaDia', 'Salga', { unit: 'R$/dia' })),
+            group('Mão de obra', numField(key, 'econ.salario', 'Salário', { unit: 'R$/mês' }), numField(key, 'econ.animaisPorFuncionario', 'Animais por funcionário', { unit: 'cab.' })),
+            group('Outros custos', numField(key, 'econ.sanitario', 'Sanitário', { unit: 'R$' }), numField(key, 'econ.rastreabilidade', 'Rastreabilidade', { unit: 'R$' }), numField(key, 'econ.outros', 'Outros', { unit: 'R$' }), numField(key, 'econ.freteVenda', 'Frete na venda', { unit: 'R$' })),
+            group('Venda', numField(key, 'econ.valorVenda', 'Valor de venda', { unit: 'R$/@' })),
+          ),
+        ),
+        h('div', { class: 'p3-next' }, h('button', { class: 'btn btn-primary', type: 'button', onclick: () => selectTab(key === 'c1' ? 'c2' : 'dashboard') }, key === 'c1' ? 'Ir para o Cenário 2 →' : 'Ver o Dashboard →')),
       ),
+      h('aside', { class: 'p3-preview', id: `preview-${key}`, 'aria-live': 'polite' }),
     ),
-    h('div', { class: 'p3-next' }, h('button', { class: 'btn btn-primary', type: 'button', onclick: () => selectTab(key === 'c1' ? 'c2' : 'dashboard') }, key === 'c1' ? 'Ir para o Cenário 2 →' : 'Ver o Dashboard →')),
+  );
+  renderPreview(key);
+}
+
+// Minicurva de peso (SVG puro) para a prévia.
+function sparkline(dias, color) {
+  if (!dias?.length) return null;
+  const w = 260;
+  const hgt = 64;
+  const pesos = dias.map((d) => d.peso);
+  const min = Math.min(...pesos);
+  const max = Math.max(...pesos);
+  const step = Math.max(1, Math.floor(dias.length / 120));
+  const pts = dias
+    .filter((_, i) => i % step === 0 || i === dias.length - 1)
+    .map((d) => `${((d.i - 1) / Math.max(1, dias.length - 1)) * w},${hgt - 4 - ((d.peso - min) / Math.max(1, max - min)) * (hgt - 8)}`)
+    .join(' ');
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', `0 0 ${w} ${hgt}`);
+  svg.setAttribute('class', 'p3-spark');
+  svg.setAttribute('aria-hidden', 'true');
+  const area = document.createElementNS(svg.namespaceURI, 'polygon');
+  area.setAttribute('points', `0,${hgt} ${pts} ${w},${hgt}`);
+  area.setAttribute('fill', color);
+  area.setAttribute('opacity', '0.12');
+  const line = document.createElementNS(svg.namespaceURI, 'polyline');
+  line.setAttribute('points', pts);
+  line.setAttribute('fill', 'none');
+  line.setAttribute('stroke', color);
+  line.setAttribute('stroke-width', '2');
+  line.setAttribute('stroke-linejoin', 'round');
+  svg.append(area, line);
+  return svg;
+}
+
+// Resultado do cenário sendo editado, ao lado do formulário.
+function renderPreview(key) {
+  const box = document.getElementById(`preview-${key}`);
+  if (!box) return;
+  const n = key === 'c1' ? 1 : 2;
+  const s = state[`s${n}`];
+  const c = state[key];
+  if (!s) {
+    fill(box, h('div', { class: 'p3-preview-card' }, h('h3', {}, 'Prévia'), h('ul', { class: 'p3-errors' }, state.erros[key].map((e) => h('li', {}, e)))));
+    return;
+  }
+  const k = s.kpis;
+  const row = (label, value, strong = false, extra = false) => h('div', { class: `p3-pv-row${strong ? ' strong' : ''}${extra ? ' extra' : ''}` }, h('span', {}, label), h('strong', {}, value));
+  fill(
+    box,
+    h(
+      'div',
+      { class: 'p3-preview-card' },
+      h('div', { class: 'p3-preview-head' }, h('span', { class: `p3-badge c${n}` }, `C${n}`), h('div', {}, h('h3', {}, c.nome || `Cenário ${n}`), h('small', {}, 'Prévia do resultado'))),
+      h('div', { class: 'p3-pv-hero' }, h('span', {}, 'Peso final'), h('strong', {}, `${nf(k.pesoFinal, 1)} kg`), h('small', {}, `+${nf(k.ganhoTotal, 1)} kg em ${s.tempo} dias`)),
+      sparkline(s.dias, cssVar(`--p3-c${n}`)),
+      row('GPD', `${nf(k.gpd, 3)} kg/dia`),
+      row('Faixa esperada', `${nf(k.gpdMin, 3)} a ${nf(k.gpdMax, 3)}`, false, true),
+      row('@ produzidas por ha', nf(k.arrobasHa, 1), false, true),
+      row('Custo da @ produzida', brl(k.custoArrobaProd, 1), false, true),
+      row('Margem por cabeça', brl(k.margemCab, 1), true, true),
+      row('Margem por hectare', brl(k.margemHa, 1), true),
+      row('Rentabilidade', `${nf(k.rentabilidade, 2)}% ao mês`, false, true),
+      h('button', { class: 'btn btn-sm', type: 'button', onclick: () => selectTab('dashboard') }, 'Comparar no Dashboard'),
+    ),
   );
 }
 
 function copyC1() {
-  state.c2 = structuredClone(state.c1);
+  state.c2 = { ...structuredClone(state.c1), nome: state.c2.nome };
   recalc();
   renderScenario('c2');
   toast('Cenário 2 igual ao Cenário 1. Agora mude só o que quer comparar.');
@@ -247,12 +361,17 @@ function copyC1() {
 
 // ---------- Cálculo ----------
 
+let dashTimer = null;
 function recalc() {
   for (const k of ['c1', 'c2']) {
     state.erros[k] = validar(state[k]);
     state[`s${k[1]}`] = state.erros[k].length ? null : simular(state[k]);
   }
-  if (state.tab === 'dashboard') renderDashboard();
+  if (state.tab === 'c1' || state.tab === 'c2') renderPreview(state.tab);
+  if (state.tab === 'dashboard') {
+    clearTimeout(dashTimer);
+    dashTimer = setTimeout(renderDashboard, 60);
+  }
 }
 
 // ---------- Dashboard ----------
@@ -281,6 +400,33 @@ function kpiTile(k) {
     h('span', { class: 'p3-kpi-label' }, k.label, h('small', {}, ` ${k.unit}`)),
     h('div', { class: 'p3-kpi-pair' }, h('div', { class: better === 'C1' ? 'best' : '' }, h('span', { class: 'p3-tag c1' }, 'C1'), h('strong', {}, val(a))), h('div', { class: better === 'C2' ? 'best' : '' }, h('span', { class: 'p3-tag c2' }, 'C2'), h('strong', {}, val(b)))),
     h('span', { class: 'p3-kpi-diff' }, better ? `C2 − C1: ${diff > 0 ? '+' : ''}${k.money ? brl(diff, k.digits) : nf(diff, k.digits)} · melhor: ${better}` : 'Iguais nos dois cenários'),
+  );
+}
+
+const nomeDe = (n) => state[`c${n}`]?.nome || `Cenário ${n}`;
+
+// Frase de abertura do Dashboard: qual cenário rende mais por hectare, e por quanto.
+function summary(s1, s2) {
+  const a = s1.kpis.margemHa;
+  const b = s2.kpis.margemHa;
+  if (Math.abs(a - b) < 0.05) return h('div', { class: 'p3-summary' }, h('p', {}, 'Os dois cenários dão a mesma margem por hectare.'));
+  const [win, lose, wk, lk] = a > b ? [1, 2, s1.kpis, s2.kpis] : [2, 1, s2.kpis, s1.kpis];
+  const diffHa = Math.abs(a - b);
+  const total = (diffHa * state[`c${win}`].area);
+  return h(
+    'div',
+    { class: `p3-summary win-c${win}` },
+    h('span', { class: `p3-badge c${win}` }, `C${win}`),
+    h(
+      'div',
+      {},
+      h('p', { class: 'p3-summary-main' }, h('strong', {}, nomeDe(win)), ' rende ', h('strong', {}, `${brl(diffHa, 0)}/ha a mais`), ` que ${nomeDe(lose)}.`),
+      h(
+        'p',
+        { class: 'muted' },
+        `Margem de ${brl(wk.margemHa, 0)}/ha contra ${brl(lk.margemHa, 0)}/ha · peso final ${nf(wk.pesoFinal, 1)} kg contra ${nf(lk.pesoFinal, 1)} kg · na área do ${nomeDe(win)}, cerca de ${brl(total, 0)} no período.`,
+      ),
+    ),
   );
 }
 
@@ -335,18 +481,33 @@ function renderDashboard() {
       'div',
       { class: 'p3-scen' },
       h('span', { class: `p3-tag c${n}` }, `C${n}`),
-      h('span', {}, `${fmtDate(c.dataEntrada)} a ${fmtDate(c.dataSaida)} · ${s.tempo} dias · ${nf(c.animais, 0)} animais em ${nf(c.area, 0)} ha · GPD esperado entre ${nf(s.kpis.gpdMin, 3)} e ${nf(s.kpis.gpdMax, 3)} kg`),
+      h('strong', {}, nomeDe(n)),
+      h('span', { class: 'muted' }, `${fmtDate(c.dataEntrada)} a ${fmtDate(c.dataSaida)} · ${s.tempo} dias · ${nf(c.animais, 0)} animais em ${nf(c.area, 0)} ha · ${[c.produto.aguas, c.produto.transicao, c.produto.seca].map((p) => p.replace(/^PROBEEF /, '')).join(' → ')}`),
     );
 
   fill(
     panel,
     warnings.length ? h('div', { class: 'alert' }, warnings.map((w) => h('div', {}, w))) : null,
+    summary(s1, s2),
     h('div', { class: 'p3-scens' }, scen(1, s1, state.c1), scen(2, s2, state.c2)),
     h('div', { class: 'p3-kpis' }, KPIS.map(kpiTile)),
     h(
       'div',
       { class: 'p3-row' },
-      h('section', { class: 'p3-card' }, h('h2', {}, 'Curva de peso corporal'), h('ul', { class: 'p3-legend' }, h('li', {}, h('span', { class: 'p3-key c1' }), 'Cenário 1'), h('li', {}, h('span', { class: 'p3-key c2' }), 'Cenário 2')), h('div', { class: 'p3-chart' }, canvas)),
+      h(
+        'section',
+        { class: 'p3-card' },
+        h('h2', {}, 'Curva de peso corporal'),
+        h(
+          'ul',
+          { class: 'p3-legend' },
+          h('li', {}, h('span', { class: 'p3-key c1' }), nomeDe(1)),
+          h('li', {}, h('span', { class: 'p3-key c2' }), nomeDe(2)),
+          h('li', { class: 'p3-legend-ep' }, 'Fundo: épocas do C1'),
+          [['ep-aguas1', 'Águas'], ['ep-trans', 'Transição'], ['ep-seca', 'Seca']].map(([cls, label]) => h('li', {}, h('span', { class: `p3-key-ep ${cls}` }), label)),
+        ),
+        h('div', { class: 'p3-chart' }, canvas),
+      ),
       h('section', { class: 'p3-card' }, h('h2', {}, 'GMD por época'), h('p', { class: 'muted' }, 'Média do ganho diário (kg) em cada época.'), gmdTable),
     ),
     h(
@@ -373,12 +534,37 @@ function drawChart(canvas) {
     const d = new Date(ms);
     return `${MESES[d.getUTCMonth() + 1]}/${String(d.getUTCFullYear()).slice(2)}`;
   };
+  // Faixas de fundo com as épocas do Cenário 1 (trechos seguidos de mesma época).
+  const bandColor = { [EPOCAS.AGUAS1]: cssVar('--ep-aguas1'), [EPOCAS.AGUAS2]: cssVar('--ep-aguas1'), [EPOCAS.TRANS]: cssVar('--ep-trans'), [EPOCAS.SECA]: cssVar('--ep-seca') };
+  const bands = [];
+  for (const d of s1.dias) {
+    const x = Date.parse(`${d.data}T12:00:00Z`);
+    const last = bands.at(-1);
+    if (last && last.epoca === d.epoca) last.to = x;
+    else bands.push({ epoca: d.epoca, from: x, to: x });
+  }
+  const seasonBands = {
+    id: 'epocas',
+    beforeDatasetsDraw(chart) {
+      const { ctx, chartArea, scales } = chart;
+      ctx.save();
+      for (const b of bands) {
+        const x1 = Math.max(chartArea.left, scales.x.getPixelForValue(b.from - 43200000));
+        const x2 = Math.min(chartArea.right, scales.x.getPixelForValue(b.to + 43200000));
+        ctx.fillStyle = bandColor[b.epoca];
+        ctx.globalAlpha = 0.55;
+        ctx.fillRect(x1, chartArea.top, x2 - x1, chartArea.bottom - chartArea.top);
+      }
+      ctx.restore();
+    },
+  };
   state.chart = new window.Chart(canvas, {
     type: 'line',
+    plugins: [seasonBands],
     data: {
       datasets: [
-        { label: 'Cenário 1', data: toPoints(s1), borderColor: cssVar('--p3-c1'), backgroundColor: cssVar('--p3-c1'), borderWidth: 2, pointRadius: 0, pointHoverRadius: 5, tension: 0 },
-        { label: 'Cenário 2', data: toPoints(s2), borderColor: cssVar('--p3-c2'), backgroundColor: cssVar('--p3-c2'), borderWidth: 2, pointRadius: 0, pointHoverRadius: 5, tension: 0 },
+        { label: nomeDe(1), data: toPoints(s1), borderColor: cssVar('--p3-c1'), backgroundColor: cssVar('--p3-c1'), borderWidth: 2.5, pointRadius: 0, pointHoverRadius: 5, tension: 0 },
+        { label: nomeDe(2), data: toPoints(s2), borderColor: cssVar('--p3-c2'), backgroundColor: cssVar('--p3-c2'), borderWidth: 2.5, pointRadius: 0, pointHoverRadius: 5, tension: 0 },
       ],
     },
     options: {
@@ -483,13 +669,13 @@ async function exportExcel() {
       head.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
       return ws;
     };
-    sheet('Comparação Geral', [['m', 'Métrica', 30], ['c1', 'Cenário 1', 15], ['c2', 'Cenário 2', 15]], generalRows().map(([m, c1, c2]) => ({ m, c1, c2 })));
+    sheet('Comparação Geral', [['m', 'Métrica', 30], ['c1', `C1 · ${nomeDe(1)}`, 18], ['c2', `C2 · ${nomeDe(2)}`, 18]], generalRows().map(([m, c1, c2]) => ({ m, c1, c2 })));
     for (const [n, s] of [[1, state.s1], [2, state.s2]]) {
       sheet(`Cenário ${n} - Detalhado`, DETAIL_COLUMNS.map(([k, label]) => [k, label, k === 'ref' ? 22 : 14]), s.epocas.map((e) => ({ ...e, data: fmtDate(e.data) })));
     }
-    sheet('Resumo GMD', [['ref', 'Estação', 22], ['c1', 'Cenário 1', 14], ['c2', 'Cenário 2', 14]], comparar(state.s1, state.s2).map((r) => ({ ref: r.ref, c1: r.c1?.gmd ?? null, c2: r.c2?.gmd ?? null })));
+    sheet('Resumo GMD', [['ref', 'Estação', 22], ['c1', `C1 · ${nomeDe(1)}`, 18], ['c2', `C2 · ${nomeDe(2)}`, 18]], comparar(state.s1, state.s2).map((r) => ({ ref: r.ref, c1: r.c1?.gmd ?? null, c2: r.c2?.gmd ?? null })));
     sheet('Produtos Utilizados', [['c', 'Cenário', 15], ['e', 'Época', 18], ['p', 'Produto', 34]], [...state.s1.produtos.map((p) => ({ c: 'Cenário 1', e: p.epoca, p: p.produto })), ...state.s2.produtos.map((p) => ({ c: 'Cenário 2', e: p.epoca, p: p.produto }))]);
-    sheet('Entradas', [['campo', 'Campo', 34], ['c1', 'Cenário 1', 30], ['c2', 'Cenário 2', 30]], inputRows());
+    sheet('Entradas', [['campo', 'Campo', 34], ['c1', `C1 · ${nomeDe(1)}`, 30], ['c2', `C2 · ${nomeDe(2)}`, 30]], inputRows());
     const blob = new Blob([await wb.xlsx.writeBuffer()], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     const a = h('a', { href: URL.createObjectURL(blob), download: `3P-Desempenho-a-Pasto-${new Date().toISOString().slice(0, 10)}.xlsx` });
     document.body.append(a);
@@ -503,7 +689,8 @@ async function exportExcel() {
 
 // Todas as entradas dos dois cenários, para a planilha e o relatório.
 function inputRows() {
-  const f = (c) => ({
+  const f = (c, n) => ({
+    Nome: nomeDe(n),
     'Peso de entrada (kg)': c.pesoEntrada,
     'Número de animais': c.animais,
     'Data de entrada': fmtDate(c.dataEntrada),
@@ -531,8 +718,8 @@ function inputRows() {
     'Frete na venda (R$/cab.)': c.econ.freteVenda,
     'Valor de venda (R$/@)': c.econ.valorVenda,
   });
-  const a = f(state.c1);
-  const b = f(state.c2);
+  const a = f(state.c1, 1);
+  const b = f(state.c2, 2);
   return Object.keys(a).map((campo) => ({ campo, c1: a[campo], c2: b[campo] }));
 }
 
@@ -547,16 +734,16 @@ function printReport() {
     h('header', {}, h('img', { src: '/img/probeef-horizontal.png', alt: 'Probeef', width: 120 }), h('div', {}, h('h1', {}, 'Predição de Desempenho a Pasto'), h('p', {}, `Nutron | Cargill · gerado em ${new Date().toLocaleString('pt-BR')}`))),
     h('p', { class: 'p3-print-note' }, 'Este relatório contém estimativas de desempenho baseadas em informações de literatura em que se utilizaram animais, níveis de suplementação, composição de suplementos e épocas do ano similares ao projetado aqui. A Cargill não garante que as estimativas serão exatamente as mesmas.'),
     h('h2', {}, 'Comparação geral'),
-    table(['Métrica', 'Cenário 1', 'Cenário 2'], generalRows().map(([m, a, b]) => [m, nf(a, m.startsWith('Dias') ? 0 : 2), nf(b, m.startsWith('Dias') ? 0 : 2)])),
+    table(['Métrica', `C1 · ${nomeDe(1)}`, `C2 · ${nomeDe(2)}`], generalRows().map(([m, a, b]) => [m, nf(a, m.startsWith('Dias') ? 0 : 2), nf(b, m.startsWith('Dias') ? 0 : 2)])),
     canvas ? [h('h2', {}, 'Curva de peso corporal'), h('img', { class: 'p3-print-chart', src: canvas.toDataURL('image/png'), alt: 'Curvas de peso dos dois cenários' })] : null,
     h('h2', {}, 'Comparação por época'),
     table(['Indicador', ...rows.flatMap((r) => [`C1 · ${r.ref}`, `C2 · ${r.ref}`])], VARIAVEIS.map(([k, label]) => [label, ...rows.flatMap((r) => [r.c1 ? nf(r.c1[k], casas(k)) : '—', r.c2 ? nf(r.c2[k], casas(k)) : '—'])])),
     h('h2', {}, 'GMD por época'),
-    table(['Época', 'Cenário 1', 'Cenário 2'], rows.map((r) => [r.ref, r.c1 ? nf(r.c1.gmd, 3) : '—', r.c2 ? nf(r.c2.gmd, 3) : '—'])),
+    table(['Época', `C1 · ${nomeDe(1)}`, `C2 · ${nomeDe(2)}`], rows.map((r) => [r.ref, r.c1 ? nf(r.c1.gmd, 3) : '—', r.c2 ? nf(r.c2.gmd, 3) : '—'])),
     h('h2', {}, 'Produtos utilizados'),
     table(['Cenário', 'Época', 'Produto'], [...state.s1.produtos.map((p) => ['Cenário 1', p.epoca, p.produto]), ...state.s2.produtos.map((p) => ['Cenário 2', p.epoca, p.produto])]),
     h('h2', {}, 'Entradas'),
-    table(['Campo', 'Cenário 1', 'Cenário 2'], inputRows().map((r) => [r.campo, String(r.c1), String(r.c2)])),
+    table(['Campo', `C1 · ${nomeDe(1)}`, `C2 · ${nomeDe(2)}`], inputRows().map((r) => [r.campo, String(r.c1), String(r.c2)])),
     h('footer', {}, 'Todos os direitos reservados · Nutron | Cargill'),
   );
   window.print();
