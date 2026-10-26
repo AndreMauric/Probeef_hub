@@ -126,6 +126,8 @@ do relatório via DAX (`executeDax`, API `executeQueries`) e desenha o painel em
   último dia feito, quantos currais e em quantos dias. Atenção aos valores padrão do aplicativo:
   a leitura noturna grava "True" (com comida) mesmo quando ninguém lê — fazenda sem nenhum
   "False" (cocho vazio) em 7 dias é tratada como "não faz"; decisão 100% "Manteve" é sinalizada.
+  A coluna IBC (`metricas.ibc`, meta 9,5 = `[Meta IBC]`) mostra o último dia com IBC — nem todo
+  voo tem IBC, e IBC vazio passa num filtro `< 9,5`, por isso o `NOT ISBLANK`. Não entra no nível.
 
 ## Mensagens (chat usuário ↔ equipe)
 

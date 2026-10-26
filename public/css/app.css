@@ -2999,7 +2999,7 @@ pre.digest {
 }
 
 .uso-table tbody th {
-  min-width: 180px;
+  min-width: 140px;
   background: var(--surface);
   color: var(--ink);
   font: 400 13.5px/1.4 var(--font-ui);
@@ -3028,9 +3028,12 @@ pre.digest {
   border-bottom: 1px solid var(--line);
 }
 
-.uso-cell,
+.uso-cell {
+  min-width: 138px;
+}
+
 .uso-voo {
-  min-width: 170px;
+  min-width: 112px;
 }
 
 .uso-cell strong,
@@ -3073,6 +3076,14 @@ pre.digest {
 
 .uso-cell.off strong {
   color: var(--muted);
+}
+
+.uso-cell.crit {
+  background: var(--danger-bg);
+}
+
+.uso-cell.crit strong {
+  color: var(--danger);
 }
 
 .uso-cell .uso-mix {

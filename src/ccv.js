@@ -398,7 +398,8 @@ export async function computeCcvAlerts(report, { refresh = false } = {}) {
 //   quando não lida. O aplicativo grava "True" por padrão: fazenda que nunca registra cocho vazio
 //   em 7 dias provavelmente não faz a leitura noturna de verdade (ex.: Roncador, out/2026).
 export const USAGE_DAYS = 7;
-const USAGE = { emUso: 0.7, cobertura: 0.5, paradoDias: 3 }; // etapa "em uso": feita em 70% dos dias de voo, cobrindo metade dos currais
+// etapa "em uso": feita em 70% dos dias de voo, cobrindo metade dos currais. ibcMeta = [Meta IBC] do modelo.
+const USAGE = { emUso: 0.7, cobertura: 0.5, paradoDias: 3, ibcMeta: 9.5 };
 
 export function ccvUsage(report, { refresh = false } = {}) {
   return cached(`uso:${report.id}`, refresh ? 0 : 30 * 60 * 1000, async () => {
@@ -419,7 +420,11 @@ EVALUATE CALCULATETABLE(SUMMARIZECOLUMNS(Consulta1[fazenda], Consulta1[dia],
   "eq", CALCULATE(COUNTROWS(Consulta1), Consulta1[decisao_tipo] = "Manteve"),
   "down", CALCULATE(COUNTROWS(Consulta1), Consulta1[decisao_tipo] = "Reduziu"),
   "noite", CALCULATE(DISTINCTCOUNT(Consulta1[curral]), Consulta1[primeira_leitura] IN {"True", "False"} || Consulta1[segunda_leitura] IN {"True", "False"} || Consulta1[terceira_leitura] IN {"True", "False"}),
-  "vazio", CALCULATE(DISTINCTCOUNT(Consulta1[curral]), Consulta1[primeira_leitura] = "False" || Consulta1[segunda_leitura] = "False" || Consulta1[terceira_leitura] = "False")), __period)`,
+  "vazio", CALCULATE(DISTINCTCOUNT(Consulta1[curral]), Consulta1[primeira_leitura] = "False" || Consulta1[segunda_leitura] = "False" || Consulta1[terceira_leitura] = "False"),
+  "ibcSum", SUM(Consulta1[metricas.ibc]),
+  "ibcN", COUNT(Consulta1[metricas.ibc]),
+  "ibcCurrais", CALCULATE(DISTINCTCOUNT(Consulta1[curral]), NOT ISBLANK(Consulta1[metricas.ibc])),
+  "ibcAbaixo", CALCULATE(DISTINCTCOUNT(Consulta1[curral]), NOT ISBLANK(Consulta1[metricas.ibc]) && Consulta1[metricas.ibc] < ${USAGE.ibcMeta})), __period)`,
       ),
     );
     const linked = new Map();
@@ -429,7 +434,7 @@ EVALUATE CALCULATETABLE(SUMMARIZECOLUMNS(Consulta1[fazenda], Consulta1[dia],
     for (const r of rows) {
       if (!r.fazenda || !r.dia) continue;
       if (!byFarm.has(r.fazenda)) byFarm.set(r.fazenda, []);
-      byFarm.get(r.fazenda).push({ dia: isoDay(r.dia), ultimo: r.ultimo, currais: r.currais || 0, manha: r.manha || 0, dec: r.dec || 0, up: r.up || 0, eq: r.eq || 0, down: r.down || 0, noite: r.noite || 0, vazio: r.vazio || 0 });
+      byFarm.get(r.fazenda).push({ dia: isoDay(r.dia), ultimo: r.ultimo, currais: r.currais || 0, manha: r.manha || 0, dec: r.dec || 0, up: r.up || 0, eq: r.eq || 0, down: r.down || 0, noite: r.noite || 0, vazio: r.vazio || 0, ibcSum: r.ibcSum || 0, ibcN: r.ibcN || 0, ibcCurrais: r.ibcCurrais || 0, ibcAbaixo: r.ibcAbaixo || 0 });
     }
 
     const out = farms.map((farm) => {
@@ -466,6 +471,25 @@ EVALUATE CALCULATETABLE(SUMMARIZECOLUMNS(Consulta1[fazenda], Consulta1[dia],
       noturna.suspeita = totNoite >= 20 && noturna.pctVazio === 0;
       if (noturna.suspeita) noturna.emUso = false;
 
+      // IBC (vem do voo, mas nem todo dia): último dia com IBC, o anterior (tendência) e a média dos 7 dias.
+      const ibcDays = days.filter((d) => d.ibcN > 0);
+      const lastIbc = ibcDays.at(-1);
+      const prevIbc = ibcDays.at(-2);
+      const ibcN = ibcDays.reduce((s, d) => s + d.ibcN, 0);
+      const ibc = lastIbc
+        ? {
+            lastDay: lastIbc.dia,
+            valor: lastIbc.ibcSum / lastIbc.ibcN,
+            anterior: prevIbc ? prevIbc.ibcSum / prevIbc.ibcN : null,
+            media: ibcDays.reduce((s, d) => s + d.ibcSum, 0) / ibcN,
+            currais: lastIbc.ibcCurrais,
+            abaixo: lastIbc.ibcAbaixo,
+            total: lastIbc.currais,
+            dias: ibcDays.length,
+            diasVoo: flights.length,
+          }
+        : null;
+
       const etapas = [manha.emUso, decisao.emUso, noturna.emUso].filter(Boolean).length;
       const algum = [manha, decisao, noturna].some((s) => s.dias > 0 && !(s === noturna && noturna.suspeita));
       const nivel = daysSince === null || daysSince > USAGE.paradoDias ? 'parado' : etapas === 3 ? 'completo' : etapas > 0 ? 'parcial' : algum ? 'baixo' : 'so_voo';
@@ -480,6 +504,7 @@ EVALUATE CALCULATETABLE(SUMMARIZECOLUMNS(Consulta1[fazenda], Consulta1[dia],
         manha,
         decisao,
         noturna,
+        ibc,
         nivel,
       };
     });

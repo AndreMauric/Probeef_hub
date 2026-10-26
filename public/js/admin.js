@@ -1733,7 +1733,7 @@ const USO_NIVEL = {
 };
 const CCV_INTRO = {
   alertas: 'Situação da última semana de leitura de cocho em cada fazenda ligada a um cliente, comparada à semana anterior. Para cada fazenda, decida: enviar o alerta, enviar o resumo da semana, adiar ou dar por tratado. Tudo fica registrado no histórico.',
-  uso: 'O que cada fazenda realmente faz na Ferramenta CCV nos últimos 7 dias: último voo, leitura da manhã, decisão de trato e leitura noturna — quando foi feita, em quantos currais e em quantos dias. Todas as fazendas do modelo aparecem, com ou sem cliente no portal.',
+  uso: 'O que cada fazenda realmente faz na Ferramenta CCV nos últimos 7 dias: último voo, leitura da manhã, decisão de trato e leitura noturna — quando foi feita, em quantos currais e em quantos dias — e o IBC do último voo. Todas as fazendas do modelo aparecem, com ou sem cliente no portal.',
 };
 
 function selectCcvView(view) {
@@ -1794,6 +1794,24 @@ function renderCcvUsage() {
         warn ? h('span', { class: 'uso-warn' }, `⚠ ${warn}`) : null,
       );
     };
+    const meta = ccvUsageState.data.reports[0].rules.ibcMeta;
+    const dec2 = (v) => v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    // IBC do último dia que tem IBC: valor (verde na meta, amarelo até 0,5 abaixo, vermelho abaixo disso),
+    // tendência contra o dia anterior com IBC, currais abaixo da meta e a média dos 7 dias.
+    const ibcCell = (i, diasVoo) => {
+      if (!i) return h('td', { class: 'uso-cell off' }, h('strong', {}, 'Sem IBC'), h('span', {}, diasVoo ? `0 de ${diasVoo} dias com voo` : 'sem voo no período'));
+      const cls = i.valor >= meta ? 'ok' : i.valor >= meta - 0.5 ? 'warn' : 'crit';
+      const delta = i.anterior === null ? null : i.valor - i.anterior;
+      const seta = delta === null || Math.abs(delta) < 0.05 ? '' : delta > 0 ? ' ↑' : ' ↓';
+      return h(
+        'td',
+        { class: `uso-cell ${cls}` },
+        h('strong', { title: i.anterior === null ? '' : `Dia anterior com IBC: ${dec2(i.anterior)}` }, dec2(i.valor), h('small', {}, seta)),
+        h('span', {}, `${i.abaixo} de ${i.currais} currais abaixo de ${meta.toLocaleString('pt-BR')}`),
+        h('span', {}, `Último: ${quando(i.lastDay)} · média 7 dias ${dec2(i.media)}`),
+        i.currais < i.total ? h('span', {}, `IBC em ${i.currais} de ${i.total} currais sobrevoados`) : null,
+      );
+    };
     const rows = farms.map((f) => {
       const [nivel, nivelCls] = USO_NIVEL[f.nivel];
       const vooCls = f.daysSince > 3 ? 'crit' : f.daysSince >= 1 ? 'warn' : '';
@@ -1813,6 +1831,7 @@ function renderCcvUsage() {
           extra: f.noturna.dias && !f.noturna.suspeita ? h('span', {}, `Cocho vazio em ${pct(f.noturna.pctVazio, 1)} das leituras`) : null,
           warn: f.noturna.suspeita ? 'nunca registrou cocho vazio em 7 dias: provável valor padrão, não leitura feita' : null,
         }),
+        ibcCell(f.ibc, f.diasVoo),
         h('td', {}, h('span', { class: `uso-nivel ${nivelCls}` }, nivel)),
       );
     });
@@ -1834,14 +1853,14 @@ function renderCcvUsage() {
         h(
           'table',
           { class: 'uso-table' },
-          h('thead', {}, h('tr', {}, ['Fazenda', 'Último voo', 'Leitura da manhã', 'Decisão de trato', 'Leitura noturna', 'Nível'].map((t) => h('th', { scope: 'col' }, t)))),
+          h('thead', {}, h('tr', {}, ['Fazenda', 'Último voo', 'Leitura da manhã', 'Decisão de trato', 'Leitura noturna', `IBC (meta ${meta.toLocaleString('pt-BR')})`, 'Nível'].map((t) => h('th', { scope: 'col' }, t)))),
           h('tbody', {}, rows),
         ),
       ),
       h(
         'p',
         { class: 'muted usage-hint' },
-        `Período: ${ddmm(period.from)} a ${ddmm(period.to)}. Uma etapa conta como "em uso" (verde) quando foi feita em pelo menos ${Math.round(ccvUsageState.data.reports[0].rules.emUso * 100)}% dos dias com voo, cobrindo pelo menos metade dos currais sobrevoados. Completo = as três etapas em uso; Parcial = uma ou duas; Baixo = feitas de vez em quando; Só voo = nenhuma; Parado = sem voo há mais de 3 dias. Atualiza a cada 30 minutos (ou em "Buscar dados novos").`,
+        `Período: ${ddmm(period.from)} a ${ddmm(period.to)}. Uma etapa conta como "em uso" (verde) quando foi feita em pelo menos ${Math.round(ccvUsageState.data.reports[0].rules.emUso * 100)}% dos dias com voo, cobrindo pelo menos metade dos currais sobrevoados. Completo = as três etapas em uso; Parcial = uma ou duas; Baixo = feitas de vez em quando; Só voo = nenhuma; Parado = sem voo há mais de 3 dias. O IBC não entra no nível: é o resultado, não uso. Atualiza a cada 30 minutos (ou em "Buscar dados novos").`,
       ),
     ];
   });
