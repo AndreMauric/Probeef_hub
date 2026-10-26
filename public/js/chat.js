@@ -35,13 +35,17 @@ function richText(text, { newTab }) {
 }
 
 // mine: a mensagem é de quem está olhando (fica à direita).
-export function renderMessage(m, { mine, newTab = false, showAuthor = true }) {
+// fileHref: endereço do PDF anexo (o admin baixa por /api/admin/chat/...).
+export function renderMessage(m, { mine, newTab = false, showAuthor = true, fileHref = (msg) => `/api/chat/files/${msg.attachment.id}` }) {
   return h(
     'div',
     { class: `chat-msg ${mine ? 'mine' : 'theirs'}` },
     m.origin?.type === 'ccv' ? h('span', { class: 'chat-origin' }, m.origin.action === 'relatorio' ? 'Resumo CCV' : 'Alerta CCV') : null,
     m.origin?.type === 'benchmark' ? h('span', { class: 'chat-origin' }, 'Benchmarking') : null,
     richText(m.text, { newTab }),
+    m.attachment
+      ? h('a', { class: 'chat-file', href: fileHref(m), download: m.attachment.name }, h('span', { 'aria-hidden': 'true' }, '📄'), h('span', {}, m.attachment.name, h('small', {}, ` · PDF · ${Math.max(1, Math.round(m.attachment.size / 1024))} KB`)))
+      : null,
     m.context
       ? h('a', { class: 'chat-context', href: contextHref(m.context), ...(newTab ? { target: '_blank', rel: 'noopener' } : {}) }, `📍 ${m.context.reportName}${m.context.farm ? ` · ${m.context.farm}` : ''}`)
       : null,

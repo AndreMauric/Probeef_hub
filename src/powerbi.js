@@ -103,14 +103,23 @@ async function getReport(workspaceId, reportId) {
 
 // ---------- Exportação para PDF (API "Export To File") ----------
 
+// Páginas do relatório, na ordem das abas: [{ name, displayName, order }].
+export async function listReportPages(workspaceId, reportId) {
+  if (!isGuid(workspaceId) || !isGuid(reportId)) throw new PowerBIError('IDs do relatório inválidos.', 400);
+  const result = await call(`/groups/${workspaceId}/reports/${reportId}/pages`);
+  return (result?.value || []).sort((a, b) => a.order - b.order).map((p) => ({ name: p.name, displayName: p.displayName, order: p.order }));
+}
+
 // Inicia a exportação. pageName: só aquela página (ou todas, se vazio); bookmarkState: filtros
-// e segmentações que o usuário aplicou na tela; identity: RLS, igual ao embed.
-export async function startExport({ workspaceId, reportId, pageName, bookmarkState, identity }) {
+// e segmentações que o usuário aplicou na tela; identity: RLS, igual ao embed; filter: filtro
+// de relatório no formato da URL do Power BI (ex.: "Consulta1/fazenda eq 'X'"), aplicado a todas as páginas.
+export async function startExport({ workspaceId, reportId, pageName, bookmarkState, identity, filter }) {
   if (!isGuid(workspaceId) || !isGuid(reportId)) throw new PowerBIError('IDs do relatório inválidos.', 400);
   const report = await getReport(workspaceId, reportId);
   const configuration = {};
   if (pageName) configuration.pages = [{ pageName }];
   if (bookmarkState) configuration.defaultBookmark = { state: bookmarkState };
+  if (filter) configuration.reportLevelFilters = [{ filter }];
   if (identity) {
     configuration.identities = [{ username: identity.username, roles: identity.roles, datasets: [report.datasetId] }];
   }
@@ -137,10 +146,10 @@ export async function getExportFile(workspaceId, reportId, exportId) {
   return res;
 }
 
-// Gera o PDF do relatório inteiro e devolve o arquivo (usado pelo bot do WhatsApp).
+// Gera o PDF (do relatório inteiro ou de uma página) e devolve o arquivo (bot do WhatsApp, alertas CCV).
 // Espera até 6 minutos, consultando o andamento a cada 3 segundos.
-export async function exportPdfBuffer({ workspaceId, reportId, identity }) {
-  const exportId = await startExport({ workspaceId, reportId, identity });
+export async function exportPdfBuffer({ workspaceId, reportId, identity, pageName, filter }) {
+  const exportId = await startExport({ workspaceId, reportId, identity, pageName, filter });
   const started = Date.now();
   for (;;) {
     await new Promise((r) => setTimeout(r, 3000));

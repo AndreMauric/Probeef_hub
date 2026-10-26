@@ -2,7 +2,7 @@
 // ficam em admin.js (/api/admin/chat).
 import { Router } from 'express';
 import { requireAuth } from '../auth.js';
-import { userConversation, userMarkRead, userSend, userUnread } from '../chat.js';
+import { chatFile, userConversation, userMarkRead, userSend, userUnread } from '../chat.js';
 
 export const chatRouter = Router();
 
@@ -26,6 +26,18 @@ chatRouter.post('/', route(async (req, res) => {
   if (req.impersonator) return res.status(403).json({ error: 'Você está vendo o portal como este usuário. Responda pela aba Mensagens do admin.' });
   res.status(201).json({ message: await userSend(req.user, req.body || {}) });
 }));
+
+// PDF anexado pela equipe (só das mensagens da conversa deste usuário).
+chatRouter.get('/files/:fileId', (req, res, next) => {
+  try {
+    const file = chatFile(req.user.id, req.params.fileId);
+    res.download(file.path, file.name, (err) => {
+      if (err && !res.headersSent) res.status(404).json({ error: 'Arquivo não encontrado.' });
+    });
+  } catch (err) {
+    next(err);
+  }
+});
 
 chatRouter.post('/read', route(async (req, res) => {
   if (!req.impersonator) await userMarkRead(req.user);

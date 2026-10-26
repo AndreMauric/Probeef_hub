@@ -1,7 +1,14 @@
 // Mensagens entre cada usuário de cliente e a equipe de administradores do portal.
 // Uma conversa por usuário (chatThreads[].userId); qualquer admin lê e responde. As mensagens
 // ficam em chatMessages, com o "contexto" de onde o usuário estava (relatório e fazenda do CCV).
+// Mensagens do admin podem levar um PDF anexo (alertas CCV): o arquivo fica na pasta "files" ao
+// lado do db.json e a mensagem guarda só { id, name, size }.
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { config } from './config.js';
 import { db, newId, save } from './store.js';
+
+const FILE_DIR = path.join(path.dirname(config.dataFile), 'files');
 
 const MAX_TEXT = 2000;
 const MAX_MESSAGES = 20000; // as mais antigas saem do arquivo quando passar disso
@@ -49,10 +56,10 @@ function cleanContext(context, user) {
   return { reportId: report.id, reportName: report.name, ...(farm ? { farm } : {}) };
 }
 
-function append(userId, { from, authorId, text, context = null, origin = null }) {
+function append(userId, { from, authorId, text, context = null, origin = null, attachment = null }) {
   const data = db();
   const t = thread(userId, { create: true });
-  const message = { id: newId(), userId, from, authorId, text, at: new Date().toISOString(), ...(context ? { context } : {}), ...(origin ? { origin } : {}) };
+  const message = { id: newId(), userId, from, authorId, text, at: new Date().toISOString(), ...(context ? { context } : {}), ...(origin ? { origin } : {}), ...(attachment ? { attachment } : {}) };
   data.chatMessages.push(message);
   if (data.chatMessages.length > MAX_MESSAGES) data.chatMessages.splice(0, data.chatMessages.length - MAX_MESSAGES);
   t.lastAt = message.at;
@@ -148,9 +155,10 @@ export async function adminMarkRead(userId) {
 }
 
 // origin: de onde veio a mensagem do admin (ex.: { type: 'ccv', farm }), para mostrar na conversa.
-export async function adminSend(admin, userId, { text, context = null, origin = null }, { persist = true } = {}) {
+// attachment: o que saveChatFile devolveu (o mesmo arquivo pode ir em várias conversas).
+export async function adminSend(admin, userId, { text, context = null, origin = null, attachment = null }, { persist = true } = {}) {
   clientUserOr404(userId);
-  const message = append(userId, { from: 'admin', authorId: admin.id, text: cleanText(text), context: cleanContext(context, admin), origin });
+  const message = append(userId, { from: 'admin', authorId: admin.id, text: cleanText(text), context: cleanContext(context, admin), origin, attachment });
   if (persist) await save();
   return withAuthor(message);
 }
@@ -162,9 +170,28 @@ export async function setThreadStatus(userId, status) {
   await save();
 }
 
-// Usuário excluído: some com a conversa dele.
+// ---------- Anexos (PDF) ----------
+
+export async function saveChatFile(buffer, name) {
+  const id = newId();
+  await fs.mkdir(FILE_DIR, { recursive: true });
+  await fs.writeFile(path.join(FILE_DIR, `${id}.pdf`), buffer);
+  return { id, name, size: buffer.length };
+}
+
+// Arquivo anexado a uma mensagem da conversa deste usuário (nunca de outra conversa).
+export function chatFile(userId, fileId) {
+  const message = messagesOf(userId).find((m) => m.attachment?.id === fileId);
+  if (!message) throw new ChatError('Arquivo não encontrado.', 404);
+  return { path: path.join(FILE_DIR, `${message.attachment.id}.pdf`), name: message.attachment.name };
+}
+
+// Usuário excluído: some com a conversa dele (e com os anexos que só ele tinha).
 export function forgetChat(userId) {
   const data = db();
+  const files = new Set(messagesOf(userId).map((m) => m.attachment?.id).filter(Boolean));
   data.chatThreads = data.chatThreads.filter((t) => t.userId !== userId);
   data.chatMessages = data.chatMessages.filter((m) => m.userId !== userId);
+  for (const m of data.chatMessages) if (m.attachment) files.delete(m.attachment.id);
+  for (const id of files) fs.unlink(path.join(FILE_DIR, `${id}.pdf`)).catch(() => {});
 }

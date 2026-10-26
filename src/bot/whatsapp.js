@@ -11,6 +11,8 @@ const cfg = () => ({
   updateTemplate: process.env.WHATSAPP_TEMPLATE_UPDATE || '',
   // Alertas e resumos da Ferramenta CCV enviados pelo admin: {{1}} nome, {{2}} fazenda, {{3}} texto (uma linha).
   ccvTemplate: process.env.WHATSAPP_TEMPLATE_CCV || '',
+  // "true" quando esse modelo foi criado com cabeçalho do tipo Documento: o PDF do relatório vai nele.
+  ccvTemplatePdf: /^(1|true|sim)$/i.test(process.env.WHATSAPP_TEMPLATE_CCV_PDF || ''),
   templateLanguage: process.env.WHATSAPP_TEMPLATE_LANGUAGE || 'pt_BR',
 });
 
@@ -20,6 +22,7 @@ export function whatsappStatus() {
     configured: Boolean(c.token && c.phoneNumberId && c.appSecret && c.verifyToken),
     updateTemplate: c.updateTemplate || null,
     ccvTemplate: c.ccvTemplate || null,
+    ccvTemplatePdf: c.ccvTemplatePdf,
   };
 }
 
@@ -46,31 +49,37 @@ export async function sendText(to, text) {
   });
 }
 
-export async function sendDocument(to, buffer, fileName, caption) {
+// Sobe um PDF para a Meta e devolve o id da mídia (vale para vários envios).
+export async function uploadPdf(buffer, fileName) {
   const form = new FormData();
   form.append('messaging_product', 'whatsapp');
   form.append('type', 'application/pdf');
   form.append('file', new Blob([buffer], { type: 'application/pdf' }), fileName);
-  const media = await post(`${cfg().phoneNumberId}/media`, form);
+  return (await post(`${cfg().phoneNumberId}/media`, form)).id;
+}
+
+// Documento solto: só é entregue se a pessoa escreveu para o número nas últimas 24 horas.
+export async function sendDocument(to, buffer, fileName, caption, { mediaId } = {}) {
+  const id = mediaId || (await uploadPdf(buffer, fileName));
   return post(`${cfg().phoneNumberId}/messages`, {
     messaging_product: 'whatsapp',
     to,
     type: 'document',
-    document: { id: media.id, filename: fileName, caption: caption || undefined },
+    document: { id, filename: fileName, caption: caption || undefined },
   });
 }
 
 // Mensagens que a empresa inicia (avisos) precisam de um modelo aprovado pela Meta.
-export async function sendTemplate(to, name, params = []) {
+// document: { id, filename } para modelos com cabeçalho do tipo Documento.
+export async function sendTemplate(to, name, params = [], { document } = {}) {
+  const components = [];
+  if (document) components.push({ type: 'header', parameters: [{ type: 'document', document }] });
+  if (params.length) components.push({ type: 'body', parameters: params.map((text) => ({ type: 'text', text: String(text) })) });
   return post(`${cfg().phoneNumberId}/messages`, {
     messaging_product: 'whatsapp',
     to,
     type: 'template',
-    template: {
-      name,
-      language: { code: cfg().templateLanguage },
-      components: params.length ? [{ type: 'body', parameters: params.map((text) => ({ type: 'text', text: String(text) })) }] : [],
-    },
+    template: { name, language: { code: cfg().templateLanguage }, components },
   });
 }
 

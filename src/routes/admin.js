@@ -5,12 +5,13 @@ import { handleMessage } from '../bot/engine.js';
 import { logBotMessage, recentBotMessages } from '../bot/log.js';
 import { notifyReportUpdated, recipientsFor } from '../bot/notify.js';
 import { cleanPhoneInput, samePhone } from '../bot/phone.js';
-import { sendTemplate, whatsappStatus } from '../bot/whatsapp.js';
+import { sendDocument, sendTemplate, uploadPdf, whatsappStatus } from '../bot/whatsapp.js';
 import { isCcv } from '../access.js';
 import { ccvUsage, computeCcvAlerts, listFarms, messageFor, oneLine, RULES } from '../ccv.js';
+import { ccvPages, ccvPdfJob, publicJob, startCcvPdf } from '../ccvPdf.js';
 import { adminQuotes, deleteManual, saveManual, setManualValue, setQuoteOptions } from '../quotes.js';
 import { adminList as bmkList, exportAll as bmkExport, saveSettings as saveBmkSettings, settings as bmkSettings } from '../benchmark.js';
-import { adminConversation, adminInbox, adminMarkRead, adminSend, forgetChat, setThreadStatus } from '../chat.js';
+import { adminConversation, adminInbox, adminMarkRead, adminSend, chatFile, forgetChat, saveChatFile, setThreadStatus } from '../chat.js';
 import { exportData, listSnapshots, snapshotPath, validateBackup } from '../backup.js';
 import { generatePassword, hashPassword, requireAdmin, validatePassword } from '../auth.js';
 import { config } from '../config.js';
@@ -181,6 +182,28 @@ adminRouter.get('/ccv/alerts', route(async (req, res) => {
   res.json({ reports: result, whatsapp: whatsappStatus(), rules: RULES });
 }));
 
+// PDF do relatório para anexar ao alerta: páginas, gerar (sempre filtrado na fazenda), acompanhar e ver.
+adminRouter.get('/ccv/pages', route(async (req, res) => {
+  const report = ccvReportOr404(text(req.query.reportId, 36));
+  res.json({ pages: await ccvPages(report) });
+}));
+
+adminRouter.post('/ccv/pdf', route(async (req, res) => {
+  const body = req.body || {};
+  const report = ccvReportOr404(text(body.reportId, 36));
+  const farm = text(body.farm, 120);
+  if (!farm) fail('Escolha a fazenda.');
+  res.status(202).json({ job: publicJob(await startCcvPdf(report, farm, text(body.pageName, 64))) });
+}));
+
+adminRouter.get('/ccv/pdf/:id', (req, res) => res.json({ job: publicJob(ccvPdfJob(req.params.id)) }));
+
+adminRouter.get('/ccv/pdf/:id/file', (req, res) => {
+  const job = ccvPdfJob(req.params.id);
+  if (job.status !== 'ready') return res.status(409).json({ error: 'O PDF ainda não está pronto.' });
+  res.type('application/pdf').set('Content-Disposition', `inline; filename="${job.fileName}"`).send(job.buffer);
+});
+
 // Decisão do admin sobre o alerta de uma fazenda: enviar alerta, enviar resumo, adiar ou dar por tratado.
 adminRouter.post('/ccv/alerts/decide', route(async (req, res) => {
   const body = req.body || {};
@@ -207,11 +230,20 @@ adminRouter.post('/ccv/alerts/decide', route(async (req, res) => {
     entry.text = message;
     entry.channel = channel;
     entry.recipients = picked.map((r) => ({ id: r.id, name: r.name }));
+    // PDF anexo: tem que ser desta fazenda e deste relatório (o pedido foi gerado com o filtro dela).
+    let pdf = null;
+    if (body.pdfId) {
+      pdf = ccvPdfJob(text(body.pdfId, 64));
+      if (pdf.reportId !== report.id || pdf.farm !== farm) fail('O PDF anexado é de outra fazenda.');
+      if (pdf.status !== 'ready') fail('O PDF ainda não está pronto.');
+      entry.pdf = { page: pdf.page, fileName: pdf.fileName };
+    }
     if (channel === 'portal') {
       // Chega como mensagem no portal (botão Mensagens), com link para o painel daquela fazenda.
       if (!picked.length) fail('Marque ao menos uma pessoa.');
+      const attachment = pdf ? await saveChatFile(pdf.buffer, pdf.fileName) : null;
       for (const r of picked) {
-        await adminSend(req.user, r.id, { text: message, context: { reportId: report.id, farm }, origin: { type: 'ccv', action, farm } }, { persist: false });
+        await adminSend(req.user, r.id, { text: message, context: { reportId: report.id, farm }, origin: { type: 'ccv', action, farm }, attachment }, { persist: false });
       }
       entry.sent = picked.length;
       entry.failed = [];
@@ -220,16 +252,31 @@ adminRouter.post('/ccv/alerts/decide', route(async (req, res) => {
       if (!status.configured || !status.ccvTemplate) fail('O WhatsApp não está pronto para enviar (falta configurar o modelo WHATSAPP_TEMPLATE_CCV).');
       const withPhone = picked.filter((r) => r.phone);
       if (!withPhone.length) fail('Nenhum destinatário escolhido tem WhatsApp cadastrado.');
+      // Modelo com cabeçalho Documento: o PDF vai nele (e é obrigatório). Sem cabeçalho, o PDF vai
+      // solto depois do modelo, e o WhatsApp só entrega a quem escreveu para o número nas últimas 24 h.
+      if (status.ccvTemplatePdf && !pdf) fail('O modelo do WhatsApp configurado exige o PDF anexo.');
+      const mediaId = pdf ? await uploadPdf(pdf.buffer, pdf.fileName) : null;
       entry.sent = 0;
       entry.failed = [];
+      if (pdf && !status.ccvTemplatePdf) entry.pdfFailed = [];
       for (const r of withPhone) {
         try {
-          await sendTemplate(r.phone, status.ccvTemplate, [r.name.split(' ')[0], farm, oneLine(message)]);
-          logBotMessage({ direction: 'out', userId: r.id, text: `[CCV ${action}] ${farm}` });
+          const document = pdf && status.ccvTemplatePdf ? { id: mediaId, filename: pdf.fileName } : undefined;
+          await sendTemplate(r.phone, status.ccvTemplate, [r.name.split(' ')[0], farm, oneLine(message)], { document });
+          logBotMessage({ direction: 'out', userId: r.id, text: `[CCV ${action}] ${farm}${pdf ? ' + PDF' : ''}` });
           entry.sent += 1;
         } catch (err) {
           console.error(`Envio CCV para ${r.phone} falhou:`, err.message);
           entry.failed.push(r.name);
+          continue;
+        }
+        if (pdf && !status.ccvTemplatePdf) {
+          try {
+            await sendDocument(r.phone, null, pdf.fileName, null, { mediaId });
+          } catch (err) {
+            console.error(`PDF do CCV para ${r.phone} não foi entregue:`, err.message);
+            entry.pdfFailed.push(r.name);
+          }
         }
       }
     }
@@ -307,6 +354,13 @@ adminRouter.get('/chat/:userId', (req, res) => res.json(adminConversation(req.pa
 adminRouter.post('/chat/:userId', route(async (req, res) => {
   res.status(201).json({ message: await adminSend(req.user, req.params.userId, { text: req.body?.text }) });
 }));
+
+adminRouter.get('/chat/:userId/files/:fileId', (req, res) => {
+  const file = chatFile(req.params.userId, req.params.fileId);
+  res.download(file.path, file.name, (err) => {
+    if (err && !res.headersSent) res.status(404).json({ error: 'Arquivo não encontrado.' });
+  });
+});
 
 adminRouter.post('/chat/:userId/read', route(async (req, res) => {
   await adminMarkRead(req.params.userId);

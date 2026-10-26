@@ -120,6 +120,14 @@ do relatório via DAX (`executeDax`, API `executeQueries`) e desenha o painel em
   alerta, enviar resumo, adiar ou tratado; tudo vai para `ccvAlertLog`. O envio automático usa o
   modelo do WhatsApp `WHATSAPP_TEMPLATE_CCV`; sem ele, o admin copia o texto ou abre o WhatsApp
   dele e registra o envio.
+- **PDF anexo nos alertas** (`src/ccvPdf.js`): o envio pode levar o PDF de uma página do
+  relatório "Ferramenta CCV", gerado pela API ExportTo **sempre com `reportLevelFilters` na fazenda
+  do alerta** (o relatório não tem RLS; conferido em out/2026: todas as páginas saem só com a
+  fazenda). Leva ~30 s, então é um pedido que o navegador acompanha (`/api/admin/ccv/pdf`); o
+  arquivo fica 1 h na memória. Pelo portal vira anexo da mensagem (pasta `files/` ao lado do
+  `db.json`, baixado por `/api/chat/files/:id`, só pelo dono da conversa). Pelo WhatsApp vai no
+  cabeçalho Documento do modelo quando `WHATSAPP_TEMPLATE_CCV_PDF=true`. O período das páginas é o
+  que estiver salvo no seletor de datas do relatório.
 
 - **Uso da ferramenta** (sub-aba de Alertas CCV, `ccvUsage` em `src/ccv.js`): por fazenda, nos
   últimos 7 dias, último voo e, para leitura da manhã, decisão de trato e leitura noturna, o

@@ -1440,7 +1440,7 @@ function renderConversation({ scroll }) {
   const list = h(
     'div',
     { class: 'ai-messages' },
-    data.messages.length ? data.messages.map((m) => renderMessage(m, { mine: m.from === 'admin', newTab: true })) : h('p', { class: 'muted' }, `Nenhuma mensagem ainda. Escreva para ${data.user.name}: a mensagem aparece no botão Mensagens do portal dele.`),
+    data.messages.length ? data.messages.map((m) => renderMessage(m, { mine: m.from === 'admin', newTab: true, fileHref: (msg) => `/api/admin/chat/${msg.userId}/files/${msg.attachment.id}` })) : h('p', { class: 'muted' }, `Nenhuma mensagem ainda. Escreva para ${data.user.name}: a mensagem aparece no botão Mensagens do portal dele.`),
   );
   const lastAdmin = [...data.messages].reverse().find((m) => m.from === 'admin');
   const seen = lastAdmin && data.userReadAt && data.userReadAt >= lastAdmin.at;
@@ -1556,6 +1556,107 @@ async function decideCcv(report, f, body, doneText) {
   await loadCcvAlerts();
 }
 
+// PDF do relatório do CCV para anexar: gerado no Power BI na hora, sempre filtrado na fazenda do
+// alerta (leva de 30 s a 1 min). A página escolhida e a opção de anexar ficam lembradas no navegador.
+const CCV_PDF_PAGE = 'ccvPdfPage';
+const CCV_PDF_ON = 'ccvPdfOn';
+const remembered = (key) => {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+};
+const remember = (key, value) => {
+  try {
+    localStorage.setItem(key, value);
+  } catch {}
+};
+
+function ccvPdfPicker(report, farm) {
+  const box = h('input', { type: 'checkbox', checked: remembered(CCV_PDF_ON) === '1' });
+  const page = h('select', { 'aria-label': 'Página do relatório', disabled: true }, h('option', {}, 'Carregando as páginas…'));
+  const gen = h('button', { class: 'btn btn-sm', type: 'button' }, 'Gerar prévia');
+  const preview = h('a', { class: 'btn btn-sm', target: '_blank', rel: 'noopener', hidden: true }, 'Ver PDF');
+  const HINT = 'O PDF sai só com os dados desta fazenda. Gerar leva de 30 s a 1 minuto.';
+  const status = h('small', {}, HINT);
+  const controls = h('div', { class: 'ccv-pdf-row' }, page, gen, preview);
+  let job = null;
+  let jobPage = null;
+  let running = null;
+  const sync = () => {
+    controls.hidden = !box.checked;
+    status.hidden = !box.checked;
+  };
+  api(`/api/admin/ccv/pages?reportId=${encodeURIComponent(report.id)}`)
+    .then(({ pages }) => {
+      const saved = remembered(CCV_PDF_PAGE);
+      // Sem escolha anterior: a última aba (no relatório atual, o "Relatório semanal").
+      const pick = pages.some((p) => p.name === saved) ? saved : pages.at(-1)?.name;
+      page.replaceChildren(...pages.map((p) => h('option', { value: p.name, selected: p.name === pick }, p.displayName)));
+      page.disabled = false;
+    })
+    .catch((err) => {
+      page.replaceChildren(h('option', {}, 'Páginas indisponíveis'));
+      status.textContent = err.message;
+    });
+  page.addEventListener('change', () => {
+    remember(CCV_PDF_PAGE, page.value);
+    job = null;
+    preview.hidden = true;
+    status.textContent = HINT;
+  });
+  box.addEventListener('change', () => {
+    remember(CCV_PDF_ON, box.checked ? '1' : '0');
+    sync();
+  });
+  sync();
+
+  async function generate(pageName) {
+    gen.disabled = true;
+    status.textContent = 'Gerando o PDF no Power BI… leva de 30 s a 1 minuto.';
+    try {
+      let { job: j } = await api('/api/admin/ccv/pdf', { method: 'POST', body: { reportId: report.id, farm, pageName } });
+      while (j.status === 'running') {
+        await new Promise((r) => setTimeout(r, 3000));
+        ({ job: j } = await api(`/api/admin/ccv/pdf/${j.id}`));
+      }
+      if (j.status !== 'ready') throw new Error(`Não consegui gerar o PDF: ${j.error || 'erro do Power BI'}`);
+      job = j;
+      jobPage = pageName;
+      preview.href = `/api/admin/ccv/pdf/${j.id}/file`;
+      preview.hidden = false;
+      status.textContent = `Pronto: ${j.fileName} (${Math.max(1, Math.round(j.size / 1024))} KB). Confira em "Ver PDF" antes de enviar.`;
+      return j;
+    } catch (err) {
+      status.textContent = err.message;
+      throw err;
+    } finally {
+      gen.disabled = false;
+    }
+  }
+  // PDF pronto da página escolhida (gera se ainda não tiver).
+  function ensure() {
+    if (page.disabled) return Promise.reject(new Error('As páginas do relatório ainda não carregaram.'));
+    if (job && jobPage === page.value) return Promise.resolve(job);
+    if (!running || running.page !== page.value) {
+      const p = page.value;
+      const promise = generate(p).finally(() => {
+        if (running === promise) running = null;
+      });
+      promise.page = p;
+      running = promise;
+    }
+    return running;
+  }
+  gen.addEventListener('click', () => ensure().catch(() => {}));
+  return {
+    element: h('div', { class: 'field' }, h('label', { class: 'check' }, box, h('span', {}, 'Anexar PDF do relatório')), controls, status),
+    wanted: () => box.checked,
+    ensure,
+  };
+}
+
 // Enviar alerta ou resumo: o admin revisa o texto e escolhe quem recebe.
 function sendCcvDialog(report, f, kind) {
   const wa = ccvState.data.whatsapp;
@@ -1568,6 +1669,7 @@ function sendCcvDialog(report, f, kind) {
     { value: 'manual', label: 'Já enviei por fora (só registrar)' },
   ].filter(Boolean);
   const channel = h('select', { name: 'channel' }, channels.map((c) => h('option', { value: c.value }, c.label)));
+  const pdf = ccvPdfPicker(report, f.farm);
   const rows = f.recipients.map((r) => {
     const box = h('input', { type: 'checkbox', value: r.id, checked: true });
     const wame = r.phone ? h('a', { class: 'btn btn-sm btn-ghost', target: '_blank', rel: 'noopener', href: '#', onclick: (e) => (e.currentTarget.href = `https://wa.me/${r.phone}?text=${encodeURIComponent(text.value)}`) }, 'Abrir no WhatsApp') : null;
@@ -1584,6 +1686,7 @@ function sendCcvDialog(report, f, kind) {
         rows.length ? h('div', { class: 'checkbox-list' }, rows.map((x) => x.row)) : h('small', {}, 'Nenhum usuário ativo vê esta fazenda no painel. Cadastre usuários no cliente (ou libere a fazenda para eles).'),
       ),
       field('Enviar', channel, ready ? 'No WhatsApp, quem não tem telefone cadastrado não recebe.' : 'O WhatsApp oficial ainda não está configurado (falta o modelo WHATSAPP_TEMPLATE_CCV). Para mandar pelo seu WhatsApp, use "Abrir no WhatsApp" ou copie o texto e registre o envio.'),
+      pdf.element,
       h('div', {}, h('button', { class: 'btn btn-sm', type: 'button', onclick: () => copyText(text.value, text) }, 'Copiar texto')),
     ],
     {
@@ -1591,16 +1694,20 @@ function sendCcvDialog(report, f, kind) {
       onSubmit: async () => {
         const recipientIds = rows.filter((x) => x.box.checked).map((x) => x.r.id);
         if (!recipientIds.length) throw new Error('Marque ao menos uma pessoa.');
+        if (channel.value === 'whatsapp' && wa.ccvTemplatePdf && !pdf.wanted()) throw new Error('O modelo do WhatsApp configurado exige o PDF anexo.');
+        const pdfId = pdf.wanted() ? (await pdf.ensure()).id : undefined;
         const { entry } = await api('/api/admin/ccv/alerts/decide', {
           method: 'POST',
-          body: { reportId: report.id, key: f.key, farm: f.farm, action: kind, text: text.value, recipientIds, channel: channel.value },
+          body: { reportId: report.id, key: f.key, farm: f.farm, action: kind, text: text.value, recipientIds, channel: channel.value, pdfId },
         });
         const people = (n) => `${n} ${n === 1 ? 'pessoa' : 'pessoas'}`;
+        const withPdf = entry.pdf ? ' com o PDF' : '';
+        const pdfLost = entry.pdfFailed?.length ? `. O PDF não chegou para ${entry.pdfFailed.join(', ')} (fora da janela de 24 h do WhatsApp)` : '';
         toast(
           entry.channel === 'portal'
-            ? `Mensagem enviada no portal para ${people(entry.sent)}.`
+            ? `Mensagem${withPdf} enviada no portal para ${people(entry.sent)}.`
             : entry.channel === 'whatsapp'
-              ? `Enviado para ${people(entry.sent)}${entry.failed.length ? ` (falhou: ${entry.failed.join(', ')})` : ''}.`
+              ? `Enviado${withPdf} para ${people(entry.sent)}${entry.failed.length ? ` (falhou: ${entry.failed.join(', ')})` : ''}${pdfLost}.`
               : 'Envio registrado.',
         );
         await loadCcvAlerts();
@@ -1635,6 +1742,7 @@ function ccvFarmCard(report, f) {
         ` por ${f.decision.adminName || 'admin'} em ${fmtDate(f.decision.at)}`,
         f.decision.recipients?.length ? ` · para ${f.decision.recipients.map((r) => r.name).join(', ')}` : '',
         { manual: ' (envio manual)', portal: ' (pelo portal)', whatsapp: ' (pelo WhatsApp)' }[f.decision.channel] || '',
+        f.decision.pdf ? ` · com PDF (${f.decision.pdf.page})` : '',
         f.decision.note ? ` · “${f.decision.note}”` : '',
       )
     : f.snoozedUntil
@@ -1885,6 +1993,7 @@ async function ccvHistory() {
             {},
             CCV_ACTION[e.action] || e.action,
             e.channel === 'manual' ? h('span', { class: 'sub' }, 'envio manual') : e.channel === 'whatsapp' ? h('span', { class: 'sub' }, `WhatsApp · ${e.sent || 0} enviada(s)`) : e.channel === 'portal' ? h('span', { class: 'sub' }, 'mensagem no portal') : null,
+            e.pdf ? h('span', { class: 'sub' }, `📄 PDF · ${e.pdf.page}`) : null,
           ),
           h('td', {}, e.adminName || '—'),
           h('td', {}, e.recipients?.length ? `Para ${e.recipients.map((r) => r.name).join(', ')}` : e.until ? `Até ${fmtDate(e.until)}` : e.note || ''),
