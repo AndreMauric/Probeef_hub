@@ -7,7 +7,7 @@ import { notifyReportUpdated, recipientsFor } from '../bot/notify.js';
 import { cleanPhoneInput, samePhone } from '../bot/phone.js';
 import { sendTemplate, whatsappStatus } from '../bot/whatsapp.js';
 import { isCcv } from '../access.js';
-import { computeCcvAlerts, listFarms, messageFor, oneLine, RULES } from '../ccv.js';
+import { ccvUsage, computeCcvAlerts, listFarms, messageFor, oneLine, RULES } from '../ccv.js';
 import { adminQuotes, deleteManual, saveManual, setManualValue, setQuoteOptions } from '../quotes.js';
 import { adminList as bmkList, exportAll as bmkExport, saveSettings as saveBmkSettings, settings as bmkSettings } from '../benchmark.js';
 import { adminConversation, adminInbox, adminMarkRead, adminSend, forgetChat, setThreadStatus } from '../chat.js';
@@ -238,6 +238,13 @@ adminRouter.post('/ccv/alerts/decide', route(async (req, res) => {
   data.ccvAlertLog = [...(data.ccvAlertLog || []), entry].slice(-2000);
   await save();
   res.json({ entry });
+}));
+
+// Uso da ferramenta por fazenda: voo, leitura da manhã, decisão de trato e leitura noturna.
+adminRouter.get('/ccv/usage', route(async (req, res) => {
+  const reports = [];
+  for (const report of ccvReports()) reports.push({ report: { id: report.id, name: report.name }, ...(await ccvUsage(report, { refresh: req.query.refresh === '1' })) });
+  res.json({ reports });
 }));
 
 // Histórico das decisões (mais recentes primeiro).

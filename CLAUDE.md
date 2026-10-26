@@ -121,6 +121,12 @@ do relatório via DAX (`executeDax`, API `executeQueries`) e desenha o painel em
   modelo do WhatsApp `WHATSAPP_TEMPLATE_CCV`; sem ele, o admin copia o texto ou abre o WhatsApp
   dele e registra o envio.
 
+- **Uso da ferramenta** (sub-aba de Alertas CCV, `ccvUsage` em `src/ccv.js`): por fazenda, nos
+  últimos 7 dias, último voo e, para leitura da manhã, decisão de trato e leitura noturna, o
+  último dia feito, quantos currais e em quantos dias. Atenção aos valores padrão do aplicativo:
+  a leitura noturna grava "True" (com comida) mesmo quando ninguém lê — fazenda sem nenhum
+  "False" (cocho vazio) em 7 dias é tratada como "não faz"; decisão 100% "Manteve" é sinalizada.
+
 ## Mensagens (chat usuário ↔ equipe)
 
 `src/chat.js` + `src/routes/chat.js` (usuário, `/api/chat`) + seção "Mensagens" em `admin.js`

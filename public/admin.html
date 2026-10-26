@@ -94,14 +94,19 @@
             <div class="section-head">
               <div>
                 <h2>Alertas CCV</h2>
-                <p>Situação da última semana de leitura de cocho em cada fazenda ligada a um cliente, comparada à semana anterior. Para cada fazenda, decida: enviar o alerta, enviar o resumo da semana, adiar ou dar por tratado. Tudo fica registrado no histórico.</p>
+                <p id="ccv-intro">Situação da última semana de leitura de cocho em cada fazenda ligada a um cliente, comparada à semana anterior. Para cada fazenda, decida: enviar o alerta, enviar o resumo da semana, adiar ou dar por tratado. Tudo fica registrado no histórico.</p>
               </div>
               <div class="viewer-actions">
                 <button class="btn" id="ccv-history" type="button">Histórico</button>
                 <button class="btn btn-primary" id="ccv-refresh" type="button">Buscar dados novos</button>
               </div>
             </div>
+            <div class="ccv-subtabs" role="tablist" aria-label="Alertas CCV">
+              <button type="button" role="tab" data-ccv-view="alertas" aria-selected="true" class="on">Alertas da semana</button>
+              <button type="button" role="tab" data-ccv-view="uso" aria-selected="false">Uso da ferramenta</button>
+            </div>
             <div id="ccv-alerts"></div>
+            <div id="ccv-usage" hidden></div>
           </section>
 
           <section data-panel="usage" hidden>

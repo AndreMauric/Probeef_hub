@@ -1721,6 +1721,133 @@ function renderCcvAlerts() {
   );
 }
 
+// ---------- Alertas CCV → Uso da ferramenta ----------
+
+const ccvUsageState = { view: 'alertas', data: null, loading: false };
+const USO_NIVEL = {
+  completo: ['Completo', 'ok'],
+  parcial: ['Parcial', 'warn'],
+  baixo: ['Baixo', 'crit'],
+  so_voo: ['Só voo', 'neutral'],
+  parado: ['Parado', 'crit'],
+};
+const CCV_INTRO = {
+  alertas: 'Situação da última semana de leitura de cocho em cada fazenda ligada a um cliente, comparada à semana anterior. Para cada fazenda, decida: enviar o alerta, enviar o resumo da semana, adiar ou dar por tratado. Tudo fica registrado no histórico.',
+  uso: 'O que cada fazenda realmente faz na Ferramenta CCV nos últimos 7 dias: último voo, leitura da manhã, decisão de trato e leitura noturna — quando foi feita, em quantos currais e em quantos dias. Todas as fazendas do modelo aparecem, com ou sem cliente no portal.',
+};
+
+function selectCcvView(view) {
+  ccvUsageState.view = view;
+  document.querySelectorAll('[data-ccv-view]').forEach((b) => {
+    b.classList.toggle('on', b.dataset.ccvView === view);
+    b.setAttribute('aria-selected', String(b.dataset.ccvView === view));
+  });
+  document.getElementById('ccv-alerts').hidden = view !== 'alertas';
+  document.getElementById('ccv-usage').hidden = view !== 'uso';
+  document.getElementById('ccv-history').hidden = view !== 'alertas';
+  document.getElementById('ccv-intro').textContent = CCV_INTRO[view];
+  if (view === 'uso' && !ccvUsageState.data) loadCcvUsage();
+  if (view === 'alertas' && !ccvState.data) loadCcvAlerts();
+}
+
+async function loadCcvUsage({ refresh = false } = {}) {
+  if (ccvUsageState.loading) return;
+  ccvUsageState.loading = true;
+  const box = document.getElementById('ccv-usage');
+  if (!ccvUsageState.data || refresh) box.replaceChildren(h('p', { class: 'muted' }, 'Lendo o uso de todas as fazendas no modelo do CCV…'));
+  try {
+    ccvUsageState.data = await api(`/api/admin/ccv/usage${refresh ? '?refresh=1' : ''}`);
+    renderCcvUsage();
+  } catch (err) {
+    box.replaceChildren(h('p', { class: 'alert' }, err.message));
+  } finally {
+    ccvUsageState.loading = false;
+  }
+}
+
+function renderCcvUsage() {
+  const box = document.getElementById('ccv-usage');
+  const { reports } = ccvUsageState.data;
+  if (!reports.length) {
+    box.replaceChildren(h('p', { class: 'alert' }, 'Nenhum relatório do tipo "Painel CCV" cadastrado.'));
+    return;
+  }
+  const blocks = reports.map(({ report, period, farms }) => {
+    if (!period) return h('p', { class: 'muted' }, 'Sem dados no modelo.');
+    const end = period.to;
+    const pct = (a, b) => (b ? `${Math.round((a / b) * 100)}%` : '—');
+    const ddmm = (iso) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
+    const quando = (iso) => {
+      const n = Math.round((Date.parse(end) - Date.parse(iso)) / 86400000);
+      return n <= 0 ? `hoje (${ddmm(iso)})` : n === 1 ? `ontem (${ddmm(iso)})` : ddmm(iso);
+    };
+    // Célula de uma etapa: quando foi feita por último, quantos currais e em quantos dias.
+    const stepCell = (s, { extra = null, warn = null } = {}) => {
+      if (!s.dias) return h('td', { class: 'uso-cell off' }, h('strong', {}, 'Não faz'), h('span', {}, s.diasVoo ? `0 de ${s.diasVoo} dias com voo` : 'sem voo no período'));
+      const cls = warn ? 'warn' : s.emUso ? 'ok' : 'warn';
+      return h(
+        'td',
+        { class: `uso-cell ${cls}` },
+        h('strong', {}, `${s.currais} de ${s.total} currais`, h('small', {}, ` · ${pct(s.currais, s.total)}`)),
+        h('span', {}, `Último: ${quando(s.lastDay)} · ${s.dias} de ${s.diasVoo} dias`),
+        extra,
+        warn ? h('span', { class: 'uso-warn' }, `⚠ ${warn}`) : null,
+      );
+    };
+    const rows = farms.map((f) => {
+      const [nivel, nivelCls] = USO_NIVEL[f.nivel];
+      const vooCls = f.daysSince > 3 ? 'crit' : f.daysSince >= 1 ? 'warn' : '';
+      const voo = f.lastFlight && f.curraisVoo ? `${ddmm(f.lastFlight)} ${f.lastFlight.slice(11, 16)}` : f.lastFlightDay ? ddmm(f.lastFlightDay) : '—';
+      const d = f.decisao;
+      return h(
+        'tr',
+        {},
+        h('th', { scope: 'row' }, h('strong', {}, f.farm), h('span', { class: 'sub' }, f.clients.length ? f.clients.join(', ') : 'sem cliente no portal')),
+        h('td', { class: `uso-voo ${vooCls}` }, h('strong', {}, voo), h('span', {}, f.curraisVoo ? `${f.curraisVoo} currais · ${f.diasVoo} de ${period.days} dias` : f.daysSince !== null ? `há ${f.daysSince} dias` : '')),
+        stepCell(f.manha),
+        stepCell(d, {
+          extra: d.mix ? h('span', { class: 'uso-mix', title: 'Último dia: aumentou · manteve · reduziu' }, `↑ ${d.mix.up}  = ${d.mix.eq}  ↓ ${d.mix.down}`) : null,
+          warn: d.suspeita ? 'só "Manteve" em 7 dias: pode ser o valor padrão do aplicativo' : null,
+        }),
+        stepCell(f.noturna, {
+          extra: f.noturna.dias && !f.noturna.suspeita ? h('span', {}, `Cocho vazio em ${pct(f.noturna.pctVazio, 1)} das leituras`) : null,
+          warn: f.noturna.suspeita ? 'nunca registrou cocho vazio em 7 dias: provável valor padrão, não leitura feita' : null,
+        }),
+        h('td', {}, h('span', { class: `uso-nivel ${nivelCls}` }, nivel)),
+      );
+    });
+    const count = (n) => farms.filter((f) => f.nivel === n).length;
+    return [
+      reports.length > 1 ? h('h3', { class: 'usage-title' }, report.name) : null,
+      h(
+        'div',
+        { class: 'stats' },
+        statTile('Completo', num(count('completo')), h('span', { class: 'muted' }, 'manhã, decisão e noturna')),
+        statTile('Parcial', num(count('parcial'))),
+        statTile('Baixo', num(count('baixo'))),
+        statTile('Só voo', num(count('so_voo'))),
+        statTile('Parado', num(count('parado')), h('span', { class: 'muted' }, 'sem voo há mais de 3 dias')),
+      ),
+      h(
+        'div',
+        { class: 'table-wrap' },
+        h(
+          'table',
+          { class: 'uso-table' },
+          h('thead', {}, h('tr', {}, ['Fazenda', 'Último voo', 'Leitura da manhã', 'Decisão de trato', 'Leitura noturna', 'Nível'].map((t) => h('th', { scope: 'col' }, t)))),
+          h('tbody', {}, rows),
+        ),
+      ),
+      h(
+        'p',
+        { class: 'muted usage-hint' },
+        `Período: ${ddmm(period.from)} a ${ddmm(period.to)}. Uma etapa conta como "em uso" (verde) quando foi feita em pelo menos ${Math.round(ccvUsageState.data.reports[0].rules.emUso * 100)}% dos dias com voo, cobrindo pelo menos metade dos currais sobrevoados. Completo = as três etapas em uso; Parcial = uma ou duas; Baixo = feitas de vez em quando; Só voo = nenhuma; Parado = sem voo há mais de 3 dias. Atualiza a cada 30 minutos (ou em "Buscar dados novos").`,
+      ),
+    ];
+  });
+  box.replaceChildren(...blocks.flat().filter(Boolean));
+}
+
 async function ccvHistory() {
   try {
     const { log } = await api('/api/admin/ccv/log');
@@ -3160,7 +3287,7 @@ function selectTab(name) {
   history.replaceState(null, '', `#${name}`);
   if (name === 'usage') loadUsage();
   if (name === 'alerts') loadAlerts();
-  if (name === 'ccv') loadCcvAlerts();
+  if (name === 'ccv') selectCcvView(ccvUsageState.view);
   if (name === 'chat') loadInbox();
   if (name === 'quotes') loadQuotes();
   if (name === 'benchmark') loadBenchmark();
@@ -3191,7 +3318,8 @@ async function init() {
     }
   });
   document.getElementById('alerts-digest').addEventListener('click', copyDigest);
-  document.getElementById('ccv-refresh').addEventListener('click', () => loadCcvAlerts({ refresh: true }));
+  document.getElementById('ccv-refresh').addEventListener('click', () => (ccvUsageState.view === 'uso' ? loadCcvUsage({ refresh: true }) : loadCcvAlerts({ refresh: true })));
+  document.querySelectorAll('[data-ccv-view]').forEach((b) => b.addEventListener('click', () => selectCcvView(b.dataset.ccvView)));
   document.getElementById('ccv-history').addEventListener('click', ccvHistory);
   document.getElementById('chat-search').addEventListener('input', renderThreads);
   document.getElementById('chat-filter').addEventListener('change', renderThreads);

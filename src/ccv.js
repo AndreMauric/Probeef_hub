@@ -388,6 +388,107 @@ export async function computeCcvAlerts(report, { refresh = false } = {}) {
   };
 }
 
+// ---------- Uso da ferramenta por fazenda (aba Alertas CCV → Uso da ferramenta) ----------
+
+// O que cada fazenda realmente faz no CCV, com números: voo (drone), leitura da manhã, decisão de
+// trato e leitura noturna, por dia, nos últimos USAGE_DAYS dias. No modelo:
+// - leitura_manha: "crumb" | "dry" | "inventory" quando lida, vazio quando não;
+// - decisao_tipo: "Aumentou" | "Manteve" | "Reduziu"; "Sem decisão" quando não decidiu;
+// - primeira/segunda/terceira_leitura (noturnas): "True" (com comida) | "False" (cocho vazio), vazio
+//   quando não lida. O aplicativo grava "True" por padrão: fazenda que nunca registra cocho vazio
+//   em 7 dias provavelmente não faz a leitura noturna de verdade (ex.: Roncador, out/2026).
+export const USAGE_DAYS = 7;
+const USAGE = { emUso: 0.7, cobertura: 0.5, paradoDias: 3 }; // etapa "em uso": feita em 70% dos dias de voo, cobrindo metade dos currais
+
+export function ccvUsage(report, { refresh = false } = {}) {
+  return cached(`uso:${report.id}`, refresh ? 0 : 30 * 60 * 1000, async () => {
+    const farms = await listFarms(report);
+    const end = farms.reduce((max, f) => (f.last && f.last > max ? f.last : max), '');
+    if (!end) return { period: null, farms: [] };
+    const from = addDays(end, -(USAGE_DAYS - 1));
+    const rows = plain(
+      await run(
+        report,
+        `DEFINE VAR __period = FILTER(ALL(Consulta1[data]), Consulta1[data] >= ${daxDate(from)} && Consulta1[data] < ${daxDate(addDays(end, 1))})
+EVALUATE CALCULATETABLE(SUMMARIZECOLUMNS(Consulta1[fazenda], Consulta1[dia],
+  "ultimo", MAX(Consulta1[data]),
+  "currais", DISTINCTCOUNT(Consulta1[curral]),
+  "manha", CALCULATE(DISTINCTCOUNT(Consulta1[curral]), Consulta1[leitura_manha] IN {"crumb", "dry", "inventory"}),
+  "dec", CALCULATE(DISTINCTCOUNT(Consulta1[curral]), Consulta1[decisao_tipo] IN {"Aumentou", "Manteve", "Reduziu"}),
+  "up", CALCULATE(COUNTROWS(Consulta1), Consulta1[decisao_tipo] = "Aumentou"),
+  "eq", CALCULATE(COUNTROWS(Consulta1), Consulta1[decisao_tipo] = "Manteve"),
+  "down", CALCULATE(COUNTROWS(Consulta1), Consulta1[decisao_tipo] = "Reduziu"),
+  "noite", CALCULATE(DISTINCTCOUNT(Consulta1[curral]), Consulta1[primeira_leitura] IN {"True", "False"} || Consulta1[segunda_leitura] IN {"True", "False"} || Consulta1[terceira_leitura] IN {"True", "False"}),
+  "vazio", CALCULATE(DISTINCTCOUNT(Consulta1[curral]), Consulta1[primeira_leitura] = "False" || Consulta1[segunda_leitura] = "False" || Consulta1[terceira_leitura] = "False")), __period)`,
+      ),
+    );
+    const linked = new Map();
+    for (const c of db().clients.filter((c) => c.reportIds.includes(report.id))) for (const f of c.ccvFarms || []) linked.set(f, [...(linked.get(f) || []), c.name]);
+
+    const byFarm = new Map();
+    for (const r of rows) {
+      if (!r.fazenda || !r.dia) continue;
+      if (!byFarm.has(r.fazenda)) byFarm.set(r.fazenda, []);
+      byFarm.get(r.fazenda).push({ dia: isoDay(r.dia), ultimo: r.ultimo, currais: r.currais || 0, manha: r.manha || 0, dec: r.dec || 0, up: r.up || 0, eq: r.eq || 0, down: r.down || 0, noite: r.noite || 0, vazio: r.vazio || 0 });
+    }
+
+    const out = farms.map((farm) => {
+      const days = (byFarm.get(farm.name) || []).sort((a, b) => a.dia.localeCompare(b.dia));
+      const flights = days.filter((d) => d.currais > 0);
+      const lastFlight = flights.at(-1) || null;
+      const daysSince = farm.last ? Math.round((Date.parse(end) - Date.parse(farm.last)) / DAY) : null;
+      const step = (key) => {
+        const done = days.filter((d) => d[key] > 0);
+        const last = done.at(-1) || null;
+        // Dia "feito" quando cobre pelo menos metade dos currais sobrevoados naquele dia.
+        const covered = done.filter((d) => d[key] / Math.max(1, d.currais) >= USAGE.cobertura).length;
+        return {
+          lastDay: last?.dia || null,
+          currais: last ? last[key] : 0,
+          total: last ? last.currais : 0,
+          dias: done.length,
+          diasVoo: flights.length,
+          emUso: flights.length > 0 && covered / flights.length >= USAGE.emUso,
+        };
+      };
+      const manha = step('manha');
+      const decisao = step('dec');
+      const noturna = step('noite');
+      const lastDec = days.filter((d) => d.dec > 0).at(-1);
+      decisao.mix = lastDec ? { up: lastDec.up, eq: lastDec.eq, down: lastDec.down } : null;
+      const totDec = days.reduce((s, d) => s + d.up + d.eq + d.down, 0);
+      decisao.pctManteve = totDec ? days.reduce((s, d) => s + d.eq, 0) / totDec : null;
+      decisao.suspeita = totDec >= 20 && decisao.pctManteve === 1; // só "Manteve": pode ser o valor padrão
+      const totNoite = days.reduce((s, d) => s + d.noite, 0);
+      noturna.pctVazio = totNoite ? days.reduce((s, d) => s + d.vazio, 0) / totNoite : null;
+      noturna.lastVazio = days.filter((d) => d.noite > 0).at(-1)?.vazio ?? null;
+      // Nunca registrou cocho vazio em 7 dias: o "True" é o padrão do aplicativo, não leitura feita.
+      noturna.suspeita = totNoite >= 20 && noturna.pctVazio === 0;
+      if (noturna.suspeita) noturna.emUso = false;
+
+      const etapas = [manha.emUso, decisao.emUso, noturna.emUso].filter(Boolean).length;
+      const algum = [manha, decisao, noturna].some((s) => s.dias > 0 && !(s === noturna && noturna.suspeita));
+      const nivel = daysSince === null || daysSince > USAGE.paradoDias ? 'parado' : etapas === 3 ? 'completo' : etapas > 0 ? 'parcial' : algum ? 'baixo' : 'so_voo';
+      return {
+        farm: farm.name,
+        clients: linked.get(farm.name) || [],
+        lastFlight: lastFlight?.ultimo || (farm.last ? `${farm.last}T00:00:00` : null),
+        lastFlightDay: farm.last,
+        curraisVoo: lastFlight?.currais || 0,
+        diasVoo: flights.length,
+        daysSince,
+        manha,
+        decisao,
+        noturna,
+        nivel,
+      };
+    });
+    const order = { completo: 0, parcial: 1, baixo: 2, so_voo: 3, parado: 4 };
+    out.sort((a, b) => order[a.nivel] - order[b.nivel] || a.farm.localeCompare(b.farm, 'pt-BR'));
+    return { period: { from, to: end, days: USAGE_DAYS }, rules: USAGE, farms: out, checkedAt: new Date().toISOString() };
+  });
+}
+
 // Textos prontos para o admin revisar antes de enviar. "alerta": só os sinais; "relatorio": resumo da semana.
 export function messageFor(entry, kind, { link } = {}) {
   const period = `${fmtDay(entry.periodFrom)} a ${fmtDay(entry.periodTo)}`;
