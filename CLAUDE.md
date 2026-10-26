@@ -49,7 +49,11 @@ Esse é o padrão pra adicionar a próxima ferramenta:
    `confinamento: {status, requestedAt, decidedAt}` (ver `src/store.js` `normalize()`) — o nome
    do campo ficou específico do 4M porque foi o primeiro; uma segunda ferramenta provavelmente
    merece seu próprio campo (`u.nomeDaFerramenta`) ou generalizar para um objeto `u.tools[id]`
-   se aparecer uma terceira. Administradores sempre têm acesso, sem pedir.
+   se aparecer uma terceira. Administradores sempre têm acesso, sem pedir. Usuário pode não ter
+   cliente nenhum ("Só ferramentas"): entra, vê só os cards das ferramentas (sem a lista de
+   relatórios) e usa as que o admin liberou — no formulário de usuário, "Ferramentas liberadas"
+   aprova direto. Gestor da empresa precisa de cliente; cliente desativado só bloqueia o login de
+   quem não tem nenhuma ferramenta liberada.
 2. **Front-end estático** em `public/<nome>/`, com seu próprio `index.html`/`app.js`. Gate de
    acesso em `server.js` (`app.use('/<nome>', middleware-de-sessão, express.static(...))`) —
    só serve os arquivos pra quem está logado e aprovado.

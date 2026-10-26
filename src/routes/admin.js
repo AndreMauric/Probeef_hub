@@ -896,7 +896,9 @@ function readUser(body, existing) {
   if (db().users.some((u) => u.email === user.email && u.id !== existing?.id)) fail('Já existe um usuário com este e-mail.');
   const known = new Set(db().clients.map((c) => c.id));
   user.clientIds = user.clientIds.filter((id) => known.has(id));
-  if (user.role === 'client' && !user.clientIds.length) fail('Escolha ao menos um cliente para este usuário.');
+  // Sem cliente é válido: a pessoa só usa as ferramentas (4M, 3P), liberadas uma a uma. O gestor
+  // cuida da equipe de uma empresa, então precisa de cliente.
+  if (user.isManager && !user.clientIds.length) fail('O gestor da empresa precisa de ao menos um cliente.');
   return user;
 }
 

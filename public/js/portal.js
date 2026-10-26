@@ -298,7 +298,10 @@ function renderHome() {
     toolsSection(),
     ...(list.length
       ? [...groups.slice(0, favCount).map((g) => g.el), viewsSection(), ...groups.slice(favCount).map((g) => g.el)].filter(Boolean)
-      : [h('p', { class: 'muted' }, els.search.value ? 'Nenhum relatório encontrado.' : 'Ainda não há relatórios liberados.')]),
+      : // Quem não é de nenhum cliente usa só as ferramentas: não há relatório a esperar.
+        els.search.value || clients.length || me.role === 'admin'
+        ? [h('p', { class: 'muted' }, els.search.value ? 'Nenhum relatório encontrado.' : 'Ainda não há relatórios liberados.')]
+        : []),
   );
 }
 
@@ -774,6 +777,12 @@ async function init() {
     setActiveClient(savedClient() || clients[0].id, { remember: false });
   }
   renderList();
+  // Usuário sem cliente (só ferramentas): sem a lista de relatórios e com o título das ferramentas.
+  if (me.role !== 'admin' && !clients.length && !reports.length) {
+    document.querySelector('.portal').classList.add('tools-only');
+    document.getElementById('home-title').textContent = 'Suas ferramentas';
+    document.querySelector('#home .home-head .muted').textContent = 'Escolha uma ferramenta para abrir.';
+  }
 
   // Sem relatórios, a tela inicial ainda mostra as ferramentas (4M, 3P), que têm acesso próprio.
   if (!reports.length && me.role === 'admin') {

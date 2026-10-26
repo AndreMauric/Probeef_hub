@@ -171,7 +171,7 @@ function renderUsers() {
   const access = (u) => {
     if (u.role === 'admin') return h('span', { class: 'pill pill-accent' }, 'Administrador');
     const names = clientNames(u);
-    if (!names.length) return h('span', { class: 'muted' }, 'Nenhum cliente');
+    if (!names.length) return h('span', { class: 'pill', title: 'Sem cliente: usa só as ferramentas liberadas' }, 'Só ferramentas');
     const shown = names.slice(0, 2).join(', ');
     return [
       h('span', { title: names.join(', ') }, names.length > 2 ? `${shown} +${names.length - 2}` : shown),
@@ -216,8 +216,8 @@ function renderUsers() {
 
 // field: campo do usuário com {status}; também é o trecho da rota /api/admin/users/:id/<field>.
 const TOOL_ACCESS = [
-  { field: 'confinamento', label: '4M' },
-  { field: 'pasto', label: '3P' },
+  { field: 'confinamento', label: '4M', name: '4M Confinamento' },
+  { field: 'pasto', label: '3P', name: '3P · Desempenho a Pasto' },
 ];
 
 async function setToolAccess(user, field, action) {
@@ -3302,8 +3302,18 @@ function userDialog(user) {
     { class: 'field' },
     h('span', {}, 'Clientes que este usuário vê'),
     clientSearch,
-    clientRows.length ? h('div', { class: 'checkbox-list' }, clientRows.map((r) => r.row)) : h('small', {}, 'Cadastre clientes primeiro.'),
+    clientRows.length ? h('div', { class: 'checkbox-list' }, clientRows.map((r) => r.row)) : null,
     pickedCount,
+    h('small', {}, 'Nenhum marcado: a pessoa não vê relatórios e usa só as ferramentas liberadas abaixo.'),
+  );
+  // Ferramentas (4M, 3P): marcar libera na hora, sem esperar pedido; desmarcar revoga. Pedido
+  // pendente ou negado continua como está se a caixa ficar desmarcada.
+  const toolBoxes = TOOL_ACCESS.map((t) => ({ t, box: h('input', { type: 'checkbox', checked: user?.[t.field]?.status === 'approved' }) }));
+  const toolField = h(
+    'div',
+    { class: 'field' },
+    h('span', {}, 'Ferramentas liberadas'),
+    h('div', { class: 'tool-checks' }, toolBoxes.map(({ t, box }) => h('label', { class: 'check' }, box, h('span', {}, t.name)))),
   );
   const active = h('input', { id: 'user-active', type: 'checkbox', checked: user ? user.active : true });
   const notify = h('input', { id: 'user-notify', type: 'checkbox', checked: Boolean(user?.whatsappNotify) });
@@ -3324,6 +3334,7 @@ function userDialog(user) {
     clientField.hidden = role.value === 'admin';
     whatsappField.hidden = role.value === 'admin';
     managerField.hidden = role.value === 'admin';
+    toolField.hidden = role.value === 'admin';
     syncFarms();
   };
   role.addEventListener('change', syncRole);
@@ -3341,6 +3352,7 @@ function userDialog(user) {
       field('Tipo de acesso', role),
       clientField,
       farms.el,
+      toolField,
       managerField,
       whatsappField,
       user ? null : h('p', { class: 'muted', style: 'margin: 0; font-size: 13px' }, 'Uma senha temporária será gerada e mostrada a seguir.'),
@@ -3360,13 +3372,24 @@ function userDialog(user) {
           isManager: manager.checked,
           active: active.checked,
         };
+        const applyTools = async (saved) => {
+          if (saved.role === 'admin') return;
+          for (const { t, box } of toolBoxes) {
+            const approved = saved[t.field]?.status === 'approved';
+            if (box.checked !== approved && (box.checked || approved)) {
+              await api(`/api/admin/users/${saved.id}/${t.field}`, { method: 'POST', body: { action: box.checked ? 'approve' : 'revoke' } });
+            }
+          }
+        };
         if (user) {
-          await api(`/api/admin/users/${user.id}`, { method: 'PUT', body });
+          const { user: saved } = await api(`/api/admin/users/${user.id}`, { method: 'PUT', body });
+          await applyTools(saved);
           await refresh();
           toast('Usuário atualizado.');
           return true;
         }
         const result = await api('/api/admin/users', { method: 'POST', body });
+        await applyTools(result.user);
         await refresh();
         showPassword('Usuário criado', result.user.email, result.password);
         return false;

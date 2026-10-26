@@ -481,6 +481,15 @@ textarea:focus {
   min-height: 0;
 }
 
+/* Usuário sem cliente: só as ferramentas, sem a lista de relatórios. */
+.portal.tools-only {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.portal.tools-only .sidebar {
+  display: none;
+}
+
 .sidebar {
   display: flex;
   flex-direction: column;
@@ -4029,6 +4038,12 @@ pre.digest {
   background: rgb(127 127 127 / 16%);
   font-size: 12px;
   text-decoration: none;
+}
+
+.tool-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 24px;
 }
 
 .ccv-pdf-row {
