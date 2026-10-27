@@ -1145,6 +1145,7 @@
     document.getElementById("compare-models-hint").textContent = `${all ? "Todos os critérios de projeção" : "Os critérios de projeção escolhidos"} lado a lado — cada um com o ${scenarioNames.A} e o ${scenarioNames.B}.`;
     renderDefTable("table-compare-zoot");
     renderDefTable("table-compare-econ");
+    renderDefTable("table-compare-parc");
   }
 
   // Monta colunas cruzando os critérios de projeção escolhidos com os 2 cenários
@@ -1328,6 +1329,13 @@
         caption: `Resultado econômico do confinamento — ${ROLE_LABELS[state.negModel]} (${compareCriteriaCaption()})`,
         rows: ECON_CONF_ROWS,
         ...compareAllCriteriaColumns("econConf"),
+      }),
+    },
+    "table-compare-parc": {
+      getData: () => ({
+        caption: `Resultado econômico do parceiro — ${ROLE_LABELS[state.negModel]} (${compareCriteriaCaption()})`,
+        rows: ECON_PARC_ROWS,
+        ...compareAllCriteriaColumns("econParc"),
       }),
     },
   };

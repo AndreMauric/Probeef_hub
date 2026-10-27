@@ -1240,15 +1240,33 @@
           <button data-value="diasFixo" class="active" aria-pressed="true">Dias de Cocho Fixo</button>
         </div>
       </div>
-      <div class="table-wrap"><table class="data" id="table-compare-zoot"></table></div>
-      <div class="toolbar">
-        <button class="btn" data-expand-table="table-compare-zoot">Ampliar</button>
-        <button class="btn" data-copy="table-compare-zoot">Copiar CSV</button>
-      </div>
-      <div class="table-wrap" style="margin-top:16px;"><table class="data" id="table-compare-econ"></table></div>
-      <div class="toolbar">
-        <button class="btn" data-expand-table="table-compare-econ">Ampliar</button>
-        <button class="btn" data-copy="table-compare-econ">Copiar CSV</button>
+      <div class="compare-tables">
+        <div class="subtabs">
+          <button class="active" data-sub="czoot">Desempenho Zootécnico</button>
+          <button data-sub="cecon">Econômico do Confinamento</button>
+          <button data-sub="cparc">Econômico do Parceiro</button>
+        </div>
+        <div class="subview active" id="sub-czoot">
+          <div class="table-wrap"><table class="data" id="table-compare-zoot"></table></div>
+          <div class="toolbar">
+            <button class="btn" data-expand-table="table-compare-zoot">Ampliar</button>
+            <button class="btn" data-copy="table-compare-zoot">Copiar CSV</button>
+          </div>
+        </div>
+        <div class="subview" id="sub-cecon">
+          <div class="table-wrap"><table class="data" id="table-compare-econ"></table></div>
+          <div class="toolbar">
+            <button class="btn" data-expand-table="table-compare-econ">Ampliar</button>
+            <button class="btn" data-copy="table-compare-econ">Copiar CSV</button>
+          </div>
+        </div>
+        <div class="subview" id="sub-cparc">
+          <div class="table-wrap"><table class="data" id="table-compare-parc"></table></div>
+          <div class="toolbar">
+            <button class="btn" data-expand-table="table-compare-parc">Ampliar</button>
+            <button class="btn" data-copy="table-compare-parc">Copiar CSV</button>
+          </div>
+        </div>
       </div>
 
       <h3 class="compare-section-title">Análise de risco (Boi Próprio)</h3>
