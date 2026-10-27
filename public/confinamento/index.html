@@ -678,7 +678,12 @@
   .report-view .r-head h1{ font-family:"Inter",sans-serif; font-size:24px; font-weight:700; color:var(--r-text); margin:0; }
   .report-view .r-head .r-sub{ font-size:11.5px; color:var(--r-muted); margin-top:2px; }
   .report-view .r-meta{ text-align:right; font-size:11px; color:var(--r-muted); line-height:1.5; }
-  .report-view section{ page-break-inside:avoid; margin-bottom:22px; }
+  /* As seções correm entre as páginas (uma seção maior que a página, se não pudesse
+     ser cortada, ia inteira para a próxima e deixava a anterior em branco); quem não
+     é cortado são as peças: grades, quadros, tabelas e gráficos. */
+  .report-view section{ margin-bottom:22px; }
+  .report-view h2, .report-view h3{ break-after:avoid; page-break-after:avoid; }
+  .report-view .r-input-grid, .report-view .r-stat-grid{ break-inside:avoid; page-break-inside:avoid; }
   .report-view h2{
     font-family:"Inter",sans-serif; font-size:16px; font-weight:700; color:var(--r-text);
     margin:0 0 12px; padding:6px 0 6px 10px; border-left:4px solid var(--r-accent);
