@@ -2,14 +2,14 @@
 // entre grupos (raça, sexo, categoria, mês ou trimestre de saída, tipo de entrada). Mesma regra do
 // resultado da planilha: médias ponderadas pelo número de animais de cada lote.
 import { h } from '/js/common.js';
-import { calcLote } from './fields.js';
+import { calcLote, periodoLote } from './fields.js';
 
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 const nf = (v, d = 2) => (v === null || v === undefined || !Number.isFinite(v) ? '—' : v.toLocaleString('pt-BR', { minimumFractionDigits: d, maximumFractionDigits: d }));
 const MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
 
 // Filtros e escolhas da tela (ficam enquanto a página está aberta).
-const dash = { kind: 'engorda', raca: '', sexo: '', categoria: '', tipo: '', de: '', ate: '', by: 'raca', ind: 'gpd' };
+const dash = { kind: 'engorda', raca: '', sexo: '', categoria: '', tipo: '', periodo: '', de: '', ate: '', by: 'raca', ind: 'gpd' };
 
 // Média ponderada pelos animais, só entre os lotes que têm o valor.
 function weighted(lotes, f) {
@@ -70,6 +70,8 @@ const indicador = (key) => INDICADORES.find((i) => i[0] === key);
 const sexoDe = (categoria) => (/macho/i.test(categoria || '') ? 'Machos' : /f[eê]mea|vaca/i.test(categoria || '') ? 'Fêmeas' : null);
 const mesDe = (l) => (/^\d{4}-\d{2}/.test(l.saida || '') ? l.saida.slice(0, 7) : null);
 const mesLabel = (ym) => `${MESES[Number(ym.slice(5, 7)) - 1]}/${ym.slice(0, 4)}`;
+// Águas ou seca (mais de 70% dos dias no confinamento entre dezembro e maio = águas).
+const periodoDe = (l) => periodoLote(l)?.periodo || null;
 const trimestreDe = (l) => {
   const m = mesDe(l);
   return m ? `${m.slice(0, 4)}-T${Math.ceil(Number(m.slice(5, 7)) / 3)}` : null;
@@ -80,6 +82,7 @@ const AGRUPAR = {
   raca: { label: 'Raça', of: (l) => l.raca || null },
   sexo: { label: 'Sexo', of: (l) => sexoDe(l.categoria) },
   categoria: { label: 'Categoria', of: (l) => l.categoria || null },
+  periodo: { label: 'Período (águas/seca)', of: periodoDe },
   mes: { label: 'Mês de saída', of: mesDe, time: true, name: mesLabel },
   trimestre: { label: 'Trimestre', of: trimestreDe, time: true, name: (k) => `${k.slice(5)}/${k.slice(0, 4)}` },
   tipo: { label: 'Tipo de entrada', of: (l) => l.tipoEntrada || null },
@@ -103,10 +106,11 @@ export function renderDashboard(box, { engorda, recria }) {
       (!dash.sexo || sexoDe(l.categoria) === dash.sexo) &&
       (!dash.categoria || l.categoria === dash.categoria) &&
       (!dash.tipo || l.tipoEntrada === dash.tipo) &&
+      (!dash.periodo || periodoDe(l) === dash.periodo) &&
       (!dash.de || (mesDe(l) && mesDe(l) >= dash.de)) &&
       (!dash.ate || (mesDe(l) && mesDe(l) <= dash.ate)),
   );
-  const filtered = Boolean(dash.raca || dash.sexo || dash.categoria || dash.tipo || dash.de || dash.ate);
+  const filtered = Boolean(dash.raca || dash.sexo || dash.categoria || dash.tipo || dash.periodo || dash.de || dash.ate);
   const inds = INDICADORES.filter((i) => !i[4] || dash.kind === 'engorda');
   if (!inds.some((i) => i[0] === dash.ind)) dash.ind = 'gpd';
 
@@ -120,15 +124,16 @@ export function renderDashboard(box, { engorda, recria }) {
       [
         ['engorda', `Engorda (${engorda.length})`],
         ['recria', `Recria (${recria.length})`],
-      ].map(([k, t]) => h('button', { type: 'button', role: 'radio', 'aria-checked': String(dash.kind === k), class: dash.kind === k ? 'on' : '', onclick: () => set({ kind: k, raca: '', categoria: '', tipo: '', de: '', ate: '' }) }, t)),
+      ].map(([k, t]) => h('button', { type: 'button', role: 'radio', 'aria-checked': String(dash.kind === k), class: dash.kind === k ? 'on' : '', onclick: () => set({ kind: k, raca: '', categoria: '', tipo: '', periodo: '', de: '', ate: '' }) }, t)),
     ),
     select('Raça', dash.raca, options(uniq(all.map((l) => l.raca)).map((v) => [v, v]), 'Todas', dash.raca), 'raca'),
     select('Sexo', dash.sexo, options(uniq(all.map((l) => sexoDe(l.categoria))).map((v) => [v, v]), 'Todos', dash.sexo), 'sexo'),
     select('Categoria', dash.categoria, options(uniq(all.map((l) => l.categoria)).map((v) => [v, v]), 'Todas', dash.categoria), 'categoria'),
     select('Tipo de entrada', dash.tipo, options(uniq(all.map((l) => l.tipoEntrada)).map((v) => [v, v]), 'Todos', dash.tipo), 'tipo'),
+    select('Período', dash.periodo, options(['Águas', 'Seca'].filter((p) => all.some((l) => periodoDe(l) === p)).map((v) => [v, v]), 'Águas e seca', dash.periodo), 'periodo'),
     select('Saída de', dash.de, options(meses.map((m) => [m, mesLabel(m)]), 'Início', dash.de), 'de'),
     select('até', dash.ate, options(meses.map((m) => [m, mesLabel(m)]), 'Fim', dash.ate), 'ate'),
-    filtered ? h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => set({ raca: '', sexo: '', categoria: '', tipo: '', de: '', ate: '' }) }, 'Limpar filtros') : null,
+    filtered ? h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => set({ raca: '', sexo: '', categoria: '', tipo: '', periodo: '', de: '', ate: '' }) }, 'Limpar filtros') : null,
   );
 
   if (!all.length) {

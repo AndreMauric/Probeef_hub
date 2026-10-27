@@ -257,7 +257,10 @@ function lotesPanel(kind) {
     'tr',
     {},
     h('th', { class: 'bmk-sticky0', scope: 'col' }, ''),
-    shownFields.map((f, k) => h('th', { scope: 'col', class: k === 0 ? 'bmk-sticky1' : '', style: `min-width:${f.w || 80}px` }, f.label, f.unit ? h('small', {}, f.unit) : null, (recria ? f.reqRecria : f.req) ? h('span', { class: 'bmk-req', title: 'Obrigatório' }, '*') : null, colBadges(f))),
+    shownFields.flatMap((f, k) => [
+      h('th', { scope: 'col', class: k === 0 ? 'bmk-sticky1' : '', style: `min-width:${f.w || 80}px` }, f.label, f.unit ? h('small', {}, f.unit) : null, (recria ? f.reqRecria : f.req) ? h('span', { class: 'bmk-req', title: 'Obrigatório' }, '*') : null, colBadges(f)),
+      f.key === 'saida' ? h('th', { scope: 'col', class: 'bmk-calc-h', title: 'Calculado: águas (dez–mai) quando mais de 70% dos dias no confinamento caíram nas águas; senão, seca', style: 'min-width:110px' }, 'Período', h('small', {}, 'águas/seca')) : null,
+    ]),
     CALC_COLS[group].map(([, label, unit]) => h('th', { scope: 'col', class: 'bmk-calc-h', title: 'Calculado' }, label, h('small', {}, unit))),
     editable ? h('th', { scope: 'col' }, '') : null,
   );
@@ -279,10 +282,13 @@ function lotesPanel(kind) {
       'tr',
       { class: `lvl-${level}` },
       h('td', { class: 'bmk-sticky0' }, icon),
-      shownFields.map((f, k) => {
+      shownFields.flatMap((f, k) => {
         const fi = byField.get(f.key) || [];
         const cls = fi.some((x) => x.level === 'erro') ? 'has-erro' : fi.length ? 'has-alerta' : '';
-        return h('td', { class: `${k === 0 ? 'bmk-sticky1 ' : ''}${cls}`, title: fi.map((x) => x.msg).join('\n') || null }, cellInput(kind, i, f, editable && !f.readonly));
+        return [
+          h('td', { class: `${k === 0 ? 'bmk-sticky1 ' : ''}${cls}`, title: fi.map((x) => x.msg).join('\n') || null }, cellInput(kind, i, f, editable && !f.readonly)),
+          f.key === 'saida' ? periodoCell(c) : null,
+        ];
       }),
       CALC_COLS[group].map(([key, , , d]) => h('td', { class: 'bmk-calc num' }, nf(c[key], d))),
       editable ? h('td', {}, h('button', { class: 'btn btn-sm btn-ghost btn-danger', type: 'button', title: `Excluir o lote ${l.lote || ''}`, 'aria-label': 'Excluir lote', onclick: () => removeLote(kind, i) }, '×')) : null,
@@ -437,6 +443,18 @@ function removeLote(kind, i) {
   lotesPanel(kind);
 }
 
+// Período do lote (águas/seca), calculado da data de saída e dos dias no confinamento.
+const fmtDia = (iso) => (iso ? new Date(`${iso}T12:00:00`).toLocaleDateString('pt-BR') : '—');
+function periodoCell(c) {
+  if (!c.periodo) return h('td', { class: 'bmk-calc', title: 'Precisa da data de saída e dos dias no confinamento.' }, '—');
+  return h(
+    'td',
+    { class: 'bmk-calc', title: `Entrada estimada ${fmtDia(c.entrada)} · ${nf(c.pctAguas, 0)}% dos dias nas águas (dez–mai)` },
+    h('span', { class: `bmk-periodo ${c.periodo === 'Águas' ? 'aguas' : 'seca'}` }, c.periodo),
+    h('small', {}, ` ${nf(c.pctAguas, 0)}%`),
+  );
+}
+
 function issuesDialog(kind, i) {
   const l = state.data[kind][i];
   const issues = validateLotes(state.data[kind], settings(), { recria: kind === 'recria' }).porLote[i];
@@ -466,6 +484,9 @@ function issuesDialog(kind, i) {
             ['Conversão alimentar (kgMS/kgPV)', c.convAlim, 2],
             ['Dias de trato', c.diasTrato, 0],
           ].map(([label, v, d]) => h('tr', {}, h('th', {}, label), h('td', { class: 'num' }, nf(v, d)))),
+          h('tr', {}, h('th', {}, 'Entrada (saída − dias no confinamento)'), h('td', { class: 'num' }, fmtDia(c.entrada))),
+          h('tr', {}, h('th', {}, 'Dias nas águas (dez–mai)'), h('td', { class: 'num' }, c.pctAguas === null ? '—' : `${nf(c.pctAguas, 1)}%`)),
+          h('tr', {}, h('th', {}, 'Período (águas se acima de 70%)'), h('td', { class: 'num' }, c.periodo || '—')),
         ),
       ),
       h('div', { class: 'dialog-actions' }, h('button', { class: 'btn btn-primary', type: 'button', onclick: () => dialog.close() }, 'Fechar')),

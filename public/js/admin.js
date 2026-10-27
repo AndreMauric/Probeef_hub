@@ -1182,10 +1182,22 @@ async function exportBenchmark() {
         const v = m.validateLotes(s[kind], data.settings, { recria });
         s[kind].forEach((l, i) => {
           const c = m.calcLote(l);
-          rows.push({ cliente: s.client, status: s.status, ...l, ...Object.fromEntries(calcCols.map(([k]) => [`c_${k}`, Number.isFinite(c[k]) ? Number(c[k].toFixed(3)) : null])), erros: v.porLote[i].filter((x) => x.level === 'erro').map((x) => x.msg).join(' | '), alertas: v.porLote[i].filter((x) => x.level === 'alerta').map((x) => x.msg).join(' | ') });
+          rows.push({
+            cliente: s.client,
+            status: s.status,
+            ...l,
+            // Período: entrada = saída − dias no confinamento; águas se mais de 70% dos dias em dez–mai.
+            p_entrada: c.entrada,
+            p_aguas: c.pctAguas === null ? null : Number(c.pctAguas.toFixed(1)),
+            p_periodo: c.periodo,
+            ...Object.fromEntries(calcCols.map(([k]) => [`c_${k}`, Number.isFinite(c[k]) ? Number(c[k].toFixed(3)) : null])),
+            erros: v.porLote[i].filter((x) => x.level === 'erro').map((x) => x.msg).join(' | '),
+            alertas: v.porLote[i].filter((x) => x.level === 'alerta').map((x) => x.msg).join(' | '),
+          });
         });
       }
-      sheet(name, [['cliente', 'Cliente', 28], ['status', 'Situação', 14], ...fields.map((f) => [f.key, `${f.label}${f.unit ? ` (${f.unit})` : ''}`]), ...(recria ? [] : calcCols.map(([k, label]) => [`c_${k}`, label])), ['erros', 'Erros', 50], ['alertas', 'Alertas', 60]], rows);
+      const periodoCols = [['p_entrada', 'Entrada estimada', 14], ['p_aguas', 'Dias nas águas (%)', 12], ['p_periodo', 'Período', 10]];
+      sheet(name, [['cliente', 'Cliente', 28], ['status', 'Situação', 14], ...fields.map((f) => [f.key, `${f.label}${f.unit ? ` (${f.unit})` : ''}`]), ...periodoCols, ...(recria ? [] : calcCols.map(([k, label]) => [`c_${k}`, label])), ['erros', 'Erros', 50], ['alertas', 'Alertas', 60]], rows);
     };
     sheet(
       'Andamento',

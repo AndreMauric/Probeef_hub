@@ -101,6 +101,10 @@ cliente veem o card. Página `/benchmark` (`public/benchmark/`), API `/api/bench
 - Importar a planilha atual é feito no navegador com SheetJS (`/vendor/xlsx.full.min.js`,
   pacote oficial de cdn.sheetjs.com — a versão do npm é antiga): lê BD_Zootec_Feed,
   BD_Econom_Feed, BD_Zootec_Feed_ Recria_Conf e Q1. As abas TGC não são importadas.
+- Período do lote (`periodoLote` em `fields.js`, também em `calcLote`): entrada = saída − dias no
+  confinamento (Dias conf.; sem ele, Dias de trato); "Águas" quando mais de 70% desses dias caem
+  em dezembro–maio, senão "Seca". Aparece na tabela (ao lado de Saída), no detalhe do lote, no
+  Painel (filtro e comparação) e no Excel consolidado do admin.
 - Origem do lote é opcional (não existia por lote na planilha). "Preencher origem" (`originDialog`)
   aplica uma origem aos lotes sem origem, aos que a tabela mostra (filtro/busca) ou a todos; sugere
   a origem quando a pergunta 10 do questionário tem um só modelo de reposição (`Q10_ORIGEM`).

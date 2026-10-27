@@ -157,6 +157,26 @@ export function cleanLote(raw = {}) {
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 const fmt = (v, d = 2) => (v === null || !Number.isFinite(v) ? '—' : v.toLocaleString('pt-BR', { minimumFractionDigits: d, maximumFractionDigits: d }));
 
+// ---------- Período do lote (águas ou seca) ----------
+
+// Águas: dezembro a maio; seca: junho a novembro. O lote é "Águas" quando mais de 70% dos dias
+// no confinamento caíram nas águas. Entrada = saída − dias (Dias conf.; sem ele, Dias de trato).
+export const MESES_AGUAS = [12, 1, 2, 3, 4, 5];
+export const LIMITE_AGUAS = 0.7;
+const DIA_MS = 24 * 60 * 60 * 1000;
+
+export function periodoLote(l) {
+  if (!validIsoDate(l.saida || '')) return null;
+  const dias = Math.round(num(l.diasConf) ?? num(l.diasTrato) ?? 0);
+  if (dias <= 0 || dias > 1000) return null;
+  const saida = Date.parse(`${l.saida}T00:00:00Z`);
+  const inicio = saida - dias * DIA_MS;
+  let aguas = 0;
+  for (let k = 0; k < dias; k++) if (MESES_AGUAS.includes(new Date(inicio + k * DIA_MS).getUTCMonth() + 1)) aguas += 1;
+  const pctAguas = (aguas / dias) * 100;
+  return { entrada: new Date(inicio).toISOString().slice(0, 10), dias, diasAguas: aguas, pctAguas, periodo: aguas / dias > LIMITE_AGUAS ? 'Águas' : 'Seca' };
+}
+
 // Indicadores recalculados de um lote (colunas Z–AF da aba zootécnica e AC–AI da econômica).
 export function calcLote(l) {
   const v = (k) => num(l[k]);
@@ -193,6 +213,10 @@ export function calcLote(l) {
   const manejoDia = div(div(v('custoTotalManejo'), qt), dias);
   c.custoOperacional = manejoDia !== null && c.custoAlimentarDia !== null ? manejoDia - c.custoAlimentarDia : null;
   c.lucroCab = v('valorTotalVenda') !== null && v('custoTotalLote') !== null && qt ? (v('valorTotalVenda') - v('custoTotalLote')) / qt : null;
+  const p = periodoLote(l);
+  c.entrada = p?.entrada ?? null;
+  c.pctAguas = p?.pctAguas ?? null;
+  c.periodo = p?.periodo ?? null;
   return c;
 }
 
