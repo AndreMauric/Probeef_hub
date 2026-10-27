@@ -74,7 +74,7 @@ export const ZOO_FIELDS = [
   { key: 'categoria', label: 'Categoria', type: 'list', list: 'categorias', col: 'E', req: true, reqRecria: true, w: 165 },
   // Origem não existe por lote na planilha (era classificada por macro): opcional.
   { key: 'origem', label: 'Origem', type: 'list', list: 'origens', w: 140 },
-  { key: 'saida', label: 'Saída', type: 'date', col: 'F', w: 120 },
+  { key: 'saida', label: 'Saída', type: 'date', col: 'F', req: true, reqRecria: true, w: 120 },
   { key: 'qtAnm', label: 'Animais', unit: 'cab', type: 'int', col: 'G', req: true, reqRecria: true, w: 70 },
   { key: 'mortes', label: 'Mortes', unit: 'cab', type: 'int', col: 'H', w: 65 },
   { key: 'retPasto', label: 'Ret. pasto', unit: 'cab', type: 'int', col: 'J', w: 70 },
@@ -121,6 +121,21 @@ export function toNumber(v) {
   return Number(raw.includes(',') || thousandsOnly ? raw.replace(/\./g, '').replace(',', '.') : raw);
 }
 
+// Data como AAAA-MM-DD (o formato do campo de data). Aceita também dd/mm/aaaa, que é como
+// a data chega ao colar do Excel; o resto fica como veio e a validação acusa.
+export function toIsoDate(v) {
+  const s = String(v).trim();
+  const br = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (br) return `${br[3]}-${br[2].padStart(2, '0')}-${br[1].padStart(2, '0')}`;
+  return s.slice(0, 10);
+}
+
+const validIsoDate = (s) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const d = new Date(`${s}T12:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s;
+};
+
 // Limpa um lote vindo do navegador/importação: só campos conhecidos, números como número.
 export function cleanLote(raw = {}) {
   const lote = {};
@@ -131,7 +146,7 @@ export function cleanLote(raw = {}) {
       const n = toNumber(v);
       lote[f.key] = Number.isFinite(n) ? n : String(v).slice(0, 30);
     } else if (f.type === 'date') {
-      lote[f.key] = String(v).slice(0, 10);
+      lote[f.key] = toIsoDate(v);
     } else {
       lote[f.key] = String(v).trim().slice(0, 80);
     }
@@ -197,6 +212,7 @@ export function validateLote(l, settings, { recria = false, duplicateIds = new S
     else if (f.type === 'int' && (v < 0 || !Number.isInteger(v))) add('erro', f.key, `${f.label}: use um número inteiro.`);
     else if (f.type === 'num' && v < 0 && f.key !== 'lucro') add('erro', f.key, `${f.label}: não pode ser negativo.`);
     if (f.type === 'list' && !s.listas[f.list].includes(v)) add('erro', f.key, `${f.label}: "${v}" não está na lista (${s.listas[f.list].join(', ')}).`);
+    if (f.type === 'date' && !validIsoDate(v)) add('erro', f.key, `${f.label}: "${v}" não é uma data válida (use dd/mm/aaaa).`);
   }
   if (l.lote && duplicateIds.has(String(l.lote))) add('erro', 'lote', `Lote "${l.lote}" aparece mais de uma vez.`);
   const n = (k) => num(l[k]);
