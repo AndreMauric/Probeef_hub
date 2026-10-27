@@ -101,6 +101,10 @@ cliente veem o card. Página `/benchmark` (`public/benchmark/`), API `/api/bench
 - Importar a planilha atual é feito no navegador com SheetJS (`/vendor/xlsx.full.min.js`,
   pacote oficial de cdn.sheetjs.com — a versão do npm é antiga): lê BD_Zootec_Feed,
   BD_Econom_Feed, BD_Zootec_Feed_ Recria_Conf e Q1. As abas TGC não são importadas.
+- Aba Resultado: "Painel" (`public/benchmark/dashboard.js`: filtros por raça, sexo, categoria,
+  tipo de entrada e mês de saída; indicadores e comparação entre grupos, sempre médias
+  ponderadas pelos animais) e "Tabelas por categoria" (as abas FINAL da planilha). Sexo sai da
+  categoria (Macho de Engorda = machos; Fêmea de Engorda e Vaca de Descarte = fêmeas).
 - As opções das perguntas de múltipla escolha foram montadas a partir das respostas de um
   cliente e precisam de revisão da equipe (sempre há "Outro").
 

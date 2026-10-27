@@ -3,6 +3,7 @@
 // as mesmas que o servidor usa. Fluxo: rascunho → enviado → correção/aprovado (ver src/benchmark.js).
 import { api, h, toast } from '/js/common.js';
 import { initTicker } from '/js/ticker.js';
+import { renderDashboard } from './dashboard.js';
 import {
   calcLote,
   cleanAnswer,
@@ -46,6 +47,7 @@ const state = {
   filter: { engorda: 'todos', recria: 'todos' },
   // Filtro por coluna: { field, level } mostra só os lotes com aquele problema naquela coluna.
   colFilter: { engorda: null, recria: null },
+  resultView: 'painel',
   search: { engorda: '', recria: '' },
   qSection: QUESTIONARIO[0].id,
 };
@@ -1004,12 +1006,29 @@ function renderResult() {
     );
   const recCard = (r) => h('section', { class: 'bmk-card' }, h('header', { class: 'bmk-card-head' }, h('h2', {}, `Recria · ${r.categoria}`), h('span', { class: 'muted' }, `${nf(r.zootecnico.animais, 0)} animais em ${r.zootecnico.lotes} lote(s)`)), table(ZOO_RESULT_ROWS, r.zootecnico));
   const sum = localSummary();
+  // Duas visões: o painel (filtros e comparações) e as tabelas por categoria da planilha.
+  const view = state.resultView;
+  const switcher = h(
+    'div',
+    { class: 'bmk-seg bmk-result-switch', role: 'radiogroup', 'aria-label': 'Visão do resultado' },
+    [
+      ['painel', 'Painel'],
+      ['tabelas', 'Tabelas por categoria'],
+    ].map(([k, t]) => h('button', { type: 'button', role: 'radio', 'aria-checked': String(view === k), class: view === k ? 'on' : '', onclick: () => ((state.resultView = k), renderResult()) }, t)),
+  );
+  const dashBox = h('div', { class: 'bmk-dash' });
   fill(
     panel,
+    switcher,
     sum.erros ? h('div', { class: 'bmk-callout warn' }, `Há ${sum.erros} erro(s) nos lotes: o resultado abaixo pode mudar depois das correções.`) : null,
-    h('p', { class: 'muted' }, 'Médias ponderadas pelo número de animais de cada lote, por categoria (como a aba FINAL da planilha). Os custos marcados "questionário" vêm das respostas da seção Comercialização; os demais, dos lotes.'),
-    eng.length || rec.length ? [eng.map(engCard), rec.map(recCard)] : h('div', { class: 'bmk-blank' }, h('h3', {}, 'Ainda sem resultado'), h('p', { class: 'muted' }, 'Inclua lotes com categoria e número de animais para ver o resultado.')),
+    view === 'painel'
+      ? dashBox
+      : [
+          h('p', { class: 'muted' }, 'Médias ponderadas pelo número de animais de cada lote, por categoria (como a aba FINAL da planilha). Os custos marcados "questionário" vêm das respostas da seção Comercialização; os demais, dos lotes.'),
+          eng.length || rec.length ? [eng.map(engCard), rec.map(recCard)] : h('div', { class: 'bmk-blank' }, h('h3', {}, 'Ainda sem resultado'), h('p', { class: 'muted' }, 'Inclua lotes com categoria e número de animais para ver o resultado.')),
+        ],
   );
+  if (view === 'painel') renderDashboard(dashBox, { engorda: state.data.engorda, recria: state.data.recria });
 }
 
 // ---------- Histórico ----------
