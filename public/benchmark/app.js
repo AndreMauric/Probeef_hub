@@ -127,6 +127,10 @@ function renderStatus() {
             : 'Nada salvo ainda';
   const lastMsg = [...sub.messages].reverse().find((m) => m.action === 'devolver');
   const actions = [];
+  const hasData = sum.total > 0 || Object.values(state.data.respostas).some((v) => v !== null && v !== '' && !(Array.isArray(v) && !v.length));
+  if (canEdit() && hasData) {
+    actions.push(h('button', { class: 'btn btn-ghost btn-danger', type: 'button', disabled: state.conflict, onclick: clearDialog }, 'Apagar tudo'));
+  }
   if (!state.me.impersonatedBy && editableStatus(sub.status)) {
     actions.push(h('button', { class: 'btn btn-primary', type: 'button', disabled: !ready || state.conflict, title: ready ? 'Enviar para a Cargill validar' : 'Corrija os erros e responda as perguntas obrigatórias antes de enviar', onclick: submitDialog }, 'Enviar para validação'));
   }
@@ -931,7 +935,7 @@ function renderResult() {
 
 // ---------- Histórico ----------
 
-const ACTION_LABEL = { enviado: 'Enviado para validação', devolver: 'Devolvido para correção', aprovar: 'Aprovado', reabrir: 'Reaberto para edição' };
+const ACTION_LABEL = { enviado: 'Enviado para validação', devolver: 'Devolvido para correção', aprovar: 'Aprovado', reabrir: 'Reaberto para edição', limpar: 'Dados apagados' };
 
 function renderHistory() {
   const panel = document.querySelector('[data-panel="historico"]');
@@ -977,6 +981,53 @@ function submitDialog() {
     ),
   );
   dialog.showModal();
+}
+
+// Apagar de uma vez o que foi preenchido. Pede para digitar APAGAR, porque não tem volta.
+function clearDialog() {
+  const answered = Object.values(state.data.respostas).filter((v) => v !== null && v !== '' && !(Array.isArray(v) && !v.length)).length;
+  const parts = [
+    { id: 'engorda', label: 'Lotes de engorda', n: state.data.engorda.length },
+    { id: 'recria', label: 'Lotes de recria', n: state.data.recria.length },
+    { id: 'respostas', label: 'Respostas do questionário', n: answered },
+  ].map((p) => ({ ...p, box: h('input', { type: 'checkbox', checked: p.n > 0, disabled: p.n === 0 }) }));
+  const word = h('input', { type: 'text', autocomplete: 'off', placeholder: 'APAGAR', 'aria-label': 'Digite APAGAR para confirmar' });
+  const submit = h('button', { class: 'btn btn-danger', type: 'submit', disabled: true }, 'Apagar');
+  const sync = () => (submit.disabled = word.value.trim().toUpperCase() !== 'APAGAR' || !parts.some((p) => p.box.checked));
+  word.addEventListener('input', sync);
+  parts.forEach((p) => p.box.addEventListener('change', sync));
+  fill(
+    dialog,
+    h(
+      'form',
+      {
+        class: 'bmk-dialog',
+        onsubmit: async (e) => {
+          e.preventDefault();
+          submit.disabled = true;
+          try {
+            // Grava antes o que estiver pendente, para não perder a parte que não vai ser apagada.
+            await saveNow();
+            const chosen = parts.filter((p) => p.box.checked).map((p) => p.id);
+            const view = await api(`/api/benchmark/${state.clientId}/clear`, { method: 'POST', body: { version: state.version, parts: chosen } });
+            applyView(view);
+            dialog.close();
+            toast('Pronto, o que você escolheu foi apagado.');
+          } catch (err) {
+            toast(err.message, 'error');
+            sync();
+          }
+        },
+      },
+      h('h2', {}, 'Apagar o que foi preenchido'),
+      h('p', {}, 'Escolha o que apagar. Isso vale para todos da sua empresa e não dá para desfazer.'),
+      h('div', { class: 'bmk-clear-list' }, parts.map((p) => h('label', { class: 'bmk-check' }, p.box, h('span', {}, `${p.label} `, h('span', { class: 'muted' }, `(${p.n})`))))),
+      h('label', { class: 'bmk-field' }, h('span', {}, 'Para confirmar, digite APAGAR'), word),
+      h('div', { class: 'dialog-actions' }, h('button', { class: 'btn', type: 'button', onclick: () => dialog.close() }, 'Cancelar'), submit),
+    ),
+  );
+  dialog.showModal();
+  word.focus();
 }
 
 function reviewDialog(action) {

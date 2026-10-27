@@ -95,7 +95,9 @@ cliente veem o card. Página `/benchmark` (`public/benchmark/`), API `/api/bench
   RECRIA). É importado pelo navegador e pelo servidor (Node importa de `public/`).
 - Dados: `db().bmkSubmissions` (um por cliente por ano; `version` evita sobrescrever o trabalho
   de outra pessoa) e `db().bmkSettings` (limites e listas, editáveis no admin). Fluxo
-  rascunho → enviado → correção/aprovado; devolver/aprovar avisa os usuários pelo chat.
+  rascunho → enviado → correção/aprovado; devolver/aprovar avisa os usuários pelo chat. "Apagar
+  tudo" (`POST /api/benchmark/:clientId/clear`, `clearDraft`) zera lotes e/ou questionário enquanto
+  dá para editar, pede para digitar APAGAR e fica no histórico (ação `limpar`).
 - Importar a planilha atual é feito no navegador com SheetJS (`/vendor/xlsx.full.min.js`,
   pacote oficial de cdn.sheetjs.com — a versão do npm é antiga): lê BD_Zootec_Feed,
   BD_Econom_Feed, BD_Zootec_Feed_ Recria_Conf e Q1. As abas TGC não são importadas.

@@ -3,7 +3,7 @@
 import { Router } from 'express';
 import { recordToolAccess, startToolView } from '../accessLog.js';
 import { requireAuth } from '../auth.js';
-import { getForUser, participantClients, review, saveDraft, settings, submit } from '../benchmark.js';
+import { clearDraft, getForUser, participantClients, review, saveDraft, settings, submit } from '../benchmark.js';
 
 export const benchmarkRouter = Router();
 
@@ -31,6 +31,11 @@ benchmarkRouter.put('/:clientId', route(async (req, res) => {
   // Admin "entrando como" o cliente só olha: não grava em nome dele.
   if (req.impersonator) return res.status(403).json({ error: 'Você está vendo como o cliente: as alterações não são salvas.' });
   res.json(await saveDraft(req.user, req.params.clientId, req.body || {}));
+}));
+
+benchmarkRouter.post('/:clientId/clear', route(async (req, res) => {
+  if (req.impersonator) return res.status(403).json({ error: 'Você está vendo como o cliente: as alterações não são salvas.' });
+  res.json(await clearDraft(req.user, req.params.clientId, req.body || {}));
 }));
 
 benchmarkRouter.post('/:clientId/submit', route(async (req, res) => {

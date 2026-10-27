@@ -121,6 +121,26 @@ export async function saveDraft(user, clientId, body = {}) {
   return view(client, sub);
 }
 
+// Apaga de uma vez o que foi preenchido (lotes de engorda, de recria e/ou o questionário).
+// Mesmas travas do rascunho; fica registrado no histórico quem apagou e o quê.
+const CLEAR_PARTS = { engorda: 'lotes de engorda', recria: 'lotes de recria', respostas: 'questionário' };
+export async function clearDraft(user, clientId, { version, parts } = {}) {
+  const client = clientOr404(user, clientId);
+  const sub = submissionOf(clientId, { create: true });
+  if (user.role !== 'admin' && !editableStatus(sub.status)) throw new BenchmarkError('Este benchmarking já foi enviado e está travado para edição.', 409);
+  if (Number(version) !== sub.version) throw new BenchmarkError('Outra pessoa salvou alterações neste benchmarking. Recarregue a página para ver a versão mais nova.', 409);
+  const chosen = Object.keys(CLEAR_PARTS).filter((p) => Array.isArray(parts) && parts.includes(p));
+  if (!chosen.length) throw new BenchmarkError('Escolha o que apagar.');
+  const counts = { engorda: sub.engorda.length, recria: sub.recria.length, respostas: Object.keys(sub.respostas).length };
+  for (const p of chosen) sub[p] = p === 'respostas' ? {} : [];
+  log(sub, user, 'limpar', `Apagou: ${chosen.map((p) => `${CLEAR_PARTS[p]} (${counts[p]})`).join(', ')}.`);
+  sub.version += 1;
+  sub.updatedAt = new Date().toISOString();
+  sub.updatedBy = user.id;
+  await save();
+  return view(client, sub);
+}
+
 function log(sub, user, action, text = '') {
   sub.messages.push({ id: newId(), at: new Date().toISOString(), by: user.id, role: user.role, action, text: String(text || '').trim().slice(0, 2000) });
 }
