@@ -226,7 +226,7 @@
   letter-spacing: 0;
   text-align: left;
   text-transform: none;
-  vertical-align: bottom;
+  vertical-align: top;
   white-space: nowrap;
 }
 
@@ -294,6 +294,55 @@
   padding: 0 8px;
   text-align: right;
   font-variant-numeric: tabular-nums;
+}
+
+/* Filtro por coluna: contadores de erro/alerta no cabeçalho */
+.bmk-colflts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin-top: 4px;
+}
+
+.bmk-colflt {
+  padding: 1px 6px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font: 700 11px/1.4 var(--font-ui);
+  cursor: pointer;
+}
+
+.bmk-colflt.erro {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.bmk-colflt.alerta {
+  background: var(--warn-bg);
+  color: var(--warn);
+}
+
+.bmk-colflt.on {
+  border-color: currentColor;
+  box-shadow: 0 0 0 1px currentColor;
+}
+
+.bmk-flt-chip {
+  padding: 5px 10px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font: 600 12.5px/1.2 var(--font-ui);
+  cursor: pointer;
+}
+
+.bmk-flt-chip.erro {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.bmk-flt-chip.alerta {
+  background: var(--warn-bg);
+  color: var(--warn);
 }
 
 .bmk-grid th.bmk-calc-h {

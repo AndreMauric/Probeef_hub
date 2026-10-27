@@ -44,6 +44,8 @@ const state = {
   tab: 'engorda',
   group: { engorda: 'zoo', recria: 'zoo' },
   filter: { engorda: 'todos', recria: 'todos' },
+  // Filtro por coluna: { field, level } mostra só os lotes com aquele problema naquela coluna.
+  colFilter: { engorda: null, recria: null },
   search: { engorda: '', recria: '' },
   qSection: QUESTIONARIO[0].id,
 };
@@ -200,16 +202,57 @@ function lotesPanel(kind) {
   const lead = group === 'eco' ? ZOO_FIELDS.slice(0, 1) : [];
   const shownFields = [...lead.map((f) => ({ ...f, readonly: true })), ...fields];
   const term = state.search[kind].trim().toLowerCase();
+  const cf = state.colFilter[kind];
   const rows = lotes
     .map((l, i) => ({ l, i, issues: val.porLote[i] }))
-    .filter(({ issues }) => (state.filter[kind] === 'erro' ? issues.some((x) => x.level === 'erro') : state.filter[kind] === 'alerta' ? issues.some((x) => x.level === 'alerta') : true))
+    .filter(({ issues }) => (state.filter[kind] === 'erro' ? issues.some((x) => x.level === 'erro') : state.filter[kind] === 'alerta' ? issues.some((x) => x.level === 'alerta') : state.filter[kind] === 'ok' ? !issues.length : true))
+    .filter(({ issues }) => !cf || issues.some((x) => x.field === cf.field && x.level === cf.level))
     .filter(({ l }) => !term || `${l.lote || ''} ${l.curral || ''}`.toLowerCase().includes(term));
+
+  // Quantos lotes têm erro/alerta em cada coluna (todos os lotes, sem os filtros).
+  const perField = new Map();
+  for (const issues of val.porLote) {
+    const seen = new Set();
+    for (const x of issues) {
+      const k = `${x.field}|${x.level}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      if (!perField.has(x.field)) perField.set(x.field, { erro: 0, alerta: 0 });
+      perField.get(x.field)[x.level] += 1;
+    }
+  }
+  const allFields = ZOO_FIELDS.concat(recria ? [] : ECO_FIELDS);
+  const fieldLabel = (key) => allFields.find((f) => f.key === key)?.label || key;
+  const setColFilter = (next) => {
+    state.colFilter[kind] = next;
+    // A coluna escolhida pode estar no outro grupo (Zootécnico/Econômico).
+    if (next && !recria && next.field !== 'lote') state.group[kind] = ZOO_FIELDS.some((f) => f.key === next.field) ? 'zoo' : 'eco';
+    lotesPanel(kind);
+  };
+  const colBadges = (f) => {
+    const n = perField.get(f.key);
+    if (!n) return null;
+    const badge = (level, sym) =>
+      n[level]
+        ? h(
+            'button',
+            {
+              type: 'button',
+              class: `bmk-colflt ${level}${cf?.field === f.key && cf.level === level ? ' on' : ''}`,
+              title: `${n[level]} ${n[level] === 1 ? 'lote' : 'lotes'} com ${level === 'erro' ? 'erro' : 'alerta'} em ${f.label}. Clique para filtrar.`,
+              onclick: () => setColFilter(cf?.field === f.key && cf.level === level ? null : { field: f.key, level }),
+            },
+            `${sym} ${n[level]}`,
+          )
+        : null;
+    return h('span', { class: 'bmk-colflts' }, badge('erro', '✕'), badge('alerta', '⚠'));
+  };
 
   const head = h(
     'tr',
     {},
     h('th', { class: 'bmk-sticky0', scope: 'col' }, ''),
-    shownFields.map((f, k) => h('th', { scope: 'col', class: k === 0 ? 'bmk-sticky1' : '', style: `min-width:${f.w || 80}px` }, f.label, f.unit ? h('small', {}, f.unit) : null, (recria ? f.reqRecria : f.req) ? h('span', { class: 'bmk-req', title: 'Obrigatório' }, '*') : null)),
+    shownFields.map((f, k) => h('th', { scope: 'col', class: k === 0 ? 'bmk-sticky1' : '', style: `min-width:${f.w || 80}px` }, f.label, f.unit ? h('small', {}, f.unit) : null, (recria ? f.reqRecria : f.req) ? h('span', { class: 'bmk-req', title: 'Obrigatório' }, '*') : null, colBadges(f))),
     CALC_COLS[group].map(([, label, unit]) => h('th', { scope: 'col', class: 'bmk-calc-h', title: 'Calculado' }, label, h('small', {}, unit))),
     editable ? h('th', { scope: 'col' }, '') : null,
   );
@@ -244,8 +287,42 @@ function lotesPanel(kind) {
   const filterSel = h(
     'select',
     { 'aria-label': 'Filtrar lotes', onchange: (e) => ((state.filter[kind] = e.target.value), lotesPanel(kind)) },
-    [['todos', `Todos (${lotes.length})`], ['erro', `Com erro (${val.lotesComErro})`], ['alerta', 'Com alerta']].map(([v, t]) => h('option', { value: v, selected: state.filter[kind] === v }, t)),
+    [
+      ['todos', `Todos (${lotes.length})`],
+      ['erro', `Com erro (${val.lotesComErro})`],
+      ['alerta', `Com alerta (${val.porLote.filter((i) => i.some((x) => x.level === 'alerta')).length})`],
+      ['ok', `Sem problemas (${val.porLote.filter((i) => !i.length).length})`],
+    ].map(([v, t]) => h('option', { value: v, selected: state.filter[kind] === v }, t)),
   );
+  // Todas as colunas com problema, inclusive as do grupo que não está aberto.
+  const problemCols = allFields.filter((f) => perField.has(f.key));
+  const colSel = problemCols.length
+    ? h(
+        'select',
+        {
+          'aria-label': 'Problemas por coluna',
+          onchange: (e) => {
+            const [field, level] = e.target.value.split('|');
+            setColFilter(field ? { field, level } : null);
+          },
+        },
+        h('option', { value: '' }, `Problemas por coluna (${problemCols.length})`),
+        problemCols.flatMap((f) => {
+          const n = perField.get(f.key);
+          return ['erro', 'alerta']
+            .filter((level) => n[level])
+            .map((level) => h('option', { value: `${f.key}|${level}`, selected: cf?.field === f.key && cf.level === level }, `${f.label} — ${level === 'erro' ? '✕ erro' : '⚠ alerta'} (${n[level]})`));
+        }),
+      )
+    : null;
+  const activeChip = cf
+    ? h(
+        'button',
+        { type: 'button', class: `bmk-flt-chip ${cf.level}`, title: 'Limpar o filtro da coluna', onclick: () => setColFilter(null) },
+        `${fieldLabel(cf.field)} · com ${cf.level === 'erro' ? 'erro' : 'alerta'} (${rows.length})`,
+        h('span', { 'aria-hidden': 'true' }, ' ×'),
+      )
+    : null;
   const search = h('input', {
     type: 'search',
     placeholder: 'Buscar lote ou curral',
@@ -278,6 +355,8 @@ function lotesPanel(kind) {
             Object.entries(GROUPS).map(([key, g]) => h('button', { type: 'button', role: 'radio', 'aria-checked': String(group === key), class: group === key ? 'on' : '', onclick: () => ((state.group[kind] = key), lotesPanel(kind)) }, g.label)),
           ),
       h('span', { class: 'spacer' }),
+      activeChip,
+      colSel,
       filterSel,
       search,
     ),
