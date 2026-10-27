@@ -49,6 +49,7 @@ const state = {
   // Filtro por coluna: { field, level } mostra só os lotes com aquele problema naquela coluna.
   colFilter: { engorda: null, recria: null },
   resultView: 'painel',
+  visibleRows: { engorda: [], recria: [] }, // índices dos lotes que a tabela mostra (filtros e busca)
   search: { engorda: '', recria: '' },
   qSection: QUESTIONARIO[0].id,
 };
@@ -211,6 +212,7 @@ function lotesPanel(kind) {
     .filter(({ issues }) => (state.filter[kind] === 'erro' ? issues.some((x) => x.level === 'erro') : state.filter[kind] === 'alerta' ? issues.some((x) => x.level === 'alerta') : state.filter[kind] === 'ok' ? !issues.length : true))
     .filter(({ issues }) => !cf || issues.some((x) => x.field === cf.field && x.level === cf.level))
     .filter(({ l }) => !term || `${l.lote || ''} ${l.curral || ''}`.toLowerCase().includes(term));
+  state.visibleRows[kind] = rows.map((r) => r.i);
 
   // Quantos lotes têm erro/alerta em cada coluna (todos os lotes, sem os filtros).
   const perField = new Map();
@@ -350,6 +352,9 @@ function lotesPanel(kind) {
       editable ? h('button', { class: 'btn btn-sm', type: 'button', onclick: () => pasteDialog(kind) }, 'Colar do Excel') : null,
       editable ? h('button', { class: 'btn btn-sm', type: 'button', onclick: importDialog }, 'Importar planilha') : null,
       editable && lotes.length ? h('button', { class: 'btn btn-sm', type: 'button', onclick: () => standardizeDialog(kind) }, 'Padronizar listas') : null,
+      editable && lotes.length
+        ? h('button', { class: 'btn btn-sm', type: 'button', title: 'Preencher a origem de vários lotes de uma vez', onclick: () => originDialog(kind) }, 'Preencher origem', lotes.some((l) => !l.origem) ? h('span', { class: 'count' }, ` ${lotes.filter((l) => !l.origem).length} sem`) : null)
+        : null,
       recria
         ? null
         : h(
@@ -722,6 +727,75 @@ function importDialog() {
 }
 
 // ---------- Padronizar listas (o "Validação e Classificação" da planilha) ----------
+
+// ---------- Preencher a origem de vários lotes de uma vez ----------
+
+// Pergunta 10 do questionário (modelos de reposição) -> origem do lote. Parceria/Outro não têm origem.
+const Q10_ORIGEM = { 'Recria a pasto na fazenda': 'Recria Pasto', 'Recria confinada na fazenda': 'Recria Confinada', Compra: 'Compra Direta' };
+
+// Sugestão só quando a fazenda marcou um único modelo que vira origem (e nada além dele).
+function origemSugerida() {
+  const marcados = Array.isArray(state.data.respostas.q10) ? state.data.respostas.q10.filter(Boolean) : [];
+  if (marcados.length !== 1) return null;
+  const origem = Q10_ORIGEM[marcados[0]];
+  return origem && settings().listas.origens.includes(origem) ? { origem, resposta: marcados[0] } : null;
+}
+
+function originDialog(kind) {
+  const lotes = state.data[kind];
+  const visible = state.visibleRows[kind] || [];
+  const semOrigem = lotes.map((l, i) => i).filter((i) => !lotes[i].origem);
+  const sugestao = origemSugerida();
+  const origens = settings().listas.origens;
+  let origem = sugestao?.origem || '';
+  const targets = [
+    { id: 'vazios', label: `Lotes sem origem (${semOrigem.length})`, idx: semOrigem },
+    // Só faz sentido quando a tabela está filtrada ou com busca.
+    visible.length < lotes.length ? { id: 'tabela', label: `Lotes que aparecem na tabela agora (${visible.length})`, idx: visible } : null,
+    { id: 'todos', label: `Todos os lotes (${lotes.length}) — troca também a origem já preenchida`, idx: lotes.map((l, i) => i) },
+  ].filter(Boolean);
+  // "Todos" troca o que já foi preenchido: nunca vem marcado sozinho.
+  let target = semOrigem.length ? 'vazios' : targets.some((t) => t.id === 'tabela') ? 'tabela' : '';
+  const submit = h('button', { class: 'btn btn-primary', type: 'submit' });
+  const buttons = h('div', { class: 'bmk-seg', role: 'radiogroup', 'aria-label': 'Origem' });
+  const sync = () => {
+    buttons.replaceChildren(...origens.map((o) => h('button', { type: 'button', role: 'radio', 'aria-checked': String(o === origem), class: o === origem ? 'on' : '', onclick: () => ((origem = o), sync()) }, o)));
+    const n = targets.find((t) => t.id === target)?.idx.length || 0;
+    submit.textContent = !target ? 'Escolha onde aplicar' : n ? `Preencher ${n} ${n === 1 ? 'lote' : 'lotes'}` : 'Nenhum lote';
+    submit.disabled = !origem || !n;
+  };
+  const radios = targets.map((t) =>
+    h('label', { class: 'bmk-check' }, h('input', { type: 'radio', name: 'alvo', value: t.id, checked: t.id === target, disabled: !t.idx.length, onchange: () => ((target = t.id), sync()) }), h('span', {}, t.label)),
+  );
+  sync();
+  fill(
+    dialog,
+    h(
+      'form',
+      {
+        class: 'bmk-dialog',
+        onsubmit: (e) => {
+          e.preventDefault();
+          const idx = targets.find((t) => t.id === target)?.idx || [];
+          for (const i of idx) lotes[i] = { ...lotes[i], origem };
+          if (idx.length) changed();
+          dialog.close();
+          lotesPanel(kind);
+          renderStatus();
+          toast(`Origem "${origem}" preenchida em ${idx.length} ${idx.length === 1 ? 'lote' : 'lotes'}.`);
+        },
+      },
+      h('h2', {}, 'Preencher a origem dos lotes'),
+      sugestao
+        ? h('p', { class: 'bmk-callout ok' }, `No questionário (pergunta 10), a fazenda marcou só "${sugestao.resposta}" como reposição: sugerimos "${sugestao.origem}". Confira e aplique.`)
+        : h('p', { class: 'muted' }, 'Escolha a origem e em quais lotes aplicar. Para lotes com origens diferentes, filtre ou busque na tabela antes (por raça, curral…) e aplique só nos que aparecem.'),
+      h('div', { class: 'bmk-field' }, h('span', {}, 'Origem'), buttons),
+      h('div', { class: 'bmk-field' }, h('span', {}, 'Aplicar em'), h('div', { class: 'bmk-clear-list' }, radios)),
+      h('div', { class: 'dialog-actions' }, h('button', { class: 'btn', type: 'button', onclick: () => dialog.close() }, 'Cancelar'), submit),
+    ),
+  );
+  dialog.showModal();
+}
 
 function standardizeDialog(kind, { auto = false } = {}) {
   const listFields = ZOO_FIELDS.filter((f) => f.type === 'list');
