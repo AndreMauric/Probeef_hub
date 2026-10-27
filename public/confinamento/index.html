@@ -320,6 +320,7 @@
     display:block; font-size:12.5px; font-weight:600; color:var(--text);
     margin-bottom:5px;
   }
+  .field-note{ font-weight:400; color:var(--text-muted); }
   .field .hint{font-size:11px; color:var(--text-muted); font-weight:400;}
   .field input[type=number]{
     width:100%;
@@ -673,6 +674,7 @@
     padding:8px 4px 40px;
   }
   .report-view .r-head{ display:flex; justify-content:space-between; align-items:flex-end; gap:16px; border-bottom:3px solid var(--r-text); padding-bottom:12px; margin-bottom:18px; }
+  .report-view .r-logo{ display:block; height:34px; width:auto; margin-bottom:10px; }
   .report-view .r-head h1{ font-family:"Inter",sans-serif; font-size:24px; font-weight:700; color:var(--r-text); margin:0; }
   .report-view .r-head .r-sub{ font-size:11.5px; color:var(--r-muted); margin-top:2px; }
   .report-view .r-meta{ text-align:right; font-size:11px; color:var(--r-muted); line-height:1.5; }
@@ -1229,6 +1231,15 @@
 
       <h3 class="compare-section-title" id="compare-models-title">Modelos de negócio</h3>
       <p class="compare-hint" id="compare-models-hint">Todos os critérios de projeção lado a lado — cada um com o Cenário A e o Cenário B.</p>
+      <div class="field" style="margin-bottom:14px;">
+        <label>Projeções nas tabelas <span class="field-note">(escolha uma ou mais)</span></label>
+        <div class="seg" data-multi="compareCriteria" role="group" aria-label="Projeções nas tabelas">
+          <button data-value="lucro" class="active" aria-pressed="true">Lucro</button>
+          <button data-value="rentTotal" class="active" aria-pressed="true">Rentabilidade Total</button>
+          <button data-value="rentMensal" class="active" aria-pressed="true">Rentabilidade Mensal</button>
+          <button data-value="diasFixo" class="active" aria-pressed="true">Dias de Cocho Fixo</button>
+        </div>
+      </div>
       <div class="table-wrap"><table class="data" id="table-compare-zoot"></table></div>
       <div class="toolbar">
         <button class="btn" data-expand-table="table-compare-zoot">Ampliar</button>

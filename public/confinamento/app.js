@@ -202,12 +202,14 @@
     compareMetric: "peso",
     calibChart: "peso",
     An: "Dieta",
+    // Critérios de projeção mostrados nas tabelas da aba Comparação (um ou mais).
+    compareCriteria: ["lucro", "rentTotal", "rentMensal", "diasFixo"],
   };
 
   // Uma mesma chave (ex.: "negModel") pode aparecer em mais de um seg-control
   // na página (aba Modelos de Negócio e aba Comparação) — clicar em qualquer
   // uma das cópias precisa sincronizar todas.
-  document.querySelectorAll(".seg").forEach((seg) => {
+  document.querySelectorAll(".seg[data-seg]").forEach((seg) => {
     const key = seg.dataset.seg;
     seg.querySelectorAll("button").forEach((btn) => {
       btn.addEventListener("click", () => {
@@ -223,6 +225,31 @@
             b.classList.toggle("active", b.dataset.value === btn.dataset.value);
           });
         });
+        scheduleRecompute();
+      });
+    });
+  });
+
+  // Seleção múltipla (data-multi): cada botão liga/desliga um valor da lista em state;
+  // sempre fica pelo menos um ligado.
+  function syncMultiSeg(key) {
+    document.querySelectorAll(`.seg[data-multi="${key}"] button`).forEach((b) => {
+      const on = state[key].includes(b.dataset.value);
+      b.classList.toggle("active", on);
+      b.setAttribute("aria-pressed", String(on));
+    });
+  }
+  document.querySelectorAll(".seg[data-multi]").forEach((seg) => {
+    const key = seg.dataset.multi;
+    const order = [...seg.querySelectorAll("button")].map((b) => b.dataset.value);
+    seg.querySelectorAll("button").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const v = btn.dataset.value;
+        const on = state[key].includes(v);
+        if (on && state[key].length === 1) return;
+        const next = on ? state[key].filter((x) => x !== v) : [...state[key], v];
+        state[key] = order.filter((x) => next.includes(x));
+        syncMultiSeg(key);
         scheduleRecompute();
       });
     });
@@ -1114,19 +1141,20 @@
 
   function renderCompareModelTables(A, B) {
     document.getElementById("compare-models-title").textContent = `Modelos de negócio — ${ROLE_LABELS[state.negModel]}`;
-    document.getElementById("compare-models-hint").textContent = `Todos os critérios de projeção lado a lado — cada um com o ${scenarioNames.A} e o ${scenarioNames.B}.`;
+    const all = state.compareCriteria.length === CRITERIA_ORDER.length;
+    document.getElementById("compare-models-hint").textContent = `${all ? "Todos os critérios de projeção" : "Os critérios de projeção escolhidos"} lado a lado — cada um com o ${scenarioNames.A} e o ${scenarioNames.B}.`;
     renderDefTable("table-compare-zoot");
     renderDefTable("table-compare-econ");
   }
 
-  // Monta colunas cruzando os 4 critérios de projeção com os 2 cenários
+  // Monta colunas cruzando os critérios de projeção escolhidos com os 2 cenários
   // (Lucro-A, Lucro-B, Rentabilidade Total-A, Rentabilidade Total-B, ...).
   function compareAllCriteriaColumns(dataKey) {
     const labels = criteriaLabels(lastState.compareA.I);
     const columnOrder = [];
     const columnLabels = {};
     const dataByKey = {};
-    for (const c of CRITERIA_ORDER) {
+    for (const c of CRITERIA_ORDER.filter((k) => state.compareCriteria.includes(k))) {
       for (const s of ["A", "B"]) {
         const key = `${c}_${s}`;
         columnOrder.push(key);
@@ -1246,6 +1274,11 @@
   function tableCaption(def, role) {
     return `${def.title} — ${ROLE_LABELS[role]} (comparação de critérios de projeção)`;
   }
+  const CRITERIA_SHORT = { lucro: "Lucro", rentTotal: "Rentabilidade Total", rentMensal: "Rentabilidade Mensal", diasFixo: "Dias de Cocho Fixo" };
+  function compareCriteriaCaption() {
+    if (state.compareCriteria.length === CRITERIA_ORDER.length) return "todos os critérios";
+    return state.compareCriteria.map((k) => CRITERIA_SHORT[k]).join(", ");
+  }
   function criteriaDataByKey(criteriaResult, dataKey) {
     const out = {};
     for (const k of CRITERIA_ORDER) out[k] = criteriaResult.byCriterion[k][dataKey];
@@ -1285,14 +1318,14 @@
     },
     "table-compare-zoot": {
       getData: () => ({
-        caption: `Desempenho zootécnico — ${ROLE_LABELS[state.negModel]} (todos os critérios)`,
+        caption: `Desempenho zootécnico — ${ROLE_LABELS[state.negModel]} (${compareCriteriaCaption()})`,
         rows: ZOOT_ROWS,
         ...compareAllCriteriaColumns("zoot"),
       }),
     },
     "table-compare-econ": {
       getData: () => ({
-        caption: `Resultado econômico do confinamento — ${ROLE_LABELS[state.negModel]} (todos os critérios)`,
+        caption: `Resultado econômico do confinamento — ${ROLE_LABELS[state.negModel]} (${compareCriteriaCaption()})`,
         rows: ECON_CONF_ROWS,
         ...compareAllCriteriaColumns("econConf"),
       }),
@@ -1586,6 +1619,7 @@
     reportView.innerHTML = `
       <div class="r-head">
         <div>
+          <img class="r-logo" src="logo_probeef.png" alt="ProBeef">
           <h1>4M Confinamento — Relatório de Resultados</h1>
           <div class="r-sub">Calibração zootécnica, modelos de negócio e análise de risco</div>
         </div>
@@ -1729,7 +1763,7 @@
     });
   }
   if (reportPickerConfirm) {
-    reportPickerConfirm.addEventListener("click", () => {
+    reportPickerConfirm.addEventListener("click", async () => {
       const roles = [...reportPickerList.querySelectorAll("input[type=checkbox]:checked")].map((cb) => cb.value);
       if (roles.length === 0) {
         showToast("Escolha pelo menos um modelo de negócio");
@@ -1737,6 +1771,9 @@
       }
       closeReportPicker();
       buildReport(roles);
+      // Espera o logo carregar para ele não sair em branco no PDF.
+      const logo = reportView.querySelector(".r-logo");
+      if (logo) await logo.decode().catch(() => {});
       window.print();
     });
   }
@@ -1791,6 +1828,7 @@
       negModel: state.negModel,
       chartMetric: state.chartMetric,
       compareMetric: state.compareMetric,
+      compareCriteria: [...state.compareCriteria],
       calibChart: state.calibChart,
     };
   }
@@ -1817,6 +1855,10 @@
     state.chartMetric = saved.chartMetric || state.chartMetric;
     state.compareMetric = saved.compareMetric || state.compareMetric;
     state.calibChart = saved.calibChart || state.calibChart;
+    // Simulações antigas não têm a escolha: ficam com todos os critérios.
+    const crit = Array.isArray(saved.compareCriteria) ? CRITERIA_ORDER.filter((k) => saved.compareCriteria.includes(k)) : [];
+    state.compareCriteria = crit.length ? crit : [...CRITERIA_ORDER];
+    syncMultiSeg("compareCriteria");
     activeScenario = saved.activeScenario === "B" ? "B" : "A";
 
     const snap = scenarioSnapshots[activeScenario];
