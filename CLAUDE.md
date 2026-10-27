@@ -100,7 +100,14 @@ cliente veem o card. Página `/benchmark` (`public/benchmark/`), API `/api/bench
   dá para editar, pede para digitar APAGAR e fica no histórico (ação `limpar`).
 - Importar a planilha atual é feito no navegador com SheetJS (`/vendor/xlsx.full.min.js`,
   pacote oficial de cdn.sheetjs.com — a versão do npm é antiga): lê BD_Zootec_Feed,
-  BD_Econom_Feed, BD_Zootec_Feed_ Recria_Conf e Q1. As abas TGC não são importadas.
+  BD_Econom_Feed, BD_Zootec_Feed_ Recria_Conf e Q1.
+- **TGC** (clientes que não usam Feed Manager): o TGC exporta **um animal por linha** (abas
+  BD_TGC_Conf / BD_TGC_Conf_Recria). `lotesFromTgc` em `fields.js` faz o que a tabela dinâmica da
+  planilha fazia: agrupa por LOTE_SAIDA, conta os animais e tira a média de cada coluna (custos
+  do lote = média por cabeça × animais; manejo = alimentar + fixo). Colunas achadas pelo nome
+  (`tgcHeader`), não pela posição. Entra por "Importar planilha" (abas TGC da planilha ou a
+  exportação pura), ou "Colar do Excel" com o cabeçalho. O TGC não traz tipo de entrada e escreve
+  raça/categoria do jeito dele: depois da importação abre "Padronizar listas" e "Preencher em lote".
 - Período do lote (`periodoLote` em `fields.js`, também em `calcLote`): entrada = saída − dias no
   confinamento (Dias conf.; sem ele, Dias de trato); "Águas" quando mais de 70% desses dias caem
   em dezembro–maio, senão "Seca". Aparece na tabela (ao lado de Saída), no detalhe do lote, no

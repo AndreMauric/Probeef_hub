@@ -710,6 +710,115 @@ export const ECO_RESULT_ROWS = [
   ['dentroPorteira', 'Dentro da porteira (R$/cab)', 2],
 ];
 
+// ---------- TGC: relatório por animal → lotes ----------
+// O TGC exporta uma linha por animal (aba BD_TGC_Conf da planilha). A planilha juntava os
+// animais por LOTE_SAIDA numa tabela dinâmica (BD_Zootec_TGC / BD_Econom_TGC): contagem de
+// animais e MÉDIA de cada coluna. Aqui é a mesma conta. As colunas são achadas pelo nome do
+// cabeçalho (sem acento, espaço ou símbolo), então a ordem da exportação não importa.
+
+export const tgcHeader = (s) =>
+  String(s ?? '')
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '');
+
+// Campo do lote ← coluna do TGC. media: média dos animais; moda: valor mais comum;
+// totalLote: média por cabeça × animais (os campos econômicos do lote são totais, como no Feed Manager).
+const TGC_MAP = [
+  ['curral', 'ULTIMOCURRAL', 'moda'],
+  ['raca', 'RACA', 'moda'],
+  ['categoria', 'CATEGORIA', 'moda'],
+  ['saida', 'DATADESAIDA', 'data'],
+  ['pvEntrada', 'PESOENTRADAKG', 'media', 1],
+  ['pvSaida', 'PESOSAIDAKG', 'media', 1],
+  ['pesoCarc', 'PESOSAIDACARCACA', 'media', 1],
+  ['rc', 'RENDIMENTOCARCACASAIDA', 'rc', 2],
+  ['gpd', 'GANHODEPESODIAKG', 'media', 3],
+  ['ganhoArroba', 'PRODUZIDACAB', 'media', 2],
+  ['diasConf', 'DIASCONFCAB', 'media', 0],
+  // A tabela dinâmica usa os dias de confinamento como dias de trato (GPD e conversão).
+  ['diasTrato', 'DIASCONFCAB', 'media', 0],
+  ['totalDiarias', 'DIARIASALIMENTARTOTAL', 'media', 1],
+  ['consMO', 'CONSUMOMNCABDIA', 'media', 2],
+  ['consMS', 'CONSUMOMSCABDIA', 'media', 2],
+  ['consMSpctPV', 'IMSPV', 'media', 2],
+  ['eficAlim', 'EFICIENCIABIOLOGICA', 'media', 1],
+  ['convAlim', 'CONVERSAOALIMENTAR', 'media', 2],
+  ['valorEntradaCab', 'CUSTOCOMPRABOIMAGROCAB', 'media', 2],
+  ['freteCab', 'CUSTOFRETECAB', 'media', 2],
+  ['valorSaidaCab', 'RECEITACAB', 'media', 2],
+  ['custoTotalTrato', 'CUSTOALIMENTARCABPERIODO', 'totalLote', 2],
+  ['custoTotalLote', 'CUSTOTOTALCABPERIODO', 'totalLote', 2],
+  ['valorTotalVenda', 'RECEITACAB', 'totalLote', 2],
+];
+export const TGC_LOTE = 'LOTESAIDA';
+
+// Data do TGC (número de série do Excel, Date, dd/mm/aaaa ou AAAA-MM-DD) → milissegundos UTC.
+function tgcDateMs(v) {
+  if (v === null || v === undefined || v === '') return null;
+  if (v instanceof Date) return Date.UTC(v.getFullYear(), v.getMonth(), v.getDate());
+  if (typeof v === 'number') return v > 20000 && v < 80000 ? Date.UTC(1899, 11, 30) + Math.round(v) * 86400000 : null;
+  const s = String(v).trim();
+  const br = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (br) return Date.UTC(Number(br[3]), Number(br[2]) - 1, Number(br[1]));
+  const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return iso ? Date.UTC(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3])) : null;
+}
+
+// animais: linhas do relatório com as chaves já normalizadas por tgcHeader.
+// Devolve { lotes, animais, semLote, faltando: colunas esperadas que não vieram }.
+export function lotesFromTgc(animais) {
+  const presentes = new Set(animais.flatMap((a) => Object.keys(a)));
+  const faltando = [...new Set(TGC_MAP.map(([, col]) => col))].filter((c) => !presentes.has(c));
+  const grupos = new Map();
+  let semLote = 0;
+  for (const a of animais) {
+    const lote = String(a[TGC_LOTE] ?? '').trim();
+    if (!lote) {
+      semLote += 1;
+      continue;
+    }
+    if (!grupos.has(lote)) grupos.set(lote, []);
+    grupos.get(lote).push(a);
+  }
+  const round = (v, d) => (v === null ? null : Number(v.toFixed(d)));
+  const lotes = [...grupos].map(([lote, rows]) => {
+    const qt = rows.length;
+    const media = (col) => {
+      const vals = rows.map((r) => toNumber(r[col])).filter((v) => v !== null && Number.isFinite(v));
+      return vals.length ? vals.reduce((s, v) => s + v, 0) / vals.length : null;
+    };
+    const l = { lote, qtAnm: qt };
+    for (const [key, col, how, d] of TGC_MAP) {
+      if (how === 'moda') {
+        const count = new Map();
+        for (const r of rows) {
+          const v = String(r[col] ?? '').trim();
+          if (v) count.set(v, (count.get(v) || 0) + 1);
+        }
+        const top = [...count].sort((a, b) => b[1] - a[1])[0];
+        if (top) l[key] = top[0];
+      } else if (how === 'data') {
+        const ms = rows.map((r) => tgcDateMs(r[col])).filter((v) => v !== null);
+        if (ms.length) l[key] = new Date(Math.round(ms.reduce((s, v) => s + v, 0) / ms.length / 86400000) * 86400000).toISOString().slice(0, 10);
+      } else {
+        let v = media(col);
+        // Rendimento às vezes vem em fração (0,55): no lote é em % (55).
+        if (how === 'rc' && v !== null && v <= 1.5) v *= 100;
+        if (how === 'totalLote' && v !== null) v *= qt;
+        if (v !== null) l[key] = round(v, d);
+      }
+    }
+    // Custo total de manejo = alimentar + fixo do período (o custo operacional da tabela dinâmica é o fixo).
+    const alim = media('CUSTOALIMENTARCABPERIODO');
+    const fixo = media('CUSTOFIXOCABPERIODO');
+    if (alim !== null || fixo !== null) l.custoTotalManejo = round(((alim ?? 0) + (fixo ?? 0)) * qt, 2);
+    return l;
+  });
+  return { lotes, animais: animais.length - semLote, semLote, faltando };
+}
+
 // Ordem das colunas da planilha original (para colar do Excel / importar o arquivo).
 export const COLUNAS_ZOO = ZOO_FIELDS.filter((f) => f.col).sort((a, b) => colIndex(a.col) - colIndex(b.col));
 export const COLUNAS_ECO = [{ key: 'lote', col: 'A' }, ...ECO_FIELDS].sort((a, b) => colIndex(a.col) - colIndex(b.col));

@@ -182,6 +182,12 @@
   background: var(--surface-2);
 }
 
+/* Muitas opções (ex.: raças): quebra a linha. */
+.bmk-seg-wrap {
+  flex-wrap: wrap;
+  border-radius: 14px;
+}
+
 .bmk-seg button {
   padding: 5px 13px;
   border: 0;

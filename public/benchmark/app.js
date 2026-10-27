@@ -15,6 +15,7 @@ import {
   ECO_FIELDS,
   ECO_RESULT_ROWS,
   editableStatus,
+  lotesFromTgc,
   OPTIONS,
   QUESTIONARIO,
   QUESTIONS,
@@ -23,6 +24,8 @@ import {
   resultadoEngorda,
   resultadoRecria,
   STATUS,
+  TGC_LOTE,
+  tgcHeader,
   validateLotes,
   validateQuestionario,
   ZOO_FIELDS,
@@ -359,7 +362,17 @@ function lotesPanel(kind) {
       editable ? h('button', { class: 'btn btn-sm', type: 'button', onclick: importDialog }, 'Importar planilha') : null,
       editable && lotes.length ? h('button', { class: 'btn btn-sm', type: 'button', onclick: () => standardizeDialog(kind) }, 'Padronizar listas') : null,
       editable && lotes.length
-        ? h('button', { class: 'btn btn-sm', type: 'button', title: 'Preencher a origem de vários lotes de uma vez', onclick: () => originDialog(kind) }, 'Preencher origem', lotes.some((l) => !l.origem) ? h('span', { class: 'count' }, ` ${lotes.filter((l) => !l.origem).length} sem`) : null)
+        ? h(
+            'button',
+            {
+              class: 'btn btn-sm',
+              type: 'button',
+              title: 'Preencher origem, tipo de entrada, raça ou categoria de vários lotes de uma vez',
+              // Abre no que mais precisa: tipo de entrada (obrigatório) se faltar; senão a origem.
+              onclick: () => originDialog(kind, lotes.some((l) => !l.tipoEntrada) ? 'tipoEntrada' : 'origem'),
+            },
+            'Preencher em lote',
+          )
         : null,
       recria
         ? null
@@ -532,6 +545,29 @@ function mergeLotes(kind, incoming) {
   return { added, updated };
 }
 
+// ---------- TGC (relatório por animal) ----------
+
+// Linhas de uma planilha ou texto colado → animais com as chaves normalizadas (tgcHeader).
+// Acha o cabeçalho pela coluna LOTE_SAIDA; sem ela, não é um relatório do TGC (null).
+function tgcAnimalsFromMatrix(matrix) {
+  const hi = matrix.slice(0, 30).findIndex((row) => (row || []).some((c) => tgcHeader(c) === TGC_LOTE));
+  if (hi < 0) return null;
+  const head = matrix[hi].map(tgcHeader);
+  return matrix
+    .slice(hi + 1)
+    .filter((row) => (row || []).some((c) => c !== null && c !== undefined && String(c).trim() !== ''))
+    .map((row) => Object.fromEntries(head.map((k, i) => [k, row[i]]).filter(([k]) => k)));
+}
+const tgcFromSheet = (XLSX, ws) => (ws ? tgcAnimalsFromMatrix(XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: null })) : null);
+const tgcFromText = (text) => tgcAnimalsFromMatrix(text.replace(/\r/g, '').split('\n').map((line) => line.split('\t')));
+const tgcResumo = (t) => `${nf(t.animais, 0)} animais em ${t.lotes.length} ${t.lotes.length === 1 ? 'lote' : 'lotes'}${t.semLote ? ` (${t.semLote} linha(s) sem LOTE_SAIDA ignorada(s))` : ''}`;
+
+// Depois de trazer lotes do TGC: raça/categoria vêm escritas do jeito do TGC e não há tipo de entrada.
+function afterTgcImport(kind) {
+  setTimeout(() => standardizeDialog(kind, { auto: true }), 400);
+  if (state.data[kind].some((l) => !l.tipoEntrada)) toast('O TGC não traz o tipo de entrada: use "Preencher em lote" para completar.', 'info');
+}
+
 function pasteDialog(kind) {
   const recria = kind === 'recria';
   const area = h('textarea', { rows: 12, placeholder: 'Copie as linhas no Excel (Ctrl+C) e cole aqui (Ctrl+V)…', class: 'bmk-paste' });
@@ -539,7 +575,7 @@ function pasteDialog(kind) {
   const info = h('p', { class: 'muted' });
   const showInfo = () => {
     const cols = which === 'zoo' ? COLUNAS_ZOO : COLUNAS_ECO;
-    info.textContent = `Ordem esperada (como na aba ${which === 'zoo' ? (recria ? 'BD_Zootec_Feed_ Recria_Conf' : 'BD_Zootec_Feed') : 'BD_Econom_Feed'}, a partir da coluna A): ${cols.map((f) => `${f.col} ${f.label || 'Lote'}`).join(' · ')}. Colunas que não estão na lista (como Mortes % e as calculadas) são ignoradas. Lotes já existentes são atualizados pelo número do lote.`;
+    info.textContent = `Feed Manager (um lote por linha) — ordem esperada (como na aba ${which === 'zoo' ? (recria ? 'BD_Zootec_Feed_ Recria_Conf' : 'BD_Zootec_Feed') : 'BD_Econom_Feed'}, a partir da coluna A): ${cols.map((f) => `${f.col} ${f.label || 'Lote'}`).join(' · ')}. Colunas que não estão na lista (como Mortes % e as calculadas) são ignoradas. Lotes já existentes são atualizados pelo número do lote. TGC (um animal por linha): cole o relatório junto com a linha de cabeçalho (LOTE_SAIDA, RAÇA…); os animais são juntados por lote, como a tabela dinâmica da planilha.`;
   };
   showInfo();
   fill(
@@ -550,6 +586,19 @@ function pasteDialog(kind) {
         class: 'bmk-dialog',
         onsubmit: (e) => {
           e.preventDefault();
+          // Relatório do TGC colado com o cabeçalho: um animal por linha, junta por lote.
+          const animais = tgcFromText(area.value);
+          if (animais) {
+            const t = lotesFromTgc(animais);
+            if (!t.lotes.length) return toast('O relatório do TGC não tem nenhuma linha com LOTE_SAIDA.', 'error');
+            const { added, updated } = mergeLotes(kind, t.lotes);
+            changed();
+            dialog.close();
+            lotesPanel(kind);
+            toast(`Relatório do TGC: ${tgcResumo(t)}. ${added} lote(s) incluído(s), ${updated} atualizado(s).`);
+            afterTgcImport(kind);
+            return;
+          }
           const rows = rowsFromTsv(area.value, which === 'zoo' ? COLUNAS_ZOO : COLUNAS_ECO);
           if (!rows.length) return toast('Nenhuma linha com número de lote foi encontrada.', 'error');
           const { added, updated } = mergeLotes(kind, rows);
@@ -659,6 +708,24 @@ async function readWorkbook(file) {
   const ecoById = new Map(engEco.map((r) => [String(r.lote), r]));
   const engorda = engZoo.map((r) => ({ ...r, ...(ecoById.get(String(r.lote)) || {}) }));
   for (const r of engEco) if (!engZoo.some((z) => String(z.lote) === String(r.lote))) engorda.push(r);
+  // Clientes TGC: relatório por animal nas abas BD_TGC_Conf (engorda) e BD_TGC_Conf_Recria.
+  const tgc = {
+    engorda: lotesFromTgc(tgcFromSheet(XLSX, wb.Sheets.BD_TGC_Conf) || []),
+    recria: lotesFromTgc(tgcFromSheet(XLSX, wb.Sheets.BD_TGC_Conf_Recria) || []),
+  };
+  engorda.push(...tgc.engorda.lotes);
+  recria.push(...tgc.recria.lotes);
+  // Arquivo que não é a planilha de benchmarking: pode ser a exportação pura do TGC.
+  let tgcRaw = null;
+  if (!engorda.length && !recria.length) {
+    for (const name of wb.SheetNames) {
+      const animais = tgcFromSheet(XLSX, wb.Sheets[name]);
+      if (animais?.length) {
+        tgcRaw = { ...lotesFromTgc(animais), sheet: name };
+        break;
+      }
+    }
+  }
   const respostas = {};
   const q1 = wb.Sheets.Q1;
   if (q1) {
@@ -669,11 +736,11 @@ async function readWorkbook(file) {
       if (q && a !== null && !(typeof a === 'number' && a === 0 && ['q45', 'q46', 'q52', 'q53', 'q54'].includes(id))) respostas[id] = a;
     });
   }
-  return { engorda, recria, respostas, sheets: wb.SheetNames };
+  return { engorda, recria, respostas, tgc, tgcRaw, sheets: wb.SheetNames };
 }
 
 function importDialog() {
-  const fileInput = h('input', { type: 'file', accept: '.xlsb,.xlsx,.xlsm,.xls' });
+  const fileInput = h('input', { type: 'file', accept: '.xlsb,.xlsx,.xlsm,.xls,.csv' });
   const result = h('div', { class: 'bmk-import-result' });
   let parsed = null;
   const modes = h(
@@ -684,6 +751,8 @@ function importDialog() {
     h('label', { class: 'check' }, h('input', { type: 'checkbox', name: 'respostas', checked: true }), h('span', {}, 'Trazer também as respostas do questionário (aba Q1)')),
   );
   const submitBtn = h('button', { class: 'btn btn-primary', type: 'submit', disabled: true }, 'Importar');
+  // Exportação pura do TGC: a pessoa diz se os animais são da engorda ou da recria.
+  let rawKind = state.tab === 'recria' ? 'recria' : 'engorda';
   fileInput.addEventListener('change', async () => {
     const file = fileInput.files[0];
     if (!file) return;
@@ -691,19 +760,39 @@ function importDialog() {
     try {
       parsed = await readWorkbook(file);
       const nResp = Object.keys(parsed.respostas).length;
+      const t = parsed.tgc;
+      const faltando = (x) => (x.faltando.length > 0 && x.lotes.length ? h('small', { class: 'muted' }, ` · colunas que não vieram: ${x.faltando.join(', ')}`) : null);
       fill(
         result,
-        h(
-          'ul',
-          { class: 'bmk-import-list' },
-          h('li', {}, h('strong', {}, parsed.engorda.length), ' lotes de engorda (BD_Zootec_Feed + BD_Econom_Feed)'),
-          h('li', {}, h('strong', {}, parsed.recria.length), ' lotes de recria confinada'),
-          h('li', {}, h('strong', {}, nResp), ' respostas do questionário (aba Q1)'),
-        ),
-        !parsed.engorda.length && !parsed.recria.length && !nResp ? h('p', { class: 'alert' }, `Não encontrei as abas do modelo de benchmarking neste arquivo (abas: ${parsed.sheets.join(', ')}).`) : null,
+        parsed.tgcRaw
+          ? [
+              h('p', { class: 'bmk-callout ok' }, `Relatório do TGC (aba "${parsed.tgcRaw.sheet}"): ${tgcResumo(parsed.tgcRaw)}. Os animais são juntados por LOTE_SAIDA (contagem e média de cada coluna), como a tabela dinâmica da planilha.`, faltando(parsed.tgcRaw)),
+              h(
+                'div',
+                { class: 'bmk-field' },
+                h('span', {}, 'Esses animais são de'),
+                h(
+                  'div',
+                  { class: 'bmk-clear-list' },
+                  [
+                    ['engorda', 'Engorda'],
+                    ['recria', 'Recria confinada'],
+                  ].map(([k, label]) => h('label', { class: 'bmk-check' }, h('input', { type: 'radio', name: 'rawKind', value: k, checked: k === rawKind, onchange: () => (rawKind = k) }), h('span', {}, label))),
+                ),
+              ),
+            ]
+          : h(
+              'ul',
+              { class: 'bmk-import-list' },
+              h('li', {}, h('strong', {}, parsed.engorda.length), ' lotes de engorda', t.engorda.lotes.length ? ` (${parsed.engorda.length - t.engorda.lotes.length} do Feed Manager + ${t.engorda.lotes.length} do TGC: ${tgcResumo(t.engorda)})` : ' (BD_Zootec_Feed + BD_Econom_Feed)', faltando(t.engorda)),
+              h('li', {}, h('strong', {}, parsed.recria.length), ' lotes de recria confinada', t.recria.lotes.length ? ` (${t.recria.lotes.length} do TGC: ${tgcResumo(t.recria)})` : '', faltando(t.recria)),
+              h('li', {}, h('strong', {}, nResp), ' respostas do questionário (aba Q1)'),
+            ),
+        !parsed.tgcRaw && !parsed.engorda.length && !parsed.recria.length && !nResp ? h('p', { class: 'alert' }, `Não encontrei as abas do modelo de benchmarking nem um relatório do TGC (coluna LOTE_SAIDA) neste arquivo (abas: ${parsed.sheets.join(', ')}).`) : null,
       );
       modes.hidden = false;
-      submitBtn.disabled = !parsed.engorda.length && !parsed.recria.length && !nResp;
+      modes.querySelector('[name=respostas]').closest('label').hidden = !nResp;
+      submitBtn.disabled = !parsed.tgcRaw && !parsed.engorda.length && !parsed.recria.length && !nResp;
     } catch (err) {
       parsed = null;
       fill(result, h('p', { class: 'alert' }, `Não consegui ler o arquivo: ${err.message}`));
@@ -721,6 +810,18 @@ function importDialog() {
           const form = e.target;
           const mode = form.elements.mode.value;
           if (mode === 'replace' && (state.data.engorda.length || state.data.recria.length) && !confirm('Apagar os lotes atuais e ficar só com os da planilha?')) return;
+          if (parsed.tgcRaw) {
+            // Exportação pura do TGC: só a lista escolhida (engorda ou recria) é afetada.
+            if (mode === 'replace') state.data[rawKind] = [];
+            const r = mergeLotes(rawKind, parsed.tgcRaw.lotes);
+            changed();
+            dialog.close();
+            if (state.tab !== rawKind) selectTab(rawKind);
+            renderAll();
+            toast(`Relatório do TGC: ${tgcResumo(parsed.tgcRaw)}. ${r.added} lote(s) incluído(s), ${r.updated} atualizado(s).`);
+            afterTgcImport(rawKind);
+            return;
+          }
           if (mode === 'replace') {
             state.data.engorda = [];
             state.data.recria = [];
@@ -733,11 +834,12 @@ function importDialog() {
           renderAll();
           toast(`Importado: ${a.added + a.updated} lotes de engorda, ${b.added + b.updated} de recria. Confira os erros e alertas.`);
           const sum = localSummary();
-          if (sum.erros) setTimeout(() => standardizeDialog(state.tab === 'recria' ? 'recria' : 'engorda', { auto: true }), 400);
+          if (parsed.tgc.engorda.lotes.length || parsed.tgc.recria.lotes.length) afterTgcImport(state.tab === 'recria' ? 'recria' : 'engorda');
+          else if (sum.erros) setTimeout(() => standardizeDialog(state.tab === 'recria' ? 'recria' : 'engorda', { auto: true }), 400);
         },
       },
       h('h2', {}, 'Importar a planilha de benchmarking'),
-      h('p', { class: 'muted' }, 'Escolha o arquivo no modelo atual ("Benchmarking Confinamento Probeef … Feed Manager", .xlsb ou .xlsx). O arquivo é lido aqui no seu navegador; só os dados vão para o portal.'),
+      h('p', { class: 'muted' }, 'Escolha a planilha de benchmarking ("Benchmarking Confinamento Probeef …", .xlsb ou .xlsx), com os dados do Feed Manager e/ou do TGC nas abas próprias, ou direto o relatório por animal exportado do TGC (.xlsx, .xls ou .csv). O arquivo é lido aqui no seu navegador; só os dados vão para o portal.'),
       fileInput,
       result,
       modes,
@@ -749,7 +851,7 @@ function importDialog() {
 
 // ---------- Padronizar listas (o "Validação e Classificação" da planilha) ----------
 
-// ---------- Preencher a origem de vários lotes de uma vez ----------
+// ---------- Preencher vários lotes de uma vez (origem, tipo de entrada, raça, categoria) ----------
 
 // Pergunta 10 do questionário (modelos de reposição) -> origem do lote. Parceria/Outro não têm origem.
 const Q10_ORIGEM = { 'Recria a pasto na fazenda': 'Recria Pasto', 'Recria confinada na fazenda': 'Recria Confinada', Compra: 'Compra Direta' };
@@ -762,31 +864,49 @@ function origemSugerida() {
   return origem && settings().listas.origens.includes(origem) ? { origem, resposta: marcados[0] } : null;
 }
 
-function originDialog(kind) {
+// Campos que dá para preencher em vários lotes de uma vez (o TGC, por exemplo, não traz o tipo de entrada).
+const FILL_FIELDS = [
+  ['origem', 'Origem', 'origens'],
+  ['tipoEntrada', 'Tipo de entrada', 'tiposEntrada'],
+  ['raca', 'Raça', 'racas'],
+  ['categoria', 'Categoria', 'categorias'],
+];
+
+function originDialog(kind, field = 'origem') {
+  const [, fieldLabel, list] = FILL_FIELDS.find((f) => f[0] === field);
+  const nome = fieldLabel.toLowerCase();
   const lotes = state.data[kind];
   const visible = state.visibleRows[kind] || [];
-  const semOrigem = lotes.map((l, i) => i).filter((i) => !lotes[i].origem);
-  const sugestao = origemSugerida();
-  const origens = settings().listas.origens;
-  let origem = sugestao?.origem || '';
+  const vazios = lotes.map((l, i) => i).filter((i) => !lotes[i][field]);
+  const sugestao = field === 'origem' ? origemSugerida() : null;
+  const valores = settings().listas[list];
+  let valor = sugestao?.origem || '';
   const targets = [
-    { id: 'vazios', label: `Lotes sem origem (${semOrigem.length})`, idx: semOrigem },
+    { id: 'vazios', label: `Lotes sem ${nome} (${vazios.length})`, idx: vazios },
     // Só faz sentido quando a tabela está filtrada ou com busca.
     visible.length < lotes.length ? { id: 'tabela', label: `Lotes que aparecem na tabela agora (${visible.length})`, idx: visible } : null,
-    { id: 'todos', label: `Todos os lotes (${lotes.length}) — troca também a origem já preenchida`, idx: lotes.map((l, i) => i) },
+    { id: 'todos', label: `Todos os lotes (${lotes.length}) — troca também o que já está preenchido`, idx: lotes.map((l, i) => i) },
   ].filter(Boolean);
   // "Todos" troca o que já foi preenchido: nunca vem marcado sozinho.
-  let target = semOrigem.length ? 'vazios' : targets.some((t) => t.id === 'tabela') ? 'tabela' : '';
+  let target = vazios.length ? 'vazios' : targets.some((t) => t.id === 'tabela') ? 'tabela' : '';
   const submit = h('button', { class: 'btn btn-primary', type: 'submit' });
-  const buttons = h('div', { class: 'bmk-seg', role: 'radiogroup', 'aria-label': 'Origem' });
+  const buttons = h('div', { class: 'bmk-seg bmk-seg-wrap', role: 'radiogroup', 'aria-label': fieldLabel });
   const sync = () => {
-    buttons.replaceChildren(...origens.map((o) => h('button', { type: 'button', role: 'radio', 'aria-checked': String(o === origem), class: o === origem ? 'on' : '', onclick: () => ((origem = o), sync()) }, o)));
+    buttons.replaceChildren(...valores.map((o) => h('button', { type: 'button', role: 'radio', 'aria-checked': String(o === valor), class: o === valor ? 'on' : '', onclick: () => ((valor = o), sync()) }, o)));
     const n = targets.find((t) => t.id === target)?.idx.length || 0;
     submit.textContent = !target ? 'Escolha onde aplicar' : n ? `Preencher ${n} ${n === 1 ? 'lote' : 'lotes'}` : 'Nenhum lote';
-    submit.disabled = !origem || !n;
+    submit.disabled = !valor || !n;
   };
   const radios = targets.map((t) =>
     h('label', { class: 'bmk-check' }, h('input', { type: 'radio', name: 'alvo', value: t.id, checked: t.id === target, disabled: !t.idx.length, onchange: () => ((target = t.id), sync()) }), h('span', {}, t.label)),
+  );
+  const fieldSel = h(
+    'select',
+    { 'aria-label': 'Campo', onchange: (e) => originDialog(kind, e.target.value) },
+    FILL_FIELDS.map(([k, label]) => {
+      const n = lotes.filter((l) => !l[k]).length;
+      return h('option', { value: k, selected: k === field }, n ? `${label} (${n} sem)` : label);
+    }),
   );
   sync();
   fill(
@@ -798,24 +918,25 @@ function originDialog(kind) {
         onsubmit: (e) => {
           e.preventDefault();
           const idx = targets.find((t) => t.id === target)?.idx || [];
-          for (const i of idx) lotes[i] = { ...lotes[i], origem };
+          for (const i of idx) lotes[i] = { ...lotes[i], [field]: valor };
           if (idx.length) changed();
           dialog.close();
           lotesPanel(kind);
           renderStatus();
-          toast(`Origem "${origem}" preenchida em ${idx.length} ${idx.length === 1 ? 'lote' : 'lotes'}.`);
+          toast(`${fieldLabel} "${valor}" preenchido em ${idx.length} ${idx.length === 1 ? 'lote' : 'lotes'}.`);
         },
       },
-      h('h2', {}, 'Preencher a origem dos lotes'),
+      h('h2', {}, 'Preencher em lote'),
+      h('label', { class: 'bmk-field' }, h('span', {}, 'Campo'), fieldSel),
       sugestao
         ? h('p', { class: 'bmk-callout ok' }, `No questionário (pergunta 10), a fazenda marcou só "${sugestao.resposta}" como reposição: sugerimos "${sugestao.origem}". Confira e aplique.`)
-        : h('p', { class: 'muted' }, 'Escolha a origem e em quais lotes aplicar. Para lotes com origens diferentes, filtre ou busque na tabela antes (por raça, curral…) e aplique só nos que aparecem.'),
-      h('div', { class: 'bmk-field' }, h('span', {}, 'Origem'), buttons),
+        : h('p', { class: 'muted' }, `Escolha o valor e em quais lotes aplicar. Para lotes com valores diferentes, filtre ou busque na tabela antes (por raça, curral…) e aplique só nos que aparecem.`),
+      h('div', { class: 'bmk-field' }, h('span', {}, fieldLabel), buttons),
       h('div', { class: 'bmk-field' }, h('span', {}, 'Aplicar em'), h('div', { class: 'bmk-clear-list' }, radios)),
       h('div', { class: 'dialog-actions' }, h('button', { class: 'btn', type: 'button', onclick: () => dialog.close() }, 'Cancelar'), submit),
     ),
   );
-  dialog.showModal();
+  if (!dialog.open) dialog.showModal();
 }
 
 function standardizeDialog(kind, { auto = false } = {}) {
