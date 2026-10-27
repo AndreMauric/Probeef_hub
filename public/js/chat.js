@@ -11,7 +11,10 @@ const fmtWhen = (iso) => {
   return today ? d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 };
 
-const contextHref = (c) => `/portal#${c.reportId}${c.farm ? `/fazenda/${encodeURIComponent(c.farm)}` : ''}`;
+// Contexto de relatório (fazenda do CCV) ou de ferramenta (Benchmarking, com o cliente).
+const contextHref = (c) =>
+  c.tool ? `/${c.tool}${c.clientId ? `?cliente=${encodeURIComponent(c.clientId)}` : ''}` : `/portal#${c.reportId}${c.farm ? `/fazenda/${encodeURIComponent(c.farm)}` : ''}`;
+const contextText = (c) => (c.tool ? `${c.toolName}${c.clientName ? ` · ${c.clientName}` : ''}` : `${c.reportName}${c.farm ? ` · ${c.farm}` : ''}`);
 
 // Texto em elementos seguros: quebras de linha, *negrito* (como no WhatsApp) e links.
 function richText(text, { newTab }) {
@@ -47,7 +50,7 @@ export function renderMessage(m, { mine, newTab = false, showAuthor = true, file
       ? h('a', { class: 'chat-file', href: fileHref(m), download: m.attachment.name }, h('span', { 'aria-hidden': 'true' }, '📄'), h('span', {}, m.attachment.name, h('small', {}, ` · PDF · ${Math.max(1, Math.round(m.attachment.size / 1024))} KB`)))
       : null,
     m.context
-      ? h('a', { class: 'chat-context', href: contextHref(m.context), ...(newTab ? { target: '_blank', rel: 'noopener' } : {}) }, `📍 ${m.context.reportName}${m.context.farm ? ` · ${m.context.farm}` : ''}`)
+      ? h('a', { class: 'chat-context', href: contextHref(m.context), ...(newTab ? { target: '_blank', rel: 'noopener' } : {}) }, `📍 ${contextText(m.context)}`)
       : null,
     h('span', { class: 'chat-meta' }, [showAuthor ? m.authorName : null, fmtWhen(m.at)].filter(Boolean).join(' · ')),
   );
@@ -90,7 +93,15 @@ export function composer({ placeholder, onSend }) {
 
 // ---------- Botão "Mensagens" do portal (usuários de cliente) ----------
 
-export function initChat({ button, badge, getContext, readOnly = false }) {
+// note/welcome: textos do painel (o padrão fala de relatórios; o Benchmarking usa os seus).
+export function initChat({
+  button,
+  badge,
+  getContext,
+  readOnly = false,
+  note = 'Um administrador responde aqui mesmo. A mensagem leva o relatório (e a fazenda) que você está vendo.',
+  welcome = 'Tem uma dúvida sobre um relatório, um número que não bate ou um pedido? Escreva aqui: a equipe Probeef responde por esta conversa.',
+}) {
   const panel = h('section', { class: 'ai-panel chat-panel', id: 'chat-panel', hidden: true, 'aria-label': 'Mensagens com a equipe' });
   const list = h('div', { class: 'ai-messages', 'aria-live': 'polite' });
   const contextLabel = h('span', { class: 'ai-scope' });
@@ -106,7 +117,7 @@ export function initChat({ button, badge, getContext, readOnly = false }) {
     h('header', { class: 'ai-head' }, h('div', {}, h('strong', {}, 'Fale com a equipe'), contextLabel), h('div', { class: 'ai-head-actions' }, h('button', { class: 'btn btn-ghost btn-sm', type: 'button', 'aria-label': 'Fechar', onclick: () => setOpen(false) }, '✕'))),
     list,
     readOnly ? h('p', { class: 'ai-note', style: 'padding-top: 10px' }, 'Você está vendo como este usuário: as mensagens são só para leitura. Responda pela aba Mensagens do admin.') : box.form,
-    readOnly ? null : h('p', { class: 'ai-note' }, 'Um administrador responde aqui mesmo. A mensagem leva o relatório (e a fazenda) que você está vendo.'),
+    readOnly ? null : h('p', { class: 'ai-note' }, note),
   );
   document.body.append(panel);
 
@@ -124,7 +135,7 @@ export function initChat({ button, badge, getContext, readOnly = false }) {
     list.replaceChildren(
       ...(messages.length
         ? messages.map((m) => renderMessage(m, { mine: m.from === 'user', showAuthor: m.from === 'admin' }))
-        : [h('div', { class: 'ai-welcome' }, h('p', {}, 'Tem uma dúvida sobre um relatório, um número que não bate ou um pedido? Escreva aqui: a equipe Probeef responde por esta conversa.'))]),
+        : [h('div', { class: 'ai-welcome' }, h('p', {}, welcome))]),
     );
     if (atBottom || !list.dataset.seen) list.scrollTop = list.scrollHeight;
     list.dataset.seen = '1';

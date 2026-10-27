@@ -154,7 +154,9 @@ do relatório via DAX (`executeDax`, API `executeQueries`) e desenha o painel em
 admin reaproveitam `renderMessage`/`composer`). Uma conversa por usuário de cliente
 (`chatThreads`, `chatMessages` no store); qualquer admin responde. Sem WebSocket: o front
 consulta a cada 10 s com a conversa aberta e a cada 60 s só o contador. Cada mensagem do usuário
-guarda o contexto (relatório aberto e, no CCV, a fazenda — validada contra as dele). Admin
+guarda o contexto (relatório aberto e, no CCV, a fazenda — validada contra as dele; ou a
+ferramenta, `{ tool: 'benchmark', clientId }`, lista `TOOL_CONTEXT` em `src/chat.js`). O botão
+também está na página do Benchmarking (`initChat` com `note`/`welcome` próprios). Admin
 "entrando como" só lê. Os Alertas CCV podem ser enviados pelo canal `portal`, que vira mensagem
 nessa conversa.
 

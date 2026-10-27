@@ -3,6 +3,7 @@
 // as mesmas que o servidor usa. Fluxo: rascunho → enviado → correção/aprovado (ver src/benchmark.js).
 import { api, h, toast } from '/js/common.js';
 import { initTicker } from '/js/ticker.js';
+import { initChat } from '/js/chat.js';
 import { renderDashboard } from './dashboard.js';
 import {
   calcLote,
@@ -1208,6 +1209,17 @@ async function init() {
   const { user } = await api('/api/auth/me');
   state.me = user;
   initTicker();
+  // Mensagens com a equipe: a mesma conversa do portal; cada mensagem leva o Benchmarking e o cliente.
+  if (user.role === 'client') {
+    initChat({
+      button: document.getElementById('chat-button'),
+      badge: document.getElementById('chat-badge'),
+      readOnly: Boolean(user.impersonatedBy),
+      getContext: () => (state.clientId ? { tool: 'benchmark', clientId: state.clientId, label: `Benchmarking · ${state.view?.client.name || ''}` } : { tool: 'benchmark', label: 'Benchmarking' }),
+      note: 'Um administrador responde aqui mesmo (é a mesma conversa do botão Mensagens do portal). A mensagem leva o benchmarking da sua empresa.',
+      welcome: 'Dúvida sobre como preencher um lote, um erro que não entende ou uma pergunta do questionário? Escreva aqui: a equipe Probeef responde por esta conversa.',
+    });
+  }
   if (user.impersonatedBy) {
     document.getElementById('impersonation-text').textContent = `Você (${user.impersonatedBy.name}) está vendo o benchmarking como ${user.name}. Nada é salvo.`;
     document.getElementById('impersonation').hidden = false;

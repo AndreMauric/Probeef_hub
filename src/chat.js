@@ -41,9 +41,18 @@ function cleanText(text) {
   return value;
 }
 
+// Ferramentas que podem ser citadas como contexto (além dos relatórios).
+const TOOL_CONTEXT = { benchmark: 'Benchmarking Confinamento' };
+
 // Onde o usuário estava ao escrever: só ids/nomes conhecidos, nunca texto livre do navegador.
 function cleanContext(context, user) {
   if (!context || typeof context !== 'object') return null;
+  if (context.tool) {
+    if (!TOOL_CONTEXT[context.tool]) return null;
+    // O cliente citado precisa ser dele (e participar do benchmarking); senão vai só a ferramenta.
+    const client = db().clients.find((c) => c.id === context.clientId && c.benchmark && (user.role === 'admin' || user.clientIds.includes(c.id)));
+    return { tool: context.tool, toolName: TOOL_CONTEXT[context.tool], ...(client ? { clientId: client.id, clientName: client.name } : {}) };
+  }
   const report = db().reports.find((r) => r.id === context.reportId);
   if (!report) return null;
   let farm = report.kind === 'ccv' && typeof context.farm === 'string' ? context.farm.slice(0, 120) : null;
