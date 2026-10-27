@@ -1527,6 +1527,35 @@
   // capturar como imagem, mostra tudo brevemente (sem gerar repaint visível,
   // já que tudo roda de forma síncrona antes do navegador pintar a tela),
   // força um resize de cada gráfico e só então tira o "print" do canvas.
+  // Foto de um gráfico: sem animação, senão o toBase64Image pega o primeiro
+  // quadro da animação (vazio) e o gráfico sai em branco no PDF. Gráfico recém-
+  // criado ainda tem a animação de entrada pendente, e o Chart.js adia o desenho
+  // para o próximo quadro: stop() cancela e draw() desenha na hora.
+  // Todos saem no mesmo tamanho (largura da página, em dobro para ficar nítido
+  // na impressão), e não no tamanho da tela — os de risco ficam lado a lado e
+  // pequenos, e esticados no PDF ficavam borrados.
+  function chartSnapshot(chart) {
+    const animation = chart.options.animation;
+    const ratio = chart.options.devicePixelRatio;
+    // O Chart.js segue a largura do contêiner: alarga-o só durante a foto.
+    const box = chart.canvas.parentNode;
+    const boxWidth = box.style.width;
+    chart.options.animation = false;
+    chart.options.devicePixelRatio = 2;
+    chart.stop();
+    box.style.width = "900px";
+    chart.resize();
+    chart.update("none");
+    chart.draw();
+    const image = chart.toBase64Image("image/png", 1);
+    box.style.width = boxWidth;
+    chart.options.devicePixelRatio = ratio;
+    chart.resize();
+    chart.update("none");
+    chart.options.animation = animation;
+    return image;
+  }
+
   function captureAllChartImages() {
     if (!HAS_CHART) return {};
     const views = [...document.querySelectorAll(".view")];
@@ -1546,10 +1575,7 @@
       state.calibChart = key;
       try {
         const chart = renderCalibChart(lastState.C, lastState.I, "chartCalib");
-        if (chart) {
-          chart.resize();
-          images["chartCalib_" + key] = chart.toBase64Image("image/png", 1);
-        }
+        if (chart) images["chartCalib_" + key] = chartSnapshot(chart);
       } catch (e) {
         /* segue para os outros gráficos mesmo se um falhar */
       }
@@ -1562,8 +1588,7 @@
       const chart = chartInstances[id];
       if (!chart) return;
       try {
-        chart.resize();
-        images[id] = chart.toBase64Image("image/png", 1);
+        images[id] = chartSnapshot(chart);
       } catch (e) {
         /* se um canvas específico falhar, os demais e o resto do relatório seguem normalmente */
       }
@@ -1711,8 +1736,10 @@
           <div class="r-stat"><div class="l">Desvio padrão</div><div class="v">R$ ${fmt(risk.sd, 2)}</div></div>
           <div class="r-stat"><div class="l">Prob. margem &lt; R$ ${fmt(I.arbp5, 0)}</div><div class="v">${fmt(risk.probLucro, 1)}%</div></div>
         </div>
-        ${chartFigure(charts, "chartHist", "Distribuição da margem líquida")}
-        ${chartFigure(charts, "chartScatter", "Margem vs. variável de risco")}
+        <div class="r-chart-pair">
+          ${chartFigure(charts, "chartHist", "Distribuição da margem líquida")}
+          ${chartFigure(charts, "chartScatter", "Margem vs. variável de risco")}
+        </div>
       </section>
 
       <section>
