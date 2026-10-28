@@ -101,6 +101,11 @@ cliente veem o card. Página `/benchmark` (`public/benchmark/`), API `/api/bench
 - Importar a planilha atual é feito no navegador com SheetJS (`/vendor/xlsx.full.min.js`,
   pacote oficial de cdn.sheetjs.com — a versão do npm é antiga): lê BD_Zootec_Feed,
   BD_Econom_Feed, BD_Zootec_Feed_ Recria_Conf e Q1.
+- **Baixar modelo** (`public/benchmark/modelo.js`): Excel gerado no navegador com exceljs (abas
+  Lotes engorda, Lotes recria e Questionário, com listas suspensas numa aba oculta "Listas"). A
+  importação reconhece o modelo pelos nomes das abas e lê as colunas **pelo título**
+  (`fieldLabel`), e o questionário pela coluna "Código". Campo novo em `fields.js` entra no
+  modelo automaticamente.
 - **TGC** (clientes que não usam Feed Manager): o TGC exporta **um animal por linha** (abas
   BD_TGC_Conf / BD_TGC_Conf_Recria). `lotesFromTgc` em `fields.js` faz o que a tabela dinâmica da
   planilha fazia: agrupa por LOTE_SAIDA, conta os animais e tira a média de cada coluna (custos

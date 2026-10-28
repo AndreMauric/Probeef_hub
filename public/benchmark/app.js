@@ -5,6 +5,7 @@ import { api, h, toast } from '/js/common.js';
 import { initTicker } from '/js/ticker.js';
 import { initChat } from '/js/chat.js';
 import { renderDashboard } from './dashboard.js';
+import { baixarModelo, lerModelo } from './modelo.js';
 import {
   calcLote,
   cleanAnswer,
@@ -360,6 +361,7 @@ function lotesPanel(kind) {
       editable ? h('button', { class: 'btn btn-sm btn-primary', type: 'button', onclick: () => addLote(kind) }, '+ Novo lote') : null,
       editable ? h('button', { class: 'btn btn-sm', type: 'button', onclick: () => pasteDialog(kind) }, 'Colar do Excel') : null,
       editable ? h('button', { class: 'btn btn-sm', type: 'button', onclick: importDialog }, 'Importar planilha') : null,
+      editable ? h('button', { class: 'btn btn-sm', type: 'button', title: 'Excel para preencher os lotes e o questionário fora do portal e depois importar', onclick: downloadModelo }, 'Baixar modelo') : null,
       editable && lotes.length ? h('button', { class: 'btn btn-sm', type: 'button', onclick: () => standardizeDialog(kind) }, 'Padronizar listas') : null,
       editable && lotes.length
         ? h(
@@ -394,7 +396,7 @@ function lotesPanel(kind) {
           { class: 'bmk-blank' },
           h('h3', {}, recria ? 'Nenhum lote de recria confinada' : 'Nenhum lote de engorda ainda'),
           h('p', { class: 'muted' }, recria ? 'Se a fazenda faz recria confinada, inclua os lotes aqui (mesmas colunas da aba "BD_Zootec_Feed_ Recria_Conf" da planilha).' : 'Inclua os lotes encerrados no ano: digite, cole do Excel (mesma ordem de colunas da planilha de benchmarking) ou importe a planilha inteira.'),
-          editable ? h('div', { class: 'bmk-blank-actions' }, h('button', { class: 'btn btn-primary', type: 'button', onclick: () => addLote(kind) }, '+ Novo lote'), h('button', { class: 'btn', type: 'button', onclick: () => pasteDialog(kind) }, 'Colar do Excel'), h('button', { class: 'btn', type: 'button', onclick: importDialog }, 'Importar planilha')) : null,
+          editable ? h('div', { class: 'bmk-blank-actions' }, h('button', { class: 'btn btn-primary', type: 'button', onclick: () => addLote(kind) }, '+ Novo lote'), h('button', { class: 'btn', type: 'button', onclick: () => pasteDialog(kind) }, 'Colar do Excel'), h('button', { class: 'btn', type: 'button', onclick: importDialog }, 'Importar planilha'), h('button', { class: 'btn', type: 'button', onclick: downloadModelo }, 'Baixar modelo')) : null,
         ),
     lotes.length ? h('p', { class: 'muted bmk-legend' }, '* obrigatório · ✕ erro (impede o envio) · ⚠ alerta (confira: o valor informado não bate com o recalculado ou está fora da faixa esperada) · colunas cinza são calculadas. Passe o mouse ou clique no ícone para ver o motivo.') : null,
   );
@@ -639,6 +641,17 @@ function pasteDialog(kind) {
   area.focus();
 }
 
+// ---------- Modelo em Excel para preencher e importar ----------
+
+async function downloadModelo() {
+  try {
+    toast('Montando o modelo…');
+    await baixarModelo(settings(), state.clients.find((c) => c.id === state.clientId)?.name);
+  } catch (err) {
+    toast(err.message, 'error');
+  }
+}
+
 // ---------- Importar a planilha atual (.xlsb/.xlsx) ----------
 
 let xlsxLoading = null;
@@ -702,6 +715,12 @@ function answerFromCell(q, v) {
 async function readWorkbook(file) {
   const XLSX = await loadXlsx();
   const wb = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+  // Modelo baixado do portal (botão "Baixar modelo").
+  const modelo = lerModelo(XLSX, wb, { excelDate, answerFromCell });
+  if (modelo) {
+    const vazio = { lotes: [], faltando: [] };
+    return { ...modelo, modelo: true, tgc: { engorda: vazio, recria: vazio }, tgcRaw: null, sheets: wb.SheetNames };
+  }
   const engZoo = sheetRows(XLSX, wb.Sheets.BD_Zootec_Feed, COLUNAS_ZOO);
   const engEco = sheetRows(XLSX, wb.Sheets.BD_Econom_Feed, COLUNAS_ECO);
   const recria = sheetRows(XLSX, wb.Sheets['BD_Zootec_Feed_ Recria_Conf'], COLUNAS_ZOO);
@@ -748,7 +767,7 @@ function importDialog() {
     { class: 'bmk-import-modes', hidden: true },
     h('label', { class: 'check' }, h('input', { type: 'radio', name: 'mode', value: 'merge', checked: true }), h('span', {}, h('strong', {}, 'Juntar'), ' — atualiza os lotes com o mesmo número e inclui os novos')),
     h('label', { class: 'check' }, h('input', { type: 'radio', name: 'mode', value: 'replace' }), h('span', {}, h('strong', {}, 'Substituir'), ' — apaga os lotes atuais e fica só com os da planilha')),
-    h('label', { class: 'check' }, h('input', { type: 'checkbox', name: 'respostas', checked: true }), h('span', {}, 'Trazer também as respostas do questionário (aba Q1)')),
+    h('label', { class: 'check' }, h('input', { type: 'checkbox', name: 'respostas', checked: true }), h('span', {}, 'Trazer também as respostas do questionário')),
   );
   const submitBtn = h('button', { class: 'btn btn-primary', type: 'submit', disabled: true }, 'Importar');
   // Exportação pura do TGC: a pessoa diz se os animais são da engorda ou da recria.
@@ -784,9 +803,9 @@ function importDialog() {
           : h(
               'ul',
               { class: 'bmk-import-list' },
-              h('li', {}, h('strong', {}, parsed.engorda.length), ' lotes de engorda', t.engorda.lotes.length ? ` (${parsed.engorda.length - t.engorda.lotes.length} do Feed Manager + ${t.engorda.lotes.length} do TGC: ${tgcResumo(t.engorda)})` : ' (BD_Zootec_Feed + BD_Econom_Feed)', faltando(t.engorda)),
+              h('li', {}, h('strong', {}, parsed.engorda.length), ' lotes de engorda', t.engorda.lotes.length ? ` (${parsed.engorda.length - t.engorda.lotes.length} do Feed Manager + ${t.engorda.lotes.length} do TGC: ${tgcResumo(t.engorda)})` : parsed.modelo ? ' (modelo do portal)' : ' (BD_Zootec_Feed + BD_Econom_Feed)', faltando(t.engorda)),
               h('li', {}, h('strong', {}, parsed.recria.length), ' lotes de recria confinada', t.recria.lotes.length ? ` (${t.recria.lotes.length} do TGC: ${tgcResumo(t.recria)})` : '', faltando(t.recria)),
-              h('li', {}, h('strong', {}, nResp), ' respostas do questionário (aba Q1)'),
+              h('li', {}, h('strong', {}, nResp), parsed.modelo ? ' respostas do questionário' : ' respostas do questionário (aba Q1)'),
             ),
         !parsed.tgcRaw && !parsed.engorda.length && !parsed.recria.length && !nResp ? h('p', { class: 'alert' }, `Não encontrei as abas do modelo de benchmarking nem um relatório do TGC (coluna LOTE_SAIDA) neste arquivo (abas: ${parsed.sheets.join(', ')}).`) : null,
       );
@@ -839,7 +858,8 @@ function importDialog() {
         },
       },
       h('h2', {}, 'Importar a planilha de benchmarking'),
-      h('p', { class: 'muted' }, 'Escolha a planilha de benchmarking ("Benchmarking Confinamento Probeef …", .xlsb ou .xlsx), com os dados do Feed Manager e/ou do TGC nas abas próprias, ou direto o relatório por animal exportado do TGC (.xlsx, .xls ou .csv). O arquivo é lido aqui no seu navegador; só os dados vão para o portal.'),
+      h('p', { class: 'muted' }, 'Escolha o modelo baixado do portal depois de preenchido, a planilha de benchmarking ("Benchmarking Confinamento Probeef …", .xlsb ou .xlsx), com os dados do Feed Manager e/ou do TGC nas abas próprias, ou direto o relatório por animal exportado do TGC (.xlsx, .xls ou .csv). O arquivo é lido aqui no seu navegador; só os dados vão para o portal.'),
+      h('p', { class: 'muted' }, 'Ainda não tem o modelo? ', h('button', { class: 'btn btn-sm', type: 'button', onclick: downloadModelo }, 'Baixar modelo em Excel')),
       fileInput,
       result,
       modes,
