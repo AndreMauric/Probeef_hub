@@ -1110,3 +1110,13 @@
   text-align: left;
   white-space: normal;
 }
+
+/* Aba Clientes (quem valida) */
+.bmk-sub {
+  display: block;
+  margin-top: 2px;
+}
+
+.bmk-overview td {
+  vertical-align: top;
+}

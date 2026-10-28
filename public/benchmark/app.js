@@ -64,7 +64,9 @@ const nf = (v, d = 2) => (v === null || v === undefined || !Number.isFinite(v) ?
 const fmtDateTime = (iso) => (iso ? new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '—');
 const settings = () => state.view.settings;
 const status = () => state.view.submission.status;
-const canEdit = () => !state.me.impersonatedBy && (state.isAdmin || editableStatus(status()));
+// access vem do servidor: edit (admin sempre; o cliente em rascunho/correção), own (é do cliente), review (valida).
+const access = () => state.view?.access || {};
+const canEdit = () => !state.me.impersonatedBy && Boolean(access().edit);
 
 // ---------- Salvamento automático ----------
 
@@ -142,10 +144,10 @@ function renderStatus() {
   if (canEdit() && hasData) {
     actions.push(h('button', { class: 'btn btn-ghost btn-danger', type: 'button', disabled: state.conflict, onclick: clearDialog }, 'Apagar tudo'));
   }
-  if (!state.me.impersonatedBy && editableStatus(sub.status)) {
+  if (!state.me.impersonatedBy && access().own && editableStatus(sub.status)) {
     actions.push(h('button', { class: 'btn btn-primary', type: 'button', disabled: !ready || state.conflict, title: ready ? 'Enviar para a Cargill validar' : 'Corrija os erros e responda as perguntas obrigatórias antes de enviar', onclick: submitDialog }, 'Enviar para validação'));
   }
-  if (state.isAdmin) {
+  if (access().review && !state.me.impersonatedBy) {
     if (sub.status === 'enviado') {
       actions.push(h('button', { class: 'btn', type: 'button', onclick: () => reviewDialog('devolver') }, 'Devolver para correção'));
       actions.push(h('button', { class: 'btn btn-primary', type: 'button', onclick: () => reviewDialog('aprovar') }, 'Aprovar'));
@@ -171,9 +173,10 @@ function renderStatus() {
       sum.q.faltando.length ? chip('warn', `Questionário: faltam ${sum.q.faltando.length} obrigatórias`) : chip('ok', `Questionário: ${sum.q.respondidas} de ${sum.q.visiveis} respondidas`),
     ),
     sub.status === 'correcao' && lastMsg ? h('div', { class: 'bmk-callout crit' }, h('strong', {}, `Devolvido para correção por ${lastMsg.byName || 'Cargill'} em ${fmtDateTime(lastMsg.at)}:`), h('p', {}, lastMsg.text)) : null,
-    sub.status === 'enviado' && !state.isAdmin ? h('div', { class: 'bmk-callout warn' }, 'Enviado para a Cargill validar. Enquanto isso a edição fica travada; se precisar mudar algo, fale com o seu coordenador pelo botão Mensagens do portal.') : null,
+    sub.status === 'enviado' && !access().review ? h('div', { class: 'bmk-callout warn' }, 'Enviado para a Cargill validar. Enquanto isso a edição fica travada; se precisar mudar algo, fale com o seu coordenador pelo botão Mensagens do portal.') : null,
     sub.status === 'aprovado' ? h('div', { class: 'bmk-callout ok' }, `Aprovado em ${fmtDateTime(sub.decidedAt)}${sub.decidedByName ? ` por ${sub.decidedByName}` : ''}.`) : null,
     state.me.impersonatedBy ? h('div', { class: 'bmk-callout warn' }, 'Você está vendo como o cliente: nada do que mudar aqui é salvo.') : null,
+    access().review && !access().own ? h('div', { class: 'bmk-callout' }, 'Você valida este benchmarking: pode conferir tudo e aprovar ou devolver, mas os dados são preenchidos pelo cliente.') : null,
   );
 }
 
@@ -1404,6 +1407,87 @@ function reviewDialog(action) {
   text.focus();
 }
 
+// ---------- Clientes (para quem valida) ----------
+
+let overviewSeq = 0;
+async function renderOverview() {
+  const panel = document.querySelector('[data-panel="clientes"]');
+  const seq = ++overviewSeq;
+  if (!panel.childElementCount) fill(panel, h('p', { class: 'muted' }, 'Carregando…'));
+  let data;
+  try {
+    data = await api('/api/benchmark/overview');
+  } catch (err) {
+    fill(panel, h('p', { class: 'alert' }, err.message));
+    return;
+  }
+  if (seq !== overviewSeq) return;
+  const filtro = state.overviewFilter || 'todos';
+  const count = (st) => data.clients.filter((c) => c.status === st).length;
+  // Primeiro o que espera validação; dentro de cada situação, por nome.
+  const order = { enviado: 0, correcao: 1, rascunho: 2, nao_iniciado: 3, aprovado: 4 };
+  const list = data.clients
+    .filter((c) => filtro === 'todos' || c.status === filtro)
+    .sort((a, b) => (order[a.status] ?? 9) - (order[b.status] ?? 9) || a.client.localeCompare(b.client, 'pt-BR'));
+  const open = async (id) => {
+    document.getElementById('client-select').value = id;
+    await loadClient(id).catch((err) => toast(err.message, 'error'));
+    selectTab('engorda');
+  };
+  const FILTROS = [
+    ['todos', `Todos (${data.clients.length})`],
+    ['enviado', `Para validar (${count('enviado')})`],
+    ['correcao', `Em correção (${count('correcao')})`],
+    ['aprovado', `Aprovados (${count('aprovado')})`],
+    ['rascunho', `Em preenchimento (${count('rascunho')})`],
+    ['nao_iniciado', `Não iniciados (${count('nao_iniciado')})`],
+  ];
+  const pill = (st) => {
+    const s = STATUS[st];
+    return h('span', { class: `bmk-pill ${s?.cls || 'neutral'}` }, s?.label || 'Não iniciado');
+  };
+  fill(
+    panel,
+    h(
+      'div',
+      { class: 'bmk-toolbar' },
+      h(
+        'div',
+        { class: 'bmk-seg', role: 'radiogroup', 'aria-label': 'Situação' },
+        FILTROS.map(([k, label]) => h('button', { type: 'button', role: 'radio', 'aria-checked': String(filtro === k), class: filtro === k ? 'on' : '', onclick: () => ((state.overviewFilter = k), renderOverview()) }, label)),
+      ),
+    ),
+    h(
+      'div',
+      { class: 'bmk-grid-wrap' },
+      h(
+        'table',
+        { class: 'bmk-grid bmk-overview' },
+        h('thead', {}, h('tr', {}, ['Cliente', 'Situação', 'Lotes', 'Erros / alertas', 'Questionário', 'Última alteração', ''].map((t) => h('th', {}, t)))),
+        h(
+          'tbody',
+          {},
+          list.length
+            ? list.map((c) =>
+                h(
+                  'tr',
+                  {},
+                  h('td', {}, h('strong', {}, c.client)),
+                  h('td', {}, pill(c.status), c.submittedAt ? h('small', { class: 'muted bmk-sub' }, `enviado ${fmtDateTime(c.submittedAt)}`) : null),
+                  h('td', {}, `${c.lotesEngorda} eng. · ${c.lotesRecria} rec.`),
+                  h('td', {}, c.erros ? h('span', { class: 'bmk-chip crit' }, `✕ ${c.erros}`) : h('span', { class: 'muted' }, '0 erros'), ' ', c.alertas ? h('span', { class: 'bmk-chip warn' }, `⚠ ${c.alertas}`) : null),
+                  h('td', {}, `${c.questionario.respondidas}/${c.questionario.visiveis}`, c.questionario.faltando ? h('small', { class: 'muted bmk-sub' }, `faltam ${c.questionario.faltando} obrigatórias`) : null),
+                  h('td', {}, c.updatedAt ? fmtDateTime(c.updatedAt) : '—', c.updatedBy ? h('small', { class: 'muted bmk-sub' }, c.updatedBy) : null),
+                  h('td', {}, h('button', { class: `btn btn-sm${c.status === 'enviado' ? ' btn-primary' : ''}`, type: 'button', onclick: () => open(c.clientId) }, c.status === 'enviado' ? 'Validar' : 'Abrir')),
+                ),
+              )
+            : h('tr', {}, h('td', { colspan: 7, class: 'muted bmk-empty' }, 'Nenhum cliente nesta situação.')),
+        ),
+      ),
+    ),
+  );
+}
+
 // ---------- Abas e carregamento ----------
 
 function renderAll() {
@@ -1412,10 +1496,13 @@ function renderAll() {
   if (state.tab === 'questionario') renderQuestions();
   if (state.tab === 'resultado') renderResult();
   if (state.tab === 'historico') renderHistory();
+  if (state.tab === 'clientes') renderOverview();
 }
 
 function selectTab(name) {
   state.tab = name;
+  // Na visão geral o quadro do cliente aberto não faz sentido.
+  document.getElementById('status').hidden = name === 'clientes';
   document.querySelectorAll('[data-tab]').forEach((t) => t.setAttribute('aria-selected', String(t.dataset.tab === name)));
   document.querySelectorAll('[data-panel]').forEach((p) => (p.hidden = p.dataset.panel !== name));
   history.replaceState(null, '', `#${name}`);
@@ -1428,7 +1515,7 @@ function applyView(view) {
   state.data = { engorda: structuredClone(view.submission.engorda), recria: structuredClone(view.submission.recria), respostas: structuredClone(view.submission.respostas) };
   // Primeira vez: já preenche nome, e-mail e empresa a partir do portal.
   const r = state.data.respostas;
-  if (!view.submission.updatedAt && canEdit() && !state.isAdmin) {
+  if (!view.submission.updatedAt && canEdit() && view.access.own && !state.isAdmin) {
     r.q1 ??= view.client.name;
     r.q5 ??= state.me.name;
     r.q6 ??= state.me.email;
@@ -1482,7 +1569,9 @@ async function init() {
     document.getElementById('impersonation').hidden = false;
   }
   const info = await api('/api/benchmark/clients');
-  Object.assign(state, { clients: info.clients, isAdmin: info.isAdmin, ano: info.ano, prazo: info.prazo });
+  Object.assign(state, { clients: info.clients, isAdmin: info.isAdmin, isValidator: info.isValidator, ano: info.ano, prazo: info.prazo });
+  // Quem valida tem a aba Clientes: o andamento de todos e o atalho para validar cada um.
+  document.querySelector('[data-tab="clientes"]').hidden = !info.isValidator;
   document.getElementById('bmk-title').textContent = `Benchmarking Confinamento ${info.ano}`;
   document.title = `Benchmarking ${info.ano}`;
   if (!info.clients.length) {
@@ -1504,7 +1593,8 @@ async function init() {
   select.value = first;
   select.onchange = () => loadClient(select.value).catch((err) => toast(err.message, 'error'));
   document.querySelectorAll('[data-tab]').forEach((t) => (t.onclick = () => selectTab(t.dataset.tab)));
-  state.tab = ['engorda', 'recria', 'questionario', 'resultado', 'historico'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'engorda';
+  const tabs = ['engorda', 'recria', 'questionario', 'resultado', 'historico', ...(info.isValidator ? ['clientes'] : [])];
+  state.tab = tabs.includes(location.hash.slice(1)) ? location.hash.slice(1) : info.isValidator && !params.get('cliente') ? 'clientes' : 'engorda';
   await loadClient(first);
   selectTab(state.tab);
   api('/api/benchmark/open', { method: 'POST', body: {} })

@@ -4,7 +4,9 @@
 // editáveis pelo admin: db().bmkSettings (o padrão é o da aba Configurações da planilha).
 //
 // Fluxo: rascunho → enviado → (correcao ↔ enviado) → aprovado. O cliente edita em rascunho e
-// correcao; o admin pode editar sempre e reabrir um aprovado.
+// correcao; o admin pode editar sempre e reabrir um aprovado. Validadores (user.bmkValidator,
+// marcado no cadastro do usuário) veem todos os participantes e aprovam/devolvem como o admin,
+// mas só mexem nos dados dos clientes deles.
 import { adminSend, userSend } from './chat.js';
 import { cleanAnswer, cleanLote, editableStatus, mergeSettings, QUESTIONS, validateLotes, validateQuestionario } from '../public/benchmark/fields.js';
 import { db, newId, save } from './store.js';
@@ -20,14 +22,22 @@ class BenchmarkError extends Error {
 
 export const settings = () => mergeSettings(db().bmkSettings || {});
 
-// Clientes do benchmarking que o usuário pode abrir (admin: todos os participantes).
+export const isValidator = (user) => user.role === 'admin' || Boolean(user.bmkValidator);
+const ownsClient = (user, clientId) => user.role === 'admin' || Boolean(user.clientIds?.includes(clientId));
+
+// Clientes do benchmarking que o usuário pode abrir (admin e validadores: todos os participantes).
 export function participantClients(user) {
   const list = db().clients.filter((c) => c.benchmark && c.active !== false);
-  if (user.role === 'admin') return list;
+  if (isValidator(user)) return list;
   return list.filter((c) => user.clientIds?.includes(c.id));
 }
 
-export const canUseBenchmark = (user) => user.role === 'admin' || participantClients(user).length > 0;
+export const canUseBenchmark = (user) => isValidator(user) || participantClients(user).length > 0;
+
+// Validador de outro cliente só olha: preencher, apagar e enviar são de quem é do cliente.
+function requireOwner(user, clientId) {
+  if (!ownsClient(user, clientId)) throw new BenchmarkError('Você valida este benchmarking, mas os dados são preenchidos pelo cliente.', 403);
+}
 
 function clientOr404(user, clientId) {
   const client = participantClients(user).find((c) => c.id === clientId);
@@ -65,8 +75,11 @@ export function summary(sub) {
   };
 }
 
-function view(client, sub) {
+function view(user, client, sub) {
+  const status = sub?.status || 'rascunho';
   return {
+    // O que este usuário pode fazer aqui (a tela esconde os botões; as rotas conferem de novo).
+    access: { own: ownsClient(user, client.id), edit: user.role === 'admin' || (ownsClient(user, client.id) && editableStatus(status)), review: isValidator(user) },
     client: { id: client.id, name: client.name },
     submission: sub
       ? {
@@ -83,7 +96,7 @@ function view(client, sub) {
 
 export function getForUser(user, clientId) {
   const client = clientOr404(user, clientId);
-  return view(client, submissionOf(clientId));
+  return view(user, client, submissionOf(clientId));
 }
 
 function cleanRespostas(raw = {}) {
@@ -106,6 +119,7 @@ function cleanLotes(list, label) {
 // Salva o rascunho. version evita que duas pessoas sobrescrevam o trabalho uma da outra.
 export async function saveDraft(user, clientId, body = {}) {
   const client = clientOr404(user, clientId);
+  requireOwner(user, clientId);
   const sub = submissionOf(clientId, { create: true });
   if (user.role !== 'admin' && !editableStatus(sub.status)) throw new BenchmarkError('Este benchmarking já foi enviado e está travado para edição.', 409);
   if (Number(body.version) !== sub.version) throw new BenchmarkError('Outra pessoa salvou alterações neste benchmarking. Recarregue a página para ver a versão mais nova.', 409);
@@ -118,7 +132,7 @@ export async function saveDraft(user, clientId, body = {}) {
   sub.updatedAt = new Date().toISOString();
   sub.updatedBy = user.id;
   await save();
-  return view(client, sub);
+  return view(user, client, sub);
 }
 
 // Apaga de uma vez o que foi preenchido (lotes de engorda, de recria e/ou o questionário).
@@ -126,6 +140,7 @@ export async function saveDraft(user, clientId, body = {}) {
 const CLEAR_PARTS = { engorda: 'lotes de engorda', recria: 'lotes de recria', respostas: 'questionário' };
 export async function clearDraft(user, clientId, { version, parts } = {}) {
   const client = clientOr404(user, clientId);
+  requireOwner(user, clientId);
   const sub = submissionOf(clientId, { create: true });
   if (user.role !== 'admin' && !editableStatus(sub.status)) throw new BenchmarkError('Este benchmarking já foi enviado e está travado para edição.', 409);
   if (Number(version) !== sub.version) throw new BenchmarkError('Outra pessoa salvou alterações neste benchmarking. Recarregue a página para ver a versão mais nova.', 409);
@@ -138,7 +153,7 @@ export async function clearDraft(user, clientId, { version, parts } = {}) {
   sub.updatedAt = new Date().toISOString();
   sub.updatedBy = user.id;
   await save();
-  return view(client, sub);
+  return view(user, client, sub);
 }
 
 function log(sub, user, action, text = '') {
@@ -148,6 +163,7 @@ function log(sub, user, action, text = '') {
 // Cliente envia para a Cargill validar: sem erros e com o questionário obrigatório respondido.
 export async function submit(user, clientId, { text, impersonating = false } = {}) {
   const client = clientOr404(user, clientId);
+  requireOwner(user, clientId);
   const sub = submissionOf(clientId);
   if (!sub) throw new BenchmarkError('Preencha os dados antes de enviar.');
   if (!editableStatus(sub.status)) throw new BenchmarkError('Este benchmarking já foi enviado.', 409);
@@ -165,11 +181,12 @@ export async function submit(user, clientId, { text, impersonating = false } = {
   if (user.role === 'client' && !impersonating) {
     await userSend(user, { text: `Enviei o Benchmarking Confinamento ${sub.ano} de ${client.name} para validação.${text ? `\n\n${text}` : ''}` }).catch(() => {});
   }
-  return view(client, sub);
+  return view(user, client, sub);
 }
 
 // Decisão da Cargill: devolver para correção (com o motivo), aprovar ou reabrir.
 export async function review(admin, clientId, { action, text }) {
+  if (!isValidator(admin)) throw new BenchmarkError('Só quem valida o benchmarking pode aprovar ou devolver.', 403);
   const client = clientOr404(admin, clientId);
   const sub = submissionOf(clientId);
   if (!sub) throw new BenchmarkError('Este cliente ainda não começou o benchmarking.');
@@ -189,14 +206,14 @@ export async function review(admin, clientId, { action, text }) {
   const people = db().users.filter((u) => u.role === 'client' && u.active && u.clientIds?.includes(clientId));
   for (const u of people) await adminSend(admin, u.id, { text: aviso, origin: { type: 'benchmark', action } }, { persist: false });
   await save();
-  return view(client, sub);
+  return view(admin, client, sub);
 }
 
-// Lista do admin: todos os clientes participantes e o andamento de cada um.
-export function adminList() {
+// Lista do admin (e dos validadores, só os ativos): os clientes participantes e o andamento.
+export function adminList({ onlyActive = false } = {}) {
   const ano = settings().ano;
   return db()
-    .clients.filter((c) => c.benchmark)
+    .clients.filter((c) => c.benchmark && (!onlyActive || c.active !== false))
     .map((c) => {
       const sub = db().bmkSubmissions.find((s) => s.clientId === c.id && s.ano === ano) || null;
       return {

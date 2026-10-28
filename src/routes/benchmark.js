@@ -1,9 +1,9 @@
-// API do Benchmarking Confinamento (ver src/benchmark.js). O admin usa as mesmas rotas para
-// revisar a coleta de qualquer cliente participante; as rotas só de admin ficam em admin.js.
+// API do Benchmarking Confinamento (ver src/benchmark.js). O admin e os validadores usam as mesmas
+// rotas para revisar a coleta de qualquer cliente participante; as rotas só de admin ficam em admin.js.
 import { Router } from 'express';
 import { recordToolAccess, startToolView } from '../accessLog.js';
 import { requireAuth } from '../auth.js';
-import { clearDraft, getForUser, participantClients, review, saveDraft, settings, submit } from '../benchmark.js';
+import { adminList, clearDraft, getForUser, isValidator, participantClients, review, saveDraft, settings, submit } from '../benchmark.js';
 
 export const benchmarkRouter = Router();
 
@@ -14,15 +14,22 @@ const route = (fn) => (req, res, next) => Promise.resolve(fn(req, res)).catch(ne
 // Clientes que a pessoa pode abrir, com o ano e o prazo da coleta.
 benchmarkRouter.get('/clients', (req, res) => {
   const s = settings();
-  res.json({ ano: s.ano, prazo: s.prazo, isAdmin: req.user.role === 'admin', clients: participantClients(req.user).map((c) => ({ id: c.id, name: c.name })) });
+  res.json({ ano: s.ano, prazo: s.prazo, isAdmin: req.user.role === 'admin', isValidator: isValidator(req.user), clients: participantClients(req.user).map((c) => ({ id: c.id, name: c.name })) });
 });
 
 // Abertura da ferramenta: conta no uso do portal (aba Uso → Ferramentas), como o 4M e a 3P.
 benchmarkRouter.post('/open', (req, res) => {
   if (req.user.role === 'admin' || req.impersonator) return res.json({ viewId: null });
-  const clientId = participantClients(req.user)[0]?.id || null;
+  // Validador vê todos os clientes: o uso conta no cliente dele (se tiver).
+  const clientId = participantClients(req.user).find((c) => req.user.clientIds?.includes(c.id))?.id || null;
   recordToolAccess({ userId: req.user.id, clientId, toolId: 'benchmark' });
   res.json({ viewId: startToolView({ userId: req.user.id, clientId, toolId: 'benchmark' }) });
+});
+
+// Andamento de todos os clientes, para quem valida (a mesma lista da aba Benchmarking do admin).
+benchmarkRouter.get('/overview', (req, res) => {
+  if (!isValidator(req.user)) return res.status(403).json({ error: 'Só quem valida o benchmarking vê todos os clientes.' });
+  res.json({ ano: settings().ano, prazo: settings().prazo, clients: adminList({ onlyActive: req.user.role !== 'admin' }) });
 });
 
 benchmarkRouter.get('/:clientId', (req, res) => res.json(getForUser(req.user, req.params.clientId)));
@@ -44,6 +51,6 @@ benchmarkRouter.post('/:clientId/submit', route(async (req, res) => {
 }));
 
 benchmarkRouter.post('/:clientId/review', route(async (req, res) => {
-  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Só a equipe Cargill valida o benchmarking.' });
+  if (req.impersonator) return res.status(403).json({ error: 'Você está vendo como o cliente: não é possível validar em nome dele.' });
   res.json(await review(req.user, req.params.clientId, req.body || {}));
 }));

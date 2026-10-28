@@ -171,11 +171,13 @@ function renderUsers() {
   const access = (u) => {
     if (u.role === 'admin') return h('span', { class: 'pill pill-accent' }, 'Administrador');
     const names = clientNames(u);
-    if (!names.length) return h('span', { class: 'pill', title: 'Sem cliente: usa só as ferramentas liberadas' }, 'Só ferramentas');
+    const validator = u.bmkValidator ? h('span', { class: 'pill pill-accent', style: 'margin-left: 6px', title: 'Aprova ou devolve o Benchmarking de todos os clientes' }, 'Valida BMK') : null;
+    if (!names.length) return [h('span', { class: 'pill', title: 'Sem cliente: usa só as ferramentas liberadas' }, 'Só ferramentas'), validator];
     const shown = names.slice(0, 2).join(', ');
     return [
       h('span', { title: names.join(', ') }, names.length > 2 ? `${shown} +${names.length - 2}` : shown),
       u.isManager ? h('span', { class: 'pill pill-accent', style: 'margin-left: 6px' }, 'Gestor') : null,
+      validator,
     ];
   };
   table(
@@ -3336,6 +3338,13 @@ function userDialog(user) {
     manager,
     h('span', {}, h('strong', {}, 'Gestor da empresa'), h('br'), h('span', { class: 'muted' }, 'Pode cadastrar, editar e bloquear as pessoas das fazendas dele no portal (Conta → Minha equipe).')),
   );
+  const validator = h('input', { type: 'checkbox', checked: Boolean(user?.bmkValidator) });
+  const validatorField = h(
+    'label',
+    { class: 'check' },
+    validator,
+    h('span', {}, h('strong', {}, 'Valida o Benchmarking'), h('br'), h('span', { class: 'muted' }, 'Vê o andamento de todos os clientes do Benchmarking e aprova ou devolve para correção, como o admin. Não altera os dados de outros clientes.')),
+  );
   const whatsappField = h(
     'div',
     { class: 'grid-2' },
@@ -3346,6 +3355,7 @@ function userDialog(user) {
     clientField.hidden = role.value === 'admin';
     whatsappField.hidden = role.value === 'admin';
     managerField.hidden = role.value === 'admin';
+    validatorField.hidden = role.value === 'admin';
     toolField.hidden = role.value === 'admin';
     syncFarms();
   };
@@ -3366,6 +3376,7 @@ function userDialog(user) {
       farms.el,
       toolField,
       managerField,
+      validatorField,
       whatsappField,
       user ? null : h('p', { class: 'muted', style: 'margin: 0; font-size: 13px' }, 'Uma senha temporária será gerada e mostrada a seguir.'),
       h('label', { class: 'check' }, active, h('span', {}, 'Usuário ativo')),
@@ -3382,6 +3393,7 @@ function userDialog(user) {
           phone: form.elements['phone'].value,
           whatsappNotify: notify.checked,
           isManager: manager.checked,
+          bmkValidator: validator.checked,
           active: active.checked,
         };
         const applyTools = async (saved) => {

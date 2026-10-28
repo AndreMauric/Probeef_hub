@@ -224,7 +224,7 @@ function benchmarkCard() {
       'a',
       { class: 'card', href: '/benchmark' },
       h('span', { class: 'card-media placeholder', 'aria-hidden': 'true' }),
-      h('span', { class: 'card-body' }, h('strong', {}, `Benchmarking Confinamento ${benchmarkInfo.ano}`), h('span', {}, me.role === 'admin' ? `Acompanhe e valide a coleta de ${benchmarkInfo.clients.length} cliente(s).` : 'Envie os dados dos lotes e o questionário do benchmarking, com validação na hora.')),
+      h('span', { class: 'card-body' }, h('strong', {}, `Benchmarking Confinamento ${benchmarkInfo.ano}`), h('span', {}, benchmarkInfo.isValidator ? `Acompanhe e valide a coleta de ${benchmarkInfo.clients.length} cliente(s).` : 'Envie os dados dos lotes e o questionário do benchmarking, com validação na hora.')),
     ),
   );
 }

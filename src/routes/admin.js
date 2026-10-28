@@ -886,6 +886,8 @@ function readUser(body, existing) {
     isManager: body.role !== 'admin' && Boolean(body.isManager),
     // Painel CCV: só estas fazendas (dentre as dos clientes dele); vazio = todas as dos clientes.
     ccvFarms: body.role === 'admin' || !Array.isArray(body.ccvFarms) ? [] : farmList(body.ccvFarms),
+    // Valida o Benchmarking: vê o andamento de todos os clientes e aprova/devolve (admin sempre pode).
+    bmkValidator: body.role !== 'admin' && Boolean(body.bmkValidator),
     active: body.active !== false,
   };
   if (user.phone && (user.phone.length < 12 || user.phone.length > 15)) fail('Telefone inválido. Use DDD + número, ex.: (61) 99999-8888.');
