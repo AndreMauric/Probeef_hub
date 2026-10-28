@@ -27,6 +27,7 @@ import {
   STATUS,
   TGC_LOTE,
   tgcHeader,
+  toIsoDate,
   validateLotes,
   validateQuestionario,
   ZOO_FIELDS,
@@ -701,15 +702,6 @@ const Q1_ROWS = [
   'q87', 'q88', 'q89', 'q90',
 ];
 
-function excelDate(v, XLSX) {
-  if (typeof v === 'number') {
-    const d = XLSX.SSF.parse_date_code(v);
-    return d ? `${d.y}-${String(d.m).padStart(2, '0')}-${String(d.d).padStart(2, '0')}` : null;
-  }
-  const m = String(v).match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-  return m ? `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` : String(v);
-}
-
 function sheetRows(XLSX, ws, columns, firstRow = 4) {
   if (!ws) return [];
   const rows = XLSX.utils.sheet_to_json(ws, { header: 'A', range: firstRow - 1, raw: true, defval: null });
@@ -719,7 +711,7 @@ function sheetRows(XLSX, ws, columns, firstRow = 4) {
       for (const f of columns) {
         const v = r[f.col];
         if (v === null || v === undefined || v === '') continue;
-        raw[f.key] = f.type === 'date' ? excelDate(v, XLSX) : v;
+        raw[f.key] = f.type === 'date' ? toIsoDate(v) : v;
       }
       return raw;
     })
@@ -1443,7 +1435,20 @@ function applyView(view) {
   }
   state.dirty = false;
   state.conflict = false;
+  // Datas salvas num formato que o leitor de datas passou a entender: corrige e salva.
+  let fixed = 0;
+  for (const kind of ['engorda', 'recria']) {
+    for (const l of state.data[kind]) {
+      if (l.saida === undefined) continue;
+      const iso = toIsoDate(l.saida);
+      if (iso !== l.saida) ((l.saida = iso), fixed++);
+    }
+  }
   renderAll();
+  if (fixed && canEdit()) {
+    changed();
+    toast(`${fixed} data(s) de saída convertida(s) para dd/mm/aaaa.`, 'info');
+  }
 }
 
 async function loadClient(id) {

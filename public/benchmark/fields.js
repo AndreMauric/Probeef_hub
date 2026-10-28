@@ -121,20 +121,57 @@ export function toNumber(v) {
   return Number(raw.includes(',') || thousandsOnly ? raw.replace(/\./g, '').replace(',', '.') : raw);
 }
 
-// Data como AAAA-MM-DD (o formato do campo de data). Aceita também dd/mm/aaaa, que é como
-// a data chega ao colar do Excel; o resto fica como veio e a validação acusa.
+// Data como AAAA-MM-DD (o formato do campo de data). O que não dá para ler fica como veio e a
+// validação acusa.
 export function toIsoDate(v) {
-  const s = String(v).trim();
-  const br = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (br) return `${br[3]}-${br[2].padStart(2, '0')}-${br[1].padStart(2, '0')}`;
-  return s.slice(0, 10);
+  return parseDate(v) ?? String(v).trim().slice(0, 10);
 }
 
-const validIsoDate = (s) => {
+const MESES = { jan: 1, fev: 2, feb: 2, mar: 3, abr: 4, apr: 4, mai: 5, may: 5, jun: 6, jul: 7, ago: 8, aug: 8, set: 9, sep: 9, out: 10, oct: 10, nov: 11, dez: 12, dec: 12 };
+const EXCEL_EPOCH = Date.UTC(1899, 11, 30);
+const isoFrom = (y, m, d) => {
+  if (y < 100) y += 2000;
+  const s = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  return validIsoDate(s) ? s : null;
+};
+
+// Lê a data do jeito que ela chega do Excel ou do software, mesmo quando a célula não estava
+// formatada como data: número de série do Excel (46096, também como texto "46096" ou "46.096"),
+// Date, dd/mm/aaaa ou dd/mm/aa (separador /, -, . ou espaço), AAAA-MM-DD, AAAAMMDD,
+// mês por nome ("15-mar-2026", "15 de março de 2026") e hora no fim ("15/03/2026 00:00").
+// Dia/mês ambíguo é lido como brasileiro (dd/mm); só vira mm/dd quando o "mês" passa de 12.
+// Devolve AAAA-MM-DD ou null.
+export function parseDate(v) {
+  if (v === null || v === undefined || v === '') return null;
+  if (v instanceof Date) return Number.isNaN(v.getTime()) ? null : isoFrom(v.getFullYear(), v.getMonth() + 1, v.getDate());
+  const serial = (n) => (n > 20000 && n < 80000 ? new Date(EXCEL_EPOCH + Math.floor(n) * 86400000).toISOString().slice(0, 10) : null);
+  if (typeof v === 'number') return Number.isFinite(v) ? serial(v) : null;
+  const s = String(v)
+    .trim()
+    .toLowerCase()
+    .replace(/[\sT]+\d{1,2}:\d{2}(:\d{2}(\.\d+)?)?\s*(z|[ap]\.?m\.?)?$/i, '') // hora no fim
+    .replace(/\s+de\s+/g, ' ')
+    .trim();
+  if (/^\d{2}\.?\d{3}([.,]\d+)?$/.test(s)) return serial(Number(s.replace(/\.(?=\d{3}($|,))/, '').replace(',', '.')));
+  let m = s.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/);
+  if (m) return isoFrom(+m[1], +m[2], +m[3]);
+  m = s.match(/^(\d{4})(\d{2})(\d{2})$/);
+  if (m) return isoFrom(+m[1], +m[2], +m[3]);
+  m = s.match(/^(\d{1,2})[-/. ](\d{1,2})[-/. ](\d{2}|\d{4})$/);
+  if (m) {
+    const [a, b, y] = [+m[1], +m[2], +m[3]];
+    return b > 12 && a <= 12 ? isoFrom(y, a, b) : isoFrom(y, b, a);
+  }
+  m = s.normalize('NFD').replace(/\p{M}/gu, '').match(/^(\d{1,2})[-/. ]*([a-z]{3})[a-z]*\.?[-/. ]*(\d{2}|\d{4})$/);
+  if (m && MESES[m[2]]) return isoFrom(+m[3], MESES[m[2]], +m[1]);
+  return null;
+}
+
+function validIsoDate(s) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
   const d = new Date(`${s}T12:00:00Z`);
   return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s;
-};
+}
 
 // Limpa um lote vindo do navegador/importação: só campos conhecidos, números como número.
 export function cleanLote(raw = {}) {
@@ -754,16 +791,10 @@ const TGC_MAP = [
 ];
 export const TGC_LOTE = 'LOTESAIDA';
 
-// Data do TGC (número de série do Excel, Date, dd/mm/aaaa ou AAAA-MM-DD) → milissegundos UTC.
+// Data do TGC (qualquer formato que parseDate lê) → milissegundos UTC.
 function tgcDateMs(v) {
-  if (v === null || v === undefined || v === '') return null;
-  if (v instanceof Date) return Date.UTC(v.getFullYear(), v.getMonth(), v.getDate());
-  if (typeof v === 'number') return v > 20000 && v < 80000 ? Date.UTC(1899, 11, 30) + Math.round(v) * 86400000 : null;
-  const s = String(v).trim();
-  const br = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-  if (br) return Date.UTC(Number(br[3]), Number(br[2]) - 1, Number(br[1]));
-  const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  return iso ? Date.UTC(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3])) : null;
+  const iso = parseDate(v);
+  return iso ? Date.parse(`${iso}T00:00:00Z`) : null;
 }
 
 // animais: linhas do relatório com as chaves já normalizadas por tgcHeader.

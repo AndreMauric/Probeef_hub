@@ -101,6 +101,11 @@ cliente veem o card. Página `/benchmark` (`public/benchmark/`), API `/api/bench
 - Importar a planilha atual é feito no navegador com SheetJS (`/vendor/xlsx.full.min.js`,
   pacote oficial de cdn.sheetjs.com — a versão do npm é antiga): lê BD_Zootec_Feed,
   BD_Econom_Feed, BD_Zootec_Feed_ Recria_Conf e Q1.
+- Datas: `parseDate` em `fields.js` é o único leitor (colar, importar, TGC e o servidor via
+  `cleanLote`). Aceita célula sem formato de data: número de série do Excel (inclusive como texto),
+  dd/mm/aa(aa) com / - . ou espaço, AAAA-MM-DD, AAAAMMDD, mês por nome e hora no fim; dd/mm é o
+  padrão e só vira mm/dd quando o segundo número passa de 12. Ao abrir, datas salvas em outro
+  formato são convertidas e salvas.
 - **Baixar modelo** (`public/benchmark/modelo.js`): Excel gerado no navegador com exceljs, com as
   **mesmas abas e colunas da planilha** (são as do relatório que sai do software): Feed Manager =
   BD_Zootec_Feed + BD_Econom_Feed + BD_Zootec_Feed_ Recria_Conf; TGC = BD_TGC_Conf +
