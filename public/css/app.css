@@ -1019,10 +1019,16 @@ dialog.dialog-wide {
   min-width: 180px;
 }
 
-#usage {
+#usage,
+#usage-tools {
   display: grid;
   gap: 16px;
   margin-top: 16px;
+}
+
+#usage[hidden],
+#usage-tools[hidden] {
+  display: none;
 }
 
 .stats {
@@ -2201,6 +2207,7 @@ tr.row-link:focus-visible td {
 }
 
 #usage > *,
+#usage-tools > *,
 .usage-split > *,
 .admin-inner section > * {
   min-width: 0;

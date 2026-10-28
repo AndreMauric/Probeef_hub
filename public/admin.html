@@ -113,7 +113,7 @@
             <div class="section-head">
               <div>
                 <h2>Uso do portal</h2>
-                <p>Como os clientes usam o portal: acessos, tempo com os relatórios abertos, PDFs e perguntas ao assistente. Acessos de administradores (inclusive "entrar como") não entram na conta.</p>
+                <p>Como os clientes usam o portal: os relatórios do Power BI (acessos, tempo, PDFs e perguntas ao assistente) e, na outra sub-aba, as ferramentas (4M e 3P) por usuário. Acessos de administradores (inclusive "entrar como") não entram na conta.</p>
               </div>
               <div class="viewer-actions">
                 <select id="usage-days" aria-label="Período">
@@ -127,7 +127,12 @@
               </div>
             </div>
             <div class="tag-filter" id="usage-tags" hidden></div>
+            <div class="ccv-subtabs usage-subtabs" role="tablist" aria-label="Uso">
+              <button type="button" role="tab" data-usage-view="bi" aria-selected="true" class="on">Relatórios (BI)</button>
+              <button type="button" role="tab" data-usage-view="tools" aria-selected="false">Ferramentas</button>
+            </div>
             <div id="usage"></div>
+            <div id="usage-tools" hidden></div>
           </section>
 
           <section data-panel="health" hidden>

@@ -62,8 +62,12 @@ Esse é o padrão pra adicionar a próxima ferramenta:
 4. **Métricas de uso**: ver `src/accessLog.js`, lista `TOOLS` no topo. Chame
    `recordToolAccess({userId, clientId, toolId})` e `startToolView(...)` quando a ferramenta
    abrir (rota `POST /api/<nome>/open`, ver `confinamento.js` como exemplo) — o resto
-   (`/api/usage/beat`, `/api/usage/end`, tabela "Ferramentas" na aba Uso do admin) já é
-   genérico e funciona sozinho a partir daí.
+   (`/api/usage/beat`, `/api/usage/end`, sub-aba "Ferramentas" da aba Uso do admin) já é
+   genérico e funciona sozinho a partir daí. A aba Uso tem duas sub-abas: "Relatórios (BI)", cujos
+   números não contam eventos de ferramenta, e "Ferramentas" (`toolUsage` em `src/accessLog.js`:
+   por ferramenta e por usuário, com acesso liberado, tempo e simulações salvas). Uma ferramenta
+   nova entra em `TOOL_DATA` (onde ficam as simulações e o campo de acesso). O Benchmarking fica
+   de fora dela: tem as métricas próprias na aba Benchmarking.
 
 ### 3P · Predição de Desempenho a Pasto (segunda ferramenta)
 

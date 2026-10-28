@@ -395,9 +395,118 @@ function tagBreakdown(rows) {
     });
 }
 
+// ---------- Uso das ferramentas (sub-aba "Ferramentas" do painel Uso) ----------
+// 4M e 3P: aberturas, tempo com a página aberta, simulações salvas e quem tem acesso liberado.
+// O Benchmarking tem as métricas próprias (Admin → Benchmarking → Métricas do processo).
+
+const isToolEvent = (e) => typeOf(e) === 'tool_view' || typeOf(e) === 'tool_time';
+const PANEL_TOOLS = TOOLS.filter((t) => t.id !== 'benchmark');
+// Onde cada ferramenta guarda as simulações e o pedido de acesso do usuário.
+const TOOL_DATA = { confinamento: { sims: 'confinamentoSimulations', access: 'confinamento' }, pasto: { sims: 'pastoSimulations', access: 'pasto' } };
+
+function toolTotals(list, w, tools, scopeIds) {
+  const ids = new Set(tools.map((t) => t.id));
+  const mine = list.filter((e) => ids.has(e.toolId));
+  const views = mine.filter((e) => typeOf(e) === 'tool_view');
+  const sims = tools.reduce((s, t) => s + (db()[TOOL_DATA[t.id]?.sims] || []).filter((x) => scopeIds.has(x.userId) && inWindow(w)({ at: x.createdAt })).length, 0);
+  return {
+    views: views.length,
+    users: new Set(views.map((e) => e.userId)).size,
+    minutes: Math.round(mine.filter((e) => typeOf(e) === 'tool_time').reduce((s, e) => s + (e.seconds || 0), 0) / 60),
+    simulations: sims,
+  };
+}
+
+function toolUsage(days, mine, scopeUsers) {
+  const w = windowOf(days);
+  const wPrev = windowOf(days, 1);
+  const current = mine.filter(inWindow(w));
+  const previous = mine.filter(inWindow(wPrev));
+  const clientNames = new Map(db().clients.map((c) => [c.id, c.name]));
+  const toolIds = new Set(PANEL_TOOLS.map((t) => t.id));
+  const scopeIds = new Set(scopeUsers.map((u) => u.id));
+  const inTools = (e) => toolIds.has(e.toolId);
+
+  // Por pessoa: quem tem acesso liberado a alguma ferramenta ou usou alguma no período.
+  const used = new Set(current.filter(inTools).map((e) => e.userId));
+  const people = scopeUsers.filter((u) => used.has(u.id) || PANEL_TOOLS.some((t) => u[TOOL_DATA[t.id].access]?.status === 'approved'));
+  const users = people
+    .map((u) => {
+      const evs = current.filter((e) => e.userId === u.id && inTools(e));
+      const last = mine.findLast((e) => e.userId === u.id && inTools(e) && typeOf(e) === 'tool_view');
+      const perTool = Object.fromEntries(
+        PANEL_TOOLS.map((t) => {
+          const te = evs.filter((e) => e.toolId === t.id);
+          const sims = (db()[TOOL_DATA[t.id].sims] || []).filter((x) => x.userId === u.id);
+          return [
+            t.id,
+            {
+              access: u[TOOL_DATA[t.id].access]?.status || 'none',
+              views: te.filter((e) => typeOf(e) === 'tool_view').length,
+              minutes: Math.round(te.filter((e) => typeOf(e) === 'tool_time').reduce((s, e) => s + (e.seconds || 0), 0) / 60),
+              simulations: sims.filter((x) => inWindow(w)({ at: x.createdAt })).length,
+              simulationsTotal: sims.length,
+            },
+          ];
+        }),
+      );
+      const tools = Object.values(perTool);
+      return {
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        clients: (u.clientIds || []).map((id) => clientNames.get(id)).filter(Boolean),
+        tools: perTool,
+        views: tools.reduce((s, x) => s + x.views, 0),
+        minutes: tools.reduce((s, x) => s + x.minutes, 0),
+        simulations: tools.reduce((s, x) => s + x.simulations, 0),
+        days: new Set(evs.map((e) => dayKey.format(new Date(e.at)))).size,
+        lastUse: last?.at || null,
+      };
+    })
+    .sort((a, b) => b.minutes - a.minutes || b.views - a.views || a.name.localeCompare(b.name, 'pt-BR'));
+
+  // Aberturas e pessoas por dia (o mesmo formato do gráfico dos relatórios).
+  const byDay = [];
+  for (let i = days - 1; i >= 0; i -= 1) {
+    const day = dayKey.format(new Date(Date.now() - i * DAY));
+    const evs = current.filter((e) => inTools(e) && typeOf(e) === 'tool_view' && dayKey.format(new Date(e.at)) === day);
+    byDay.push({ day, views: evs.length, users: new Set(evs.map((e) => e.userId)).size });
+  }
+
+  const toolName = (id) => TOOLS.find((t) => t.id === id)?.name || id;
+  return {
+    totals: toolTotals(current, w, PANEL_TOOLS, scopeIds),
+    previous: toolTotals(previous, wPrev, PANEL_TOOLS, scopeIds),
+    tools: toolRows(current)
+      .filter((t) => toolIds.has(t.id))
+      .map((t) => {
+        const access = TOOL_DATA[t.id].access;
+        const approved = scopeUsers.filter((u) => u[access]?.status === 'approved');
+        return {
+          ...t,
+          approved: approved.length,
+          pending: scopeUsers.filter((u) => u[access]?.status === 'pending').length,
+          approvedUnused: approved.filter((u) => !current.some((e) => e.userId === u.id && e.toolId === t.id && typeOf(e) === 'tool_view')).length,
+          simulations: (db()[TOOL_DATA[t.id].sims] || []).filter((x) => scopeIds.has(x.userId) && inWindow(w)({ at: x.createdAt })).length,
+        };
+      }),
+    byDay,
+    users,
+    recent: current
+      .filter((e) => inTools(e) && typeOf(e) === 'tool_view')
+      .slice(-40)
+      .reverse()
+      .map((e) => ({ at: e.at, user: db().users.find((u) => u.id === e.userId)?.name || '(removido)', client: clientNames.get(e.clientId) || '—', tool: toolName(e.toolId) })),
+  };
+}
+
 export function usageSummary(days, { tagIds = [] } = {}) {
   const { users, clients, reports } = db();
-  const all = events.filter(clientOnly());
+  // Relatórios (BI) e ferramentas ficam em sub-abas separadas: os números dos relatórios não
+  // contam abertura nem tempo de ferramenta (ver toolUsage).
+  const withTools = events.filter(clientOnly());
+  const all = withTools.filter((e) => !isToolEvent(e));
   const activeClients = clients.filter((c) => c.active);
 
   // Comparação por tag: sempre sobre todos os clientes.
@@ -405,7 +514,8 @@ export function usageSummary(days, { tagIds = [] } = {}) {
 
   // Filtro por tags: restringe clientes e eventos.
   const chosen = clientsWithTags(tagIds);
-  const mine = all.filter(eventFilterFor(chosen));
+  const mineWithTools = withTools.filter(eventFilterFor(chosen));
+  const mine = mineWithTools.filter((e) => !isToolEvent(e));
   const current = mine.filter(inWindow(windowOf(days)));
   const previous = mine.filter(inWindow(windowOf(days, 1)));
   const scopeClients = chosen ? activeClients.filter((c) => chosen.has(c.id)) : activeClients;
@@ -427,7 +537,7 @@ export function usageSummary(days, { tagIds = [] } = {}) {
     clients: clientRows,
     tags: tagBreakdown(fullRows),
     reports: reportTable.filter((r) => r.views || r.minutes).slice(0, 30),
-    tools: toolRows(current),
+    tools: toolUsage(days, mineWithTools, scopeUsers),
     neverOpened: reportTable.filter((r) => !everViewed.has(r.id)).map(({ id, name, category, clients: owners }) => ({ id, name, category, clients: owners })),
     users: userRows(current, scopeUsers).slice(0, 50),
     recent: feed(current),

@@ -2420,7 +2420,7 @@ const HEALTH = {
 const healthPill = (status) =>
   HEALTH[status] ? h('span', { class: `pill ${HEALTH[status].cls}`, title: HEALTH[status].hint }, HEALTH[status].label) : null;
 
-const usageState = { data: null, metric: 'views', health: 'todos', tagIds: [] };
+const usageState = { data: null, metric: 'views', toolMetric: 'views', view: 'bi', health: 'todos', tagIds: [] };
 
 // Filtro por tags do painel de uso (recalcula tudo no servidor).
 function renderUsageTagFilter() {
@@ -2494,10 +2494,10 @@ function statTile(label, value, extra) {
   return h('div', { class: 'stat' }, h('p', { class: 'label' }, label), h('strong', {}, value), extra || null);
 }
 
-function barChart(series, metric, title) {
+function barChart(series, metric, title, units) {
   const values = series.map((d) => d[metric]);
   const max = Math.max(1, ...values);
-  const unit = metric === 'views' ? ['acesso', 'acessos'] : ['usuário ativo', 'usuários ativos'];
+  const unit = units?.[metric] || (metric === 'views' ? ['acesso', 'acessos'] : ['usuário ativo', 'usuários ativos']);
   const tip = h('div', { class: 'chart-tip', hidden: true });
   const plot = h('div', { class: 'chart-plot' }, h('div', { class: 'chart-grid' }));
   const bars = series.map((d) => {
@@ -2651,25 +2651,6 @@ function renderUsage() {
     'Nenhum usuário de cliente.',
   );
 
-  const toolsTable = h('table');
-  table(
-    toolsTable,
-    ['Ferramenta', 'Aberturas', 'Pessoas', 'Tempo total', 'Tempo médio', 'Último acesso'],
-    (u.tools || []).map((x) =>
-      h(
-        'tr',
-        {},
-        h('td', {}, h('strong', {}, x.name)),
-        h('td', { class: 'mono' }, num(x.views)),
-        h('td', { class: 'mono' }, num(x.users)),
-        h('td', { class: 'mono' }, fmtMinutes(x.minutes)),
-        h('td', { class: 'mono' }, x.avgMinutes ? `${String(x.avgMinutes).replace('.', ',')} min` : '—'),
-        h('td', {}, fmtAgo(x.lastView)),
-      ),
-    ),
-    'Nenhuma ferramenta acessada no período.',
-  );
-
   const feedLabels = { view: 'abriu', tool_view: 'abriu', login: 'entrou no portal', export: 'gerou PDF de', ask: 'perguntou ao assistente' };
   const feedTable = h('table');
   table(
@@ -2804,9 +2785,6 @@ function renderUsage() {
     h('p', { class: 'muted usage-hint' }, 'Clique num relatório para ver quais abas são mais acessadas.'),
     scrollTable(reportsTable),
     never,
-    sectionTitle('Ferramentas'),
-    h('p', { class: 'muted usage-hint' }, 'Ferramentas do portal fora dos relatórios do Power BI, como o 4M Confinamento.'),
-    scrollTable(toolsTable),
     h(
       'div',
       { class: 'usage-split' },
@@ -2814,6 +2792,130 @@ function renderUsage() {
       h('div', {}, sectionTitle('Atividade recente'), scrollTable(feedTable)),
     ),
     ].filter(Boolean),
+  );
+  renderToolUsage();
+}
+
+// ---------- Uso → Ferramentas (4M e 3P) ----------
+
+const TOOL_ACCESS_LABEL = { approved: ['Liberado', 'pill-ok'], pending: ['Pediu acesso', 'pill-warn'], denied: ['Negado', 'pill-danger'], revoked: ['Revogado', 'pill-off'], none: ['Sem acesso', 'pill-off'] };
+
+function selectUsageView(view) {
+  usageState.view = view;
+  document.querySelectorAll('[data-usage-view]').forEach((b) => {
+    b.classList.toggle('on', b.dataset.usageView === view);
+    b.setAttribute('aria-selected', String(b.dataset.usageView === view));
+  });
+  document.getElementById('usage').hidden = view !== 'bi';
+  document.getElementById('usage-tools').hidden = view !== 'tools';
+}
+
+function renderToolUsage() {
+  const t = usageState.data?.tools;
+  const box = document.getElementById('usage-tools');
+  if (!t) return;
+  const names = Object.fromEntries(t.tools.map((x) => [x.id, x.name]));
+  const toolIds = t.tools.map((x) => x.id);
+
+  const toolsTable = h('table');
+  table(
+    toolsTable,
+    ['Ferramenta', 'Aberturas', 'Pessoas', 'Tempo total', 'Tempo médio', 'Simulações salvas', 'Acesso liberado', 'Último acesso'],
+    t.tools.map((x) =>
+      h(
+        'tr',
+        {},
+        h('td', {}, h('strong', {}, x.name)),
+        h('td', { class: 'mono' }, num(x.views)),
+        h('td', { class: 'mono' }, num(x.users)),
+        h('td', { class: 'mono' }, fmtMinutes(x.minutes)),
+        h('td', { class: 'mono' }, x.avgMinutes ? `${String(x.avgMinutes).replace('.', ',')} min` : '—'),
+        h('td', { class: 'mono' }, num(x.simulations)),
+        h('td', { class: 'mono' }, num(x.approved), x.approvedUnused ? h('span', { class: 'sub' }, `${num(x.approvedUnused)} sem usar no período`) : null, x.pending ? h('span', { class: 'sub' }, `${num(x.pending)} pedido(s) pendente(s)`) : null),
+        h('td', {}, fmtAgo(x.lastView)),
+      ),
+    ),
+    'Nenhuma ferramenta.',
+  );
+
+  const usersTable = h('table');
+  table(
+    usersTable,
+    ['Usuário', 'Cliente', ...toolIds.map((id) => names[id]), 'Tempo total', 'Dias com uso', 'Último uso'],
+    t.users.map((x) =>
+      h(
+        'tr',
+        {},
+        h('td', {}, h('strong', {}, x.name), h('span', { class: 'sub' }, x.email)),
+        h('td', {}, x.clients.join(', ') || h('span', { class: 'muted' }, 'Só ferramentas')),
+        ...toolIds.map((id) => {
+          const v = x.tools[id];
+          const [label, cls] = TOOL_ACCESS_LABEL[v.access] || TOOL_ACCESS_LABEL.none;
+          return h(
+            'td',
+            { class: 'mono' },
+            v.views || v.minutes ? `${num(v.views)} × · ${fmtMinutes(v.minutes)}` : v.access === 'approved' ? h('span', { class: 'muted' }, 'não usou') : '—',
+            v.simulations ? h('span', { class: 'sub' }, `${num(v.simulations)} simulação(ões) no período`) : null,
+            v.access !== 'approved' && v.access !== 'none' ? h('span', { class: `pill ${cls}`, style: 'margin-top: 4px' }, label) : null,
+          );
+        }),
+        h('td', { class: 'mono' }, fmtMinutes(x.minutes)),
+        h('td', { class: 'mono' }, num(x.days)),
+        h('td', {}, fmtAgo(x.lastUse)),
+      ),
+    ),
+    'Ninguém com acesso às ferramentas neste filtro.',
+  );
+
+  const feedTable = h('table');
+  table(
+    feedTable,
+    ['Quando', 'Quem', 'Ferramenta'],
+    t.recent.map((e) => h('tr', {}, h('td', { class: 'mono' }, fmtDate(e.at)), h('td', {}, e.user, h('span', { class: 'sub' }, e.client)), h('td', {}, e.tool))),
+    'Nenhuma abertura no período.',
+  );
+
+  const metricToggle = h(
+    'div',
+    { class: 'chips', role: 'group', 'aria-label': 'Métrica do gráfico' },
+    [['views', 'Aberturas'], ['users', 'Pessoas']].map(([k, label]) =>
+      h(
+        'button',
+        {
+          class: `chip${usageState.toolMetric === k ? ' selected' : ''}`,
+          type: 'button',
+          'aria-pressed': String(usageState.toolMetric === k),
+          onclick: () => {
+            usageState.toolMetric = k;
+            renderToolUsage();
+          },
+        },
+        label,
+      ),
+    ),
+  );
+
+  const c = t.totals;
+  const p = t.previous;
+  box.replaceChildren(
+    h(
+      'div',
+      { class: 'stats' },
+      statTile('Aberturas de ferramentas', num(c.views), delta(c.views, p.views)),
+      statTile('Pessoas que usaram', num(c.users), delta(c.users, p.users)),
+      statTile('Tempo de uso', fmtMinutes(c.minutes), delta(c.minutes, p.minutes)),
+      statTile('Simulações salvas', num(c.simulations), delta(c.simulations, p.simulations)),
+    ),
+    sectionTitle('Uso por dia', metricToggle),
+    barChart(t.byDay, usageState.toolMetric, usageState.toolMetric === 'views' ? 'Aberturas de ferramentas por dia' : 'Pessoas que usaram ferramentas por dia', { views: ['abertura', 'aberturas'], users: ['pessoa', 'pessoas'] }),
+    sectionTitle('Por ferramenta'),
+    h('p', { class: 'muted usage-hint' }, 'O Benchmarking tem métricas próprias em Benchmarking → Métricas do processo.'),
+    scrollTable(toolsTable),
+    sectionTitle('Por usuário'),
+    h('p', { class: 'muted usage-hint' }, 'Quem tem acesso liberado a alguma ferramenta ou usou no período: aberturas e tempo em cada uma, e as simulações salvas.'),
+    scrollTable(usersTable),
+    sectionTitle('Atividade recente'),
+    scrollTable(feedTable),
   );
 }
 
@@ -3702,6 +3804,7 @@ async function init() {
   document.getElementById('search-clients').addEventListener('input', renderClients);
   document.getElementById('search-users').addEventListener('input', renderUsers);
   document.getElementById('usage-days').addEventListener('change', loadUsage);
+  document.querySelectorAll('[data-usage-view]').forEach((b) => b.addEventListener('click', () => selectUsageView(b.dataset.usageView)));
   setupImageUpload();
   setupSimulator();
   document.getElementById('health-scan').addEventListener('click', async () => {
