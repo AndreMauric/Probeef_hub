@@ -100,7 +100,15 @@ cliente veem o card. Página `/benchmark` (`public/benchmark/`), API `/api/bench
   de cliente) aprova/devolve/reabre como o admin, mas **só nos clientes vinculados a ele**
   (`clientIds`) — só o admin vê todos. Tem a aba "Clientes" na própria página `/benchmark`
   (`GET /api/benchmark/overview`, a lista do admin filtrada pelos clientes dele). A tela usa
-  `view.access` ({edit, review}) vindo do servidor para mostrar os botões. "Apagar
+  `view.access` ({edit, review}) vindo do servidor para mostrar os botões.
+- **Métricas do processo** (Admin → Benchmarking → Métricas do processo; projeto DMAIC):
+  `src/benchmarkMetrics.js` junta o histórico do envio (`sub.messages`: enviado/devolver/aprovar,
+  o envio guarda um `snapshot` da validação), as sessões de trabalho (`sub.metrics.sessions`,
+  montadas a cada salvamento em `saveDraft`; 30 min sem salvar abre outra sessão), o retrato dos
+  erros quando os primeiros lotes entram (`sub.metrics.primeiro`, base do Pareto) e o tempo com a
+  página aberta por aba (`tool_time` do access-log; a página manda a aba no batimento e reabre a
+  contagem ao trocar de cliente). `sub.metrics` não vai para a tela do cliente (`withoutMetrics`).
+  Botão "Excel das métricas" exporta resumo, clientes, pessoas, Pareto, eventos e sessões. "Apagar
   tudo" (`POST /api/benchmark/:clientId/clear`, `clearDraft`) zera lotes e/ou questionário enquanto
   dá para editar, pede para digitar APAGAR e fica no histórico (ação `limpar`).
 - Importar a planilha atual é feito no navegador com SheetJS (`/vendor/xlsx.full.min.js`,

@@ -1500,6 +1500,7 @@ function renderAll() {
 
 function selectTab(name) {
   state.tab = name;
+  beat(); // o tempo até aqui vai para a aba anterior
   // Na visão geral o quadro do cliente aberto não faz sentido.
   document.getElementById('status').hidden = name === 'clientes';
   document.querySelectorAll('[data-tab]').forEach((t) => t.setAttribute('aria-selected', String(t.dataset.tab === name)));
@@ -1546,6 +1547,7 @@ async function loadClient(id) {
     // Sem armazenamento local: só não lembra o cliente.
   }
   applyView(await api(`/api/benchmark/${id}`));
+  if (usage.started) openUsage();
 }
 
 async function init() {
@@ -1596,14 +1598,32 @@ async function init() {
   state.tab = tabs.includes(location.hash.slice(1)) ? location.hash.slice(1) : info.isValidator && !params.get('cliente') ? 'clientes' : 'engorda';
   await loadClient(first);
   selectTab(state.tab);
-  api('/api/benchmark/open', { method: 'POST', body: {} })
-    .then((d) => {
-      if (!d.viewId) return;
-      const post = (path, body) => fetch(path, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), keepalive: true }).catch(() => {});
-      setInterval(() => document.visibilityState === 'visible' && post('/api/usage/beat', { viewId: d.viewId }), 60 * 1000);
-      window.addEventListener('pagehide', () => post('/api/usage/end', { viewId: d.viewId }));
-    })
-    .catch(() => {});
+  openUsage();
 }
+
+// ---------- Tempo de uso (Admin → Benchmarking → Métricas do processo) ----------
+// Igual ao portal: um batimento por minuto com a página visível. O batimento leva a aba aberta
+// (o tempo vai para Lotes, Questionário, Resultado…) e a contagem recomeça ao trocar de cliente.
+
+const usage = { viewId: null, started: false };
+const postUsage = (path, body) => fetch(path, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), keepalive: true }).catch(() => {});
+const beat = (extra = {}) => usage.viewId && postUsage('/api/usage/beat', { viewId: usage.viewId, page: state.tab, ...extra });
+
+async function openUsage() {
+  usage.started = true;
+  if (usage.viewId) postUsage('/api/usage/end', { viewId: usage.viewId, page: state.tab });
+  usage.viewId = null;
+  try {
+    const d = await api('/api/benchmark/open', { method: 'POST', body: { clientId: state.clientId } });
+    usage.viewId = d.viewId;
+    beat();
+  } catch {
+    // Sem medição de uso: a ferramenta funciona igual.
+  }
+}
+
+setInterval(() => document.visibilityState === 'visible' && beat(), 60 * 1000);
+document.addEventListener('visibilitychange', () => (document.visibilityState === 'hidden' ? beat() : beat({ resume: true })));
+window.addEventListener('pagehide', () => usage.viewId && postUsage('/api/usage/end', { viewId: usage.viewId, page: state.tab }));
 
 init().catch((err) => toast(err.message, 'error'));

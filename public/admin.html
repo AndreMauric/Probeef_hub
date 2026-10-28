@@ -225,9 +225,15 @@
               <div class="viewer-actions">
                 <button class="btn" id="bmk-settings" type="button">Limites e listas</button>
                 <button class="btn btn-primary" id="bmk-export" type="button">Excel consolidado</button>
+                <button class="btn btn-primary" id="bmk-metrics-export" type="button" hidden>Excel das métricas</button>
               </div>
             </div>
+            <div class="ccv-subtabs" role="tablist" aria-label="Benchmarking">
+              <button type="button" role="tab" data-bmk-view="andamento" aria-selected="true" class="on">Andamento</button>
+              <button type="button" role="tab" data-bmk-view="metricas" aria-selected="false">Métricas do processo</button>
+            </div>
             <div id="benchmark"></div>
+            <div id="benchmark-metrics" hidden></div>
           </section>
 
           <section data-panel="quotes" hidden>

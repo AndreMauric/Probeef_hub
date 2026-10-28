@@ -1254,6 +1254,226 @@ function loadExcelJs() {
   return excelJsLoading;
 }
 
+// ---------- Benchmarking → Métricas do processo (projeto DMAIC) ----------
+// Quanto tempo cada cliente levou em cada etapa, rodadas de correção, quanto tempo cada pessoa
+// trabalhou e em qual parte, e onde os dados chegam com erro. Ver src/benchmarkMetrics.js.
+
+const bmkMetricsState = { view: 'andamento', data: null, loading: false };
+
+function selectBmkView(view) {
+  bmkMetricsState.view = view;
+  document.querySelectorAll('[data-bmk-view]').forEach((b) => {
+    b.classList.toggle('on', b.dataset.bmkView === view);
+    b.setAttribute('aria-selected', String(b.dataset.bmkView === view));
+  });
+  document.getElementById('benchmark').hidden = view !== 'andamento';
+  document.getElementById('benchmark-metrics').hidden = view !== 'metricas';
+  document.getElementById('bmk-metrics-export').hidden = view !== 'metricas';
+  document.getElementById('bmk-export').hidden = view === 'metricas';
+  if (view === 'metricas') loadBmkMetrics();
+}
+
+async function loadBmkMetrics() {
+  if (bmkMetricsState.loading) return;
+  bmkMetricsState.loading = true;
+  const box = document.getElementById('benchmark-metrics');
+  if (!bmkMetricsState.data) box.replaceChildren(h('p', { class: 'muted' }, 'Calculando as métricas…'));
+  try {
+    bmkMetricsState.data = await api('/api/admin/benchmark/metrics');
+    renderBmkMetrics();
+  } catch (err) {
+    box.replaceChildren(h('p', { class: 'alert' }, err.message));
+  } finally {
+    bmkMetricsState.loading = false;
+  }
+}
+
+const fmtMin = (m) => {
+  if (m === null || m === undefined) return '—';
+  if (m < 60) return `${m} min`;
+  return `${Math.floor(m / 60)} h${m % 60 ? ` ${String(m % 60).padStart(2, '0')}` : ''}`;
+};
+const fmtDec = (v, d = 1, unit = '') => (v === null || v === undefined ? '—' : `${v.toLocaleString('pt-BR', { minimumFractionDigits: d, maximumFractionDigits: d })}${unit}`);
+const BMK_ROLE = { cliente: 'Cliente', validador: 'Validador', admin: 'Admin' };
+
+function renderBmkMetrics() {
+  const d = bmkMetricsState.data;
+  const r = d.resumo;
+  const box = document.getElementById('benchmark-metrics');
+  const sub = (text) => h('span', { class: 'sub' }, text);
+
+  const clientTable = h('table');
+  table(
+    clientTable,
+    ['Cliente', 'Situação', 'Início', '1º envio', 'Aprovado', 'Dias até enviar', 'Ciclo (dias)', 'Envios / devoluções', 'Validação (dias)', 'Pessoas', 'Preenchimento', 'Página aberta', '1º dado: erros/lote'],
+    d.porCliente.map((c) => {
+      const [label, cls] = BMK_STATUS[c.status] || BMK_STATUS.nao_iniciado;
+      return h(
+        'tr',
+        {},
+        h('td', {}, h('strong', {}, c.client)),
+        h('td', {}, h('span', { class: cls }, label), c.aguardandoValidacaoDias !== null && c.aguardandoValidacaoDias !== undefined ? sub(`aguardando há ${fmtDec(c.aguardandoValidacaoDias)} dias`) : null),
+        h('td', { class: 'mono' }, c.inicio ? fmtDateOnly(c.inicio) : '—'),
+        h('td', { class: 'mono' }, c.primeiroEnvio ? fmtDateOnly(c.primeiroEnvio) : '—'),
+        h('td', { class: 'mono' }, c.aprovadoEm ? fmtDateOnly(c.aprovadoEm) : '—', c.aprovadoPrimeira === true ? sub('de primeira') : null),
+        h('td', { class: 'mono' }, fmtDec(c.diasAtePrimeiroEnvio)),
+        h('td', { class: 'mono' }, fmtDec(c.cicloDias)),
+        h('td', { class: 'mono' }, c.status === 'nao_iniciado' ? '—' : `${c.envios} / ${c.devolucoes}`),
+        h('td', { class: 'mono' }, fmtDec(c.validacaoDias)),
+        h('td', { class: 'mono' }, c.pessoas ?? '—'),
+        h('td', { class: 'mono' }, fmtMin(c.preenchimentoMin), c.sessoes ? sub(`${c.sessoes} ${c.sessoes === 1 ? 'sessão' : 'sessões'}`) : null),
+        h('td', { class: 'mono' }, fmtMin(c.toolMin)),
+        h('td', { class: 'mono' }, c.primeiro ? fmtDec(c.primeiro.errosPorLote, 2) : '—', c.primeiro ? sub(`${c.primeiro.erros} erros em ${c.primeiro.lotes} lotes`) : null),
+      );
+    }),
+    'Nenhum cliente no benchmarking.',
+  );
+
+  const peopleTable = h('table');
+  table(
+    peopleTable,
+    ['Pessoa', 'Tipo', 'Cliente(s)', 'Primeira / última atividade', 'Dias ativos', 'Sessões', 'Editando', 'Página aberta', 'Lotes', 'Questionário', 'Resultado', 'Alterações (lotes / quest.)'],
+    d.porPessoa.map((p) =>
+      h(
+        'tr',
+        {},
+        h('td', {}, h('strong', {}, p.name), sub(p.email)),
+        h('td', {}, BMK_ROLE[p.role] || p.role),
+        h('td', {}, p.clients || '—'),
+        h('td', { class: 'mono' }, p.first ? fmtDateOnly(p.first) : '—', p.last ? sub(`última ${fmtDate(p.last)}`) : null),
+        h('td', { class: 'mono' }, p.diasAtivos),
+        h('td', { class: 'mono' }, p.sessoes, p.salvamentos ? sub(`${p.salvamentos} salvamentos`) : null),
+        h('td', { class: 'mono' }, fmtMin(p.editandoMin)),
+        h('td', { class: 'mono' }, fmtMin(p.toolMin)),
+        h('td', { class: 'mono' }, fmtMin(p.areaMin.lotes)),
+        h('td', { class: 'mono' }, fmtMin(p.areaMin.questionario)),
+        h('td', { class: 'mono' }, fmtMin(p.areaMin.resultado)),
+        h('td', { class: 'mono' }, `${p.alteracoes.lotes} / ${p.alteracoes.questionario}`),
+      ),
+    ),
+    'Ninguém trabalhou no benchmarking deste ano ainda (ou foi antes de as métricas começarem a ser registradas).',
+  );
+
+  // Pareto dos erros no primeiro dado (como chegou do Feed Manager/TGC, antes de corrigir).
+  const totalErros = d.pareto.reduce((s, c) => s + c.erro, 0);
+  const maxErro = Math.max(1, ...d.pareto.map((c) => c.erro));
+  let acc = 0;
+  const paretoRows = d.pareto
+    .filter((c) => c.erro > 0)
+    .slice(0, 15)
+    .map((c) => {
+      acc += c.erro;
+      return h(
+        'div',
+        { class: 'bmk-pareto-row', title: `${c.label}: ${c.erro} erros e ${c.alerta} alertas no 1º dado de ${c.clientes} cliente(s); ${c.envioAlerta} alertas no envio` },
+        h('span', { class: 'bmk-pareto-label' }, c.label),
+        h('span', { class: 'bmk-pareto-track' }, h('span', { class: 'bmk-pareto-bar', style: `width: ${(c.erro / maxErro) * 100}%` })),
+        h('span', { class: 'mono' }, num(c.erro)),
+        h('span', { class: 'mono muted' }, `${Math.round((acc / totalErros) * 100)}%`),
+      );
+    });
+  const alertRows = d.pareto
+    .filter((c) => c.envioAlerta > 0)
+    .sort((a, b) => b.envioAlerta - a.envioAlerta)
+    .slice(0, 10)
+    .map((c) => h('li', {}, h('strong', {}, c.label), ` — ${num(c.envioAlerta)} alerta(s)`));
+
+  box.replaceChildren(
+    h(
+      'p',
+      { class: 'muted bmk-metrics-note' },
+      `Benchmarking ${d.ano}. Os tempos de trabalho e o retrato dos erros começaram a ser registrados em out/2026: o que veio antes aparece só pelas datas do histórico (envio, devolução, aprovação). "Editando" soma as sessões de salvamento (pausas de mais de 30 min abrem outra sessão); "Página aberta" é o tempo com a página visível, separado por aba. Administradores não entram no tempo de página.`,
+    ),
+    h(
+      'div',
+      { class: 'stats' },
+      statTile('Aprovados de primeira', r.pctAprovadoPrimeira === null ? '—' : `${r.pctAprovadoPrimeira}%`, sub(`${r.aprovados} aprovado(s)`)),
+      statTile('Ciclo até aprovar', fmtDec(r.cicloDiasMedia, 1, ' dias'), sub(`mediana ${fmtDec(r.cicloDiasMediana, 1, ' dias')}`)),
+      statTile('Até o 1º envio', fmtDec(r.diasAtePrimeiroEnvio, 1, ' dias')),
+      statTile('Em validação por rodada', fmtDec(r.validacaoDias, 1, ' dias')),
+      statTile('Devoluções por cliente', fmtDec(r.devolucoesPorCliente)),
+      statTile('Preenchimento por cliente', r.preenchimentoMin === null ? '—' : fmtMin(Math.round(r.preenchimentoMin))),
+      statTile('Erros por lote no 1º dado', fmtDec(r.errosPorLotePrimeiro, 2)),
+    ),
+    h(
+      'div',
+      { class: 'bmk-funnel' },
+      [
+        ['Participantes', r.participantes],
+        ['Começaram', r.iniciados],
+        ['Enviaram', r.enviados],
+        ['Em validação', r.emValidacao],
+        ['Em correção', r.emCorrecao],
+        ['Aprovados', r.aprovados],
+      ].map(([label, n]) => h('div', {}, h('strong', {}, num(n)), h('span', {}, label))),
+    ),
+    h('h3', { class: 'bmk-metrics-h' }, 'Por cliente'),
+    h('div', { class: 'table-wrap' }, clientTable),
+    h('h3', { class: 'bmk-metrics-h' }, 'Por pessoa'),
+    h('div', { class: 'table-wrap' }, peopleTable),
+    h(
+      'div',
+      { class: 'bmk-pareto-grid' },
+      h(
+        'div',
+        {},
+        h('h3', { class: 'bmk-metrics-h' }, 'Pareto: erros no primeiro dado, por campo'),
+        h('p', { class: 'muted' }, 'Como os lotes chegaram (importados ou colados), antes de qualquer correção. A última coluna é o acumulado.'),
+        paretoRows.length ? h('div', { class: 'bmk-pareto' }, paretoRows) : h('p', { class: 'muted' }, 'Sem erros registrados ainda.'),
+      ),
+      h(
+        'div',
+        {},
+        h('h3', { class: 'bmk-metrics-h' }, 'Alertas que ficaram no envio'),
+        h('p', { class: 'muted' }, 'Erros impedem o envio; estes alertas foram enviados para a validação conferir.'),
+        alertRows.length ? h('ul', { class: 'bmk-alert-list' }, alertRows) : h('p', { class: 'muted' }, 'Nenhum envio com alertas ainda.'),
+      ),
+    ),
+  );
+}
+
+// Excel com as métricas e o histórico bruto (para Minitab/Excel no projeto DMAIC).
+async function exportBmkMetrics() {
+  try {
+    toast('Montando o Excel das métricas…');
+    const [d, ExcelJS] = await Promise.all([api('/api/admin/benchmark/metrics'), loadExcelJs()]);
+    const wb = new ExcelJS.Workbook();
+    const sheet = (name, columns, rows) => {
+      const ws = wb.addWorksheet(name);
+      ws.columns = columns.map(([key, header, width]) => ({ key, header, width: width || Math.max(12, Math.min(40, header.length + 2)) }));
+      rows.forEach((row) => ws.addRow(row));
+      const head = ws.getRow(1);
+      head.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      head.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF094140' } };
+      ws.views = [{ state: 'frozen', ySplit: 1 }];
+    };
+    const r = d.resumo;
+    sheet('Resumo', [['k', 'Indicador', 36], ['v', 'Valor', 16]], [
+      ['Clientes participantes', r.participantes], ['Começaram', r.iniciados], ['Enviaram', r.enviados], ['Aprovados', r.aprovados],
+      ['% aprovados de primeira', r.pctAprovadoPrimeira], ['Ciclo até aprovar — média (dias)', r.cicloDiasMedia], ['Ciclo até aprovar — mediana (dias)', r.cicloDiasMediana],
+      ['Dias até o 1º envio (média)', r.diasAtePrimeiroEnvio], ['Dias em validação por rodada (média)', r.validacaoDias], ['Devoluções por cliente', r.devolucoesPorCliente],
+      ['Minutos de preenchimento por cliente (média)', r.preenchimentoMin], ['Erros por lote no 1º dado', r.errosPorLotePrimeiro],
+    ].map(([k, v]) => ({ k, v })));
+    const dt = (iso) => (iso ? new Date(iso) : null);
+    sheet('Clientes', [['client', 'Cliente', 28], ['status', 'Situação'], ['inicio', 'Início'], ['envio', '1º envio'], ['aprovado', 'Aprovado'], ['diasEnvio', 'Dias até enviar'], ['ciclo', 'Ciclo (dias)'], ['envios', 'Envios'], ['devolucoes', 'Devoluções'], ['primeira', 'Aprovado de primeira'], ['validacao', 'Validação por rodada (dias)'], ['correcao', 'Correção por rodada (dias)'], ['pessoas', 'Pessoas'], ['sessoes', 'Sessões'], ['preench', 'Preenchimento (min)'], ['equipe', 'Edição da equipe (min)'], ['tool', 'Página aberta (min)'], ['lotes', 'Lotes hoje'], ['pLotes', '1º dado: lotes'], ['pErros', '1º dado: erros'], ['pAlertas', '1º dado: alertas'], ['pErrosLote', '1º dado: erros por lote'], ['alertasEnvio', 'Alertas no último envio']],
+      d.porCliente.map((c) => ({ client: c.client, status: (BMK_STATUS[c.status] || BMK_STATUS.nao_iniciado)[0], inicio: dt(c.inicio), envio: dt(c.primeiroEnvio), aprovado: dt(c.aprovadoEm), diasEnvio: c.diasAtePrimeiroEnvio, ciclo: c.cicloDias, envios: c.envios, devolucoes: c.devolucoes, primeira: c.aprovadoPrimeira === null || c.aprovadoPrimeira === undefined ? null : c.aprovadoPrimeira ? 'Sim' : 'Não', validacao: c.validacaoDias, correcao: c.correcaoDias, pessoas: c.pessoas, sessoes: c.sessoes, preench: c.preenchimentoMin, equipe: c.equipeMin, tool: c.toolMin, lotes: c.lotes, pLotes: c.primeiro?.lotes, pErros: c.primeiro?.erros, pAlertas: c.primeiro?.alertas, pErrosLote: c.primeiro?.errosPorLote, alertasEnvio: c.alertasNoEnvio })));
+    sheet('Pessoas', [['name', 'Pessoa', 26], ['email', 'E-mail', 28], ['role', 'Tipo'], ['clients', 'Cliente(s)', 28], ['first', 'Primeira atividade'], ['last', 'Última atividade'], ['dias', 'Dias ativos'], ['sessoes', 'Sessões'], ['saves', 'Salvamentos'], ['edit', 'Editando (min)'], ['tool', 'Página aberta (min)'], ['lotes', 'Lotes (min)'], ['quest', 'Questionário (min)'], ['res', 'Resultado (min)'], ['outros', 'Outras abas (min)'], ['altL', 'Alterações em lotes'], ['altQ', 'Alterações no questionário']],
+      d.porPessoa.map((p) => ({ name: p.name, email: p.email, role: BMK_ROLE[p.role] || p.role, clients: p.clients, first: dt(p.first), last: dt(p.last), dias: p.diasAtivos, sessoes: p.sessoes, saves: p.salvamentos, edit: p.editandoMin, tool: p.toolMin, lotes: p.areaMin.lotes, quest: p.areaMin.questionario, res: p.areaMin.resultado, outros: p.areaMin.outros, altL: p.alteracoes.lotes, altQ: p.alteracoes.questionario })));
+    sheet('Pareto', [['label', 'Campo', 30], ['erro', 'Erros no 1º dado'], ['alerta', 'Alertas no 1º dado'], ['envioAlerta', 'Alertas no envio'], ['clientes', 'Clientes com o campo']], d.pareto);
+    sheet('Eventos', [['client', 'Cliente', 28], ['at', 'Quando', 20], ['action', 'Ação'], ['by', 'Por', 26], ['role', 'Papel'], ['lotes', 'Lotes no envio'], ['alertas', 'Alertas no envio']], d.eventos.map((e) => ({ ...e, at: dt(e.at) })));
+    sheet('Sessões', [['client', 'Cliente', 28], ['user', 'Pessoa', 26], ['role', 'Papel'], ['start', 'Início', 20], ['end', 'Fim', 20], ['minutos', 'Minutos'], ['saves', 'Salvamentos'], ['lotes', 'Alterações em lotes'], ['questionario', 'Alterações no questionário']], d.sessoes.map((x) => ({ ...x, start: dt(x.start), end: dt(x.end) })));
+    for (const ws of wb.worksheets) ws.eachRow((row) => row.eachCell((cell) => { if (cell.value instanceof Date) cell.numFmt = 'dd/mm/yyyy hh:mm'; }));
+    const blob = new Blob([await wb.xlsx.writeBuffer()], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const a = h('a', { href: URL.createObjectURL(blob), download: `Benchmarking-${d.ano}-metricas-do-processo.xlsx` });
+    document.body.append(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  } catch (err) {
+    toast(err.message, 'error');
+  }
+}
+
 // ---------- Cotações ----------
 
 const todayIso = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
@@ -3502,6 +3722,8 @@ async function init() {
   document.getElementById('quote-new').addEventListener('click', () => quoteDialog());
   document.getElementById('bmk-settings').addEventListener('click', () => (bmkState.data ? benchmarkSettingsDialog() : loadBenchmark().then(benchmarkSettingsDialog)));
   document.getElementById('bmk-export').addEventListener('click', exportBenchmark);
+  document.getElementById('bmk-metrics-export').addEventListener('click', exportBmkMetrics);
+  document.querySelectorAll('[data-bmk-view]').forEach((b) => b.addEventListener('click', () => selectBmkView(b.dataset.bmkView)));
   // Contador de coletas esperando validação na aba, mesmo antes de abri-la.
   api('/api/admin/benchmark')
     .then((d) => {

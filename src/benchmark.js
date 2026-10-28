@@ -70,15 +70,70 @@ export function summary(sub) {
   };
 }
 
+const withoutMetrics = ({ metrics, ...rest }) => rest;
+
+// ---------- Métricas do processo (projeto DMAIC; ver src/benchmarkMetrics.js) ----------
+
+const SESSION_GAP_MS = 30 * 60 * 1000; // salvamentos com menos de 30 min entre si são a mesma sessão
+const MAX_SESSIONS = 3000;
+
+// Retrato da validação num momento: quantos lotes, erros e alertas, e em quais campos.
+export function snapshot(sub) {
+  const s = settings();
+  const porCampo = {};
+  const count = (lotes, recria) => {
+    const v = validateLotes(lotes, s, { recria });
+    for (const issues of v.porLote) {
+      for (const i of issues) {
+        porCampo[i.field] ??= { erro: 0, alerta: 0 };
+        porCampo[i.field][i.level] += 1;
+      }
+    }
+    return v;
+  };
+  const eng = count(sub.engorda, false);
+  const rec = count(sub.recria, true);
+  const q = validateQuestionario(sub.respostas || {});
+  return {
+    at: new Date().toISOString(),
+    lotes: sub.engorda.length + sub.recria.length,
+    erros: eng.erros + rec.erros,
+    alertas: eng.alertas + rec.alertas,
+    lotesComErro: eng.lotesComErro + rec.lotesComErro,
+    porCampo,
+    questionario: { respondidas: q.respondidas, visiveis: q.visiveis, faltando: q.faltando.length },
+  };
+}
+
+// Cada salvamento entra numa sessão de trabalho da pessoa (início, fim, quantos salvamentos e
+// o que mudou). Duas sessões separadas por mais de 30 min sem salvar contam como duas.
+function recordWork(sub, user, changed) {
+  sub.metrics ??= { sessions: [] };
+  const now = new Date().toISOString();
+  const last = sub.metrics.sessions.findLast((x) => x.userId === user.id);
+  let session = last && Date.parse(now) - Date.parse(last.end) < SESSION_GAP_MS ? last : null;
+  if (!session) {
+    session = { userId: user.id, role: user.role, start: now, end: now, saves: 0, parts: { engorda: 0, recria: 0, respostas: 0 } };
+    sub.metrics.sessions.push(session);
+    if (sub.metrics.sessions.length > MAX_SESSIONS) sub.metrics.sessions.shift();
+  }
+  session.end = now;
+  session.saves += 1;
+  for (const p of changed) session.parts[p] += 1;
+  // Primeira vez que entram lotes: a qualidade do dado como chegou (antes das correções).
+  if (!sub.metrics.primeiro && sub.engorda.length + sub.recria.length > 0) sub.metrics.primeiro = { ...snapshot(sub), by: user.id };
+}
+
 function view(user, client, sub) {
   const status = sub?.status || 'rascunho';
   return {
     // O que este usuário pode fazer aqui (a tela esconde os botões; as rotas conferem de novo).
     access: { edit: user.role === 'admin' || editableStatus(status), review: isValidator(user) },
     client: { id: client.id, name: client.name },
+    // sub.metrics (sessões de trabalho de cada pessoa) é só para o admin: fica fora da tela.
     submission: sub
       ? {
-          ...sub,
+          ...withoutMetrics(sub),
           messages: sub.messages.map((m) => ({ ...m, byName: userName(m.by) })),
           updatedByName: userName(sub.updatedBy),
           decidedByName: userName(sub.decidedBy),
@@ -119,9 +174,12 @@ export async function saveDraft(user, clientId, body = {}) {
   if (Number(body.version) !== sub.version) throw new BenchmarkError('Outra pessoa salvou alterações neste benchmarking. Recarregue a página para ver a versão mais nova.', 409);
   const engorda = cleanLotes(body.engorda, 'engorda');
   const recria = cleanLotes(body.recria, 'recria');
+  const before = { engorda: JSON.stringify(sub.engorda), recria: JSON.stringify(sub.recria), respostas: JSON.stringify(sub.respostas) };
   if (engorda) sub.engorda = engorda;
   if (recria) sub.recria = recria;
   if (body.respostas && typeof body.respostas === 'object') sub.respostas = { ...sub.respostas, ...cleanRespostas(body.respostas) };
+  const changed = Object.keys(before).filter((p) => JSON.stringify(sub[p]) !== before[p]);
+  if (changed.length) recordWork(sub, user, changed);
   sub.version += 1;
   sub.updatedAt = new Date().toISOString();
   sub.updatedBy = user.id;
@@ -149,8 +207,8 @@ export async function clearDraft(user, clientId, { version, parts } = {}) {
   return view(user, client, sub);
 }
 
-function log(sub, user, action, text = '') {
-  sub.messages.push({ id: newId(), at: new Date().toISOString(), by: user.id, role: user.role, action, text: String(text || '').trim().slice(0, 2000) });
+function log(sub, user, action, text = '', extra = {}) {
+  sub.messages.push({ id: newId(), at: new Date().toISOString(), by: user.id, role: user.role, action, text: String(text || '').trim().slice(0, 2000), ...extra });
 }
 
 // Cliente envia para a Cargill validar: sem erros e com o questionário obrigatório respondido.
@@ -167,7 +225,8 @@ export async function submit(user, clientId, { text, impersonating = false } = {
   }
   sub.status = 'enviado';
   sub.submittedAt = new Date().toISOString();
-  log(sub, user, 'enviado', text);
+  // Retrato no envio: os alertas que sobraram (erros não deixam enviar) e por campo.
+  log(sub, user, 'enviado', text, { snapshot: snapshot(sub) });
   await save();
   // Avisa a equipe pelas Mensagens do portal (não quando é o admin "entrando como").
   if (user.role === 'client' && !impersonating) {

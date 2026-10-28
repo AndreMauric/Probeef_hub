@@ -152,6 +152,9 @@ function finish(viewId) {
   });
 }
 
+// Tempo com uma ferramenta aberta (eventos tool_time), para as métricas do benchmarking.
+export const toolTimeEvents = (toolId) => events.filter((e) => typeOf(e) === 'tool_time' && e.toolId === toolId);
+
 export function endView(viewId, userId, page) {
   if (beatView(viewId, userId, page)) finish(viewId);
 }

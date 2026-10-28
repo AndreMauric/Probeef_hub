@@ -10,6 +10,7 @@ import { isCcv } from '../access.js';
 import { ccvUsage, computeCcvAlerts, listFarms, messageFor, oneLine, RULES } from '../ccv.js';
 import { ccvPages, ccvPdfJob, publicJob, startCcvPdf } from '../ccvPdf.js';
 import { adminQuotes, deleteManual, saveManual, setManualValue, setQuoteOptions } from '../quotes.js';
+import { processMetrics } from '../benchmarkMetrics.js';
 import { adminList as bmkList, exportAll as bmkExport, saveSettings as saveBmkSettings, settings as bmkSettings } from '../benchmark.js';
 import { adminConversation, adminInbox, adminMarkRead, adminSend, chatFile, forgetChat, saveChatFile, setThreadStatus } from '../chat.js';
 import { exportData, listSnapshots, snapshotPath, validateBackup } from '../backup.js';
@@ -315,6 +316,9 @@ adminRouter.put('/benchmark/settings', route(async (req, res) => {
 
 // Dados de todos os clientes do ano, para o Excel consolidado (montado no navegador).
 adminRouter.get('/benchmark/export', (_req, res) => res.json(bmkExport()));
+
+// Métricas do processo de coleta (tempos, rodadas, pessoas, Pareto dos erros): ver src/benchmarkMetrics.js.
+adminRouter.get('/benchmark/metrics', (_req, res) => res.json(processMetrics()));
 
 // ---------- Cotações (faixa do rodapé do portal) ----------
 

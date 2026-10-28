@@ -21,7 +21,9 @@ benchmarkRouter.get('/clients', (req, res) => {
 // Abertura da ferramenta: conta no uso do portal (aba Uso → Ferramentas), como o 4M e a 3P.
 benchmarkRouter.post('/open', (req, res) => {
   if (req.user.role === 'admin' || req.impersonator) return res.json({ viewId: null });
-  const clientId = participantClients(req.user)[0]?.id || null;
+  // O tempo conta no cliente aberto (quem tem mais de um cliente reabre a contagem ao trocar).
+  const clients = participantClients(req.user);
+  const clientId = clients.find((c) => c.id === req.body?.clientId)?.id || clients[0]?.id || null;
   recordToolAccess({ userId: req.user.id, clientId, toolId: 'benchmark' });
   res.json({ viewId: startToolView({ userId: req.user.id, clientId, toolId: 'benchmark' }) });
 });
