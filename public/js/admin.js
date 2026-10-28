@@ -171,7 +171,7 @@ function renderUsers() {
   const access = (u) => {
     if (u.role === 'admin') return h('span', { class: 'pill pill-accent' }, 'Administrador');
     const names = clientNames(u);
-    const validator = u.bmkValidator ? h('span', { class: 'pill pill-accent', style: 'margin-left: 6px', title: 'Aprova ou devolve o Benchmarking de todos os clientes' }, 'Valida BMK') : null;
+    const validator = u.bmkValidator ? h('span', { class: 'pill pill-accent', style: 'margin-left: 6px', title: 'Aprova ou devolve o Benchmarking dos clientes dele' }, 'Valida BMK') : null;
     if (!names.length) return [h('span', { class: 'pill', title: 'Sem cliente: usa só as ferramentas liberadas' }, 'Só ferramentas'), validator];
     const shown = names.slice(0, 2).join(', ');
     return [
@@ -3343,7 +3343,7 @@ function userDialog(user) {
     'label',
     { class: 'check' },
     validator,
-    h('span', {}, h('strong', {}, 'Valida o Benchmarking'), h('br'), h('span', { class: 'muted' }, 'Vê o andamento de todos os clientes do Benchmarking e aprova ou devolve para correção, como o admin. Não altera os dados de outros clientes.')),
+    h('span', {}, h('strong', {}, 'Valida o Benchmarking'), h('br'), h('span', { class: 'muted' }, 'Acompanha o Benchmarking dos clientes marcados acima e aprova ou devolve para correção, como o admin.')),
   );
   const whatsappField = h(
     'div',

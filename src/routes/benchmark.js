@@ -1,5 +1,6 @@
-// API do Benchmarking Confinamento (ver src/benchmark.js). O admin e os validadores usam as mesmas
-// rotas para revisar a coleta de qualquer cliente participante; as rotas só de admin ficam em admin.js.
+// API do Benchmarking Confinamento (ver src/benchmark.js). O admin (todos os clientes) e os
+// validadores (os clientes deles) usam as mesmas rotas para revisar a coleta; as rotas só de admin
+// ficam em admin.js.
 import { Router } from 'express';
 import { recordToolAccess, startToolView } from '../accessLog.js';
 import { requireAuth } from '../auth.js';
@@ -20,16 +21,16 @@ benchmarkRouter.get('/clients', (req, res) => {
 // Abertura da ferramenta: conta no uso do portal (aba Uso → Ferramentas), como o 4M e a 3P.
 benchmarkRouter.post('/open', (req, res) => {
   if (req.user.role === 'admin' || req.impersonator) return res.json({ viewId: null });
-  // Validador vê todos os clientes: o uso conta no cliente dele (se tiver).
-  const clientId = participantClients(req.user).find((c) => req.user.clientIds?.includes(c.id))?.id || null;
+  const clientId = participantClients(req.user)[0]?.id || null;
   recordToolAccess({ userId: req.user.id, clientId, toolId: 'benchmark' });
   res.json({ viewId: startToolView({ userId: req.user.id, clientId, toolId: 'benchmark' }) });
 });
 
-// Andamento de todos os clientes, para quem valida (a mesma lista da aba Benchmarking do admin).
+// Andamento dos clientes para quem valida (a mesma lista da aba Benchmarking do admin, só com os
+// clientes da pessoa).
 benchmarkRouter.get('/overview', (req, res) => {
-  if (!isValidator(req.user)) return res.status(403).json({ error: 'Só quem valida o benchmarking vê todos os clientes.' });
-  res.json({ ano: settings().ano, prazo: settings().prazo, clients: adminList({ onlyActive: req.user.role !== 'admin' }) });
+  if (!isValidator(req.user)) return res.status(403).json({ error: 'Só quem valida o benchmarking vê o andamento dos clientes.' });
+  res.json({ ano: settings().ano, prazo: settings().prazo, clients: adminList({ clientIds: req.user.role === 'admin' ? null : req.user.clientIds || [] }) });
 });
 
 benchmarkRouter.get('/:clientId', (req, res) => res.json(getForUser(req.user, req.params.clientId)));

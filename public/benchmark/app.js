@@ -64,7 +64,7 @@ const nf = (v, d = 2) => (v === null || v === undefined || !Number.isFinite(v) ?
 const fmtDateTime = (iso) => (iso ? new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '—');
 const settings = () => state.view.settings;
 const status = () => state.view.submission.status;
-// access vem do servidor: edit (admin sempre; o cliente em rascunho/correção), own (é do cliente), review (valida).
+// access vem do servidor: edit (admin sempre; os demais em rascunho/correção), review (valida).
 const access = () => state.view?.access || {};
 const canEdit = () => !state.me.impersonatedBy && Boolean(access().edit);
 
@@ -144,7 +144,7 @@ function renderStatus() {
   if (canEdit() && hasData) {
     actions.push(h('button', { class: 'btn btn-ghost btn-danger', type: 'button', disabled: state.conflict, onclick: clearDialog }, 'Apagar tudo'));
   }
-  if (!state.me.impersonatedBy && access().own && editableStatus(sub.status)) {
+  if (!state.me.impersonatedBy && editableStatus(sub.status)) {
     actions.push(h('button', { class: 'btn btn-primary', type: 'button', disabled: !ready || state.conflict, title: ready ? 'Enviar para a Cargill validar' : 'Corrija os erros e responda as perguntas obrigatórias antes de enviar', onclick: submitDialog }, 'Enviar para validação'));
   }
   if (access().review && !state.me.impersonatedBy) {
@@ -176,7 +176,6 @@ function renderStatus() {
     sub.status === 'enviado' && !access().review ? h('div', { class: 'bmk-callout warn' }, 'Enviado para a Cargill validar. Enquanto isso a edição fica travada; se precisar mudar algo, fale com o seu coordenador pelo botão Mensagens do portal.') : null,
     sub.status === 'aprovado' ? h('div', { class: 'bmk-callout ok' }, `Aprovado em ${fmtDateTime(sub.decidedAt)}${sub.decidedByName ? ` por ${sub.decidedByName}` : ''}.`) : null,
     state.me.impersonatedBy ? h('div', { class: 'bmk-callout warn' }, 'Você está vendo como o cliente: nada do que mudar aqui é salvo.') : null,
-    access().review && !access().own ? h('div', { class: 'bmk-callout' }, 'Você valida este benchmarking: pode conferir tudo e aprovar ou devolver, mas os dados são preenchidos pelo cliente.') : null,
   );
 }
 
@@ -1515,7 +1514,7 @@ function applyView(view) {
   state.data = { engorda: structuredClone(view.submission.engorda), recria: structuredClone(view.submission.recria), respostas: structuredClone(view.submission.respostas) };
   // Primeira vez: já preenche nome, e-mail e empresa a partir do portal.
   const r = state.data.respostas;
-  if (!view.submission.updatedAt && canEdit() && view.access.own && !state.isAdmin) {
+  if (!view.submission.updatedAt && canEdit() && !state.isAdmin) {
     r.q1 ??= view.client.name;
     r.q5 ??= state.me.name;
     r.q6 ??= state.me.email;

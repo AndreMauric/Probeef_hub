@@ -886,7 +886,7 @@ function readUser(body, existing) {
     isManager: body.role !== 'admin' && Boolean(body.isManager),
     // Painel CCV: só estas fazendas (dentre as dos clientes dele); vazio = todas as dos clientes.
     ccvFarms: body.role === 'admin' || !Array.isArray(body.ccvFarms) ? [] : farmList(body.ccvFarms),
-    // Valida o Benchmarking: vê o andamento de todos os clientes e aprova/devolve (admin sempre pode).
+    // Valida o Benchmarking dos clientes dele: aprova/devolve como o admin (o admin vê todos).
     bmkValidator: body.role !== 'admin' && Boolean(body.bmkValidator),
     active: body.active !== false,
   };
@@ -901,6 +901,7 @@ function readUser(body, existing) {
   // Sem cliente é válido: a pessoa só usa as ferramentas (4M, 3P), liberadas uma a uma. O gestor
   // cuida da equipe de uma empresa, então precisa de cliente.
   if (user.isManager && !user.clientIds.length) fail('O gestor da empresa precisa de ao menos um cliente.');
+  if (user.bmkValidator && !user.clientIds.length) fail('Quem valida o Benchmarking precisa de ao menos um cliente: valida os clientes marcados.');
   return user;
 }
 

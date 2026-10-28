@@ -96,11 +96,11 @@ cliente veem o card. Página `/benchmark` (`public/benchmark/`), API `/api/bench
 - Dados: `db().bmkSubmissions` (um por cliente por ano; `version` evita sobrescrever o trabalho
   de outra pessoa) e `db().bmkSettings` (limites e listas, editáveis no admin). Fluxo
   rascunho → enviado → correção/aprovado; devolver/aprovar avisa os usuários pelo chat.
-  **Validadores**: usuário com `bmkValidator` (caixa "Valida o Benchmarking" no cadastro) vê todos
-  os participantes na aba "Clientes" da própria página `/benchmark` (`GET /api/benchmark/overview`,
-  a mesma lista do admin) e aprova/devolve/reabre como o admin, mas só edita/envia os dados dos
-  clientes dele (`requireOwner` em `src/benchmark.js`). A tela usa `view.access` ({own, edit,
-  review}) vindo do servidor para mostrar os botões. "Apagar
+  **Validadores**: usuário com `bmkValidator` (caixa "Valida o Benchmarking" no cadastro; precisa
+  de cliente) aprova/devolve/reabre como o admin, mas **só nos clientes vinculados a ele**
+  (`clientIds`) — só o admin vê todos. Tem a aba "Clientes" na própria página `/benchmark`
+  (`GET /api/benchmark/overview`, a lista do admin filtrada pelos clientes dele). A tela usa
+  `view.access` ({edit, review}) vindo do servidor para mostrar os botões. "Apagar
   tudo" (`POST /api/benchmark/:clientId/clear`, `clearDraft`) zera lotes e/ou questionário enquanto
   dá para editar, pede para digitar APAGAR e fica no histórico (ação `limpar`).
 - Importar a planilha atual é feito no navegador com SheetJS (`/vendor/xlsx.full.min.js`,
