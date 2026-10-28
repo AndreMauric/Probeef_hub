@@ -1098,3 +1098,15 @@
     max-width: 160px;
   }
 }
+
+/* Baixar modelo: uma opção por software */
+.bmk-modelo-opt {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  height: auto;
+  padding: 10px 14px;
+  text-align: left;
+  white-space: normal;
+}

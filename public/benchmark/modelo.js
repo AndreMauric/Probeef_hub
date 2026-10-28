@@ -1,12 +1,25 @@
 // Modelo em Excel para preencher fora do portal e importar depois (botão "Baixar modelo").
-// Gerado no navegador com exceljs; lido de volta pelo importador (SheetJS) pelos títulos das
-// colunas, então a ordem das colunas pode mudar sem quebrar a importação.
-import { ECO_FIELDS, fieldLabel, OPTIONS, QUESTIONARIO, QUESTIONS, questionText, ZOO_FIELDS } from './fields.js';
+// Tem as mesmas abas e colunas da planilha de benchmarking, que são as do relatório que sai do
+// software: Feed Manager (BD_Zootec_Feed, BD_Econom_Feed, BD_Zootec_Feed_ Recria_Conf) ou TGC
+// (BD_TGC_Conf, BD_TGC_Conf_Recria, um animal por linha). Títulos na linha 3 e dados a partir da
+// linha 4, então o importador lê o modelo como lê a planilha. O questionário vai numa aba à parte.
+import { colIndex, ECO_FIELDS, OPTIONS, QUESTIONARIO, QUESTIONS, questionText, ZOO_FIELDS } from './fields.js';
 
-export const MODELO_SHEETS = { engorda: 'Lotes engorda', recria: 'Lotes recria', questionario: 'Questionário' };
+export const QUESTIONARIO_SHEET = 'Questionário';
 const LINHAS = 1000; // linhas com lista suspensa e formato de data
-const header = (f, recria) => `${fieldLabel(f.key)}${(recria ? f.reqRecria : f.req) ? ' *' : ''}`;
-const norm = (s) => String(s ?? '').replace(/\*/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
+
+// Títulos da planilha original (linha 3), na ordem das colunas.
+const FEED_ZOO = ['Lote', 'Curral', 'Tipo de Entrada', 'Raça', 'Categoria', 'Saída', 'Qt Anm', 'Mortes (cab)', 'Mortes (%)', 'Ret Pasto (cab)', 'Ret Pasto (%)', 'PV Entrada Kg/cab', 'PV Saída (Kg/cab)', 'Peso Carc Kg/cab', 'GPD', 'Rend Carcaça Real(%)', "Ganho '@/cab", 'Dias Conf', 'Dias Trato', 'Total Diárias', 'Cons MO kg/cab/d', 'Cons MS kg/cab/d', 'Cons MS kg /%PV', 'Efic. Alim kgMS/@+', 'Conv Alim *kgMS/KgPV'];
+const FEED_ECO = ['Identificação Lote', 'Curral', 'Entradas Valor ($/cab', 'Peso Kg/cab', 'Qt Anm', 'Frete $/cab', 'Comissão $/cab', 'Saídas Valor ($/cab)', 'Peso Vivo kg/cab', 'Peso Carc Kg/acb', 'Qt Anm', 'Resultados GPD', 'Rend Carc (%)', 'GCD kg/d', 'Dias Trato', 'Custo cab/d', 'Custo total Trato', 'Custo total de Manejo', 'Custo total Extra', 'Custo total do Lote ', 'Valor total de Venda ', 'Lucro Lote', 'Lucro $/cab', 'Ganho Carc @/cab', 'Custo Alim Ganho', 'Custo Ganho $/@', 'Valor Venda $/@', '%Ret fin'];
+const TGC = ['LOTE_SAIDA', 'COD. ANIMAL', 'SISBOV', 'CONTRATO', 'REBANHO', 'CATEGORIA', 'FORNECEDOR', 'FRIGORÍFICO DESTINO', 'RAÇA', 'LOTE MANEJO', 'PESO ENTRADA(KG)', 'PESO ENTRADA(CARCAÇA)', 'PESO ENTRADA(ARROBA)', 'RENDIMENTO CARCAÇA (ENTRADA)', 'PESO SAÍDA(KG)', 'PESO SAÍDA(CARCAÇA)', 'PESO SAÍDA(ARROBA)', 'RENDIMENTO CARCAÇA (SAÍDA)', '@ PRODUZIDA (CAB)', 'DIAS CONF (CAB)', 'DIAS OCUPACAO (CAB)', 'DIÁRIAS ALIMENTAR (TOTAL)', 'DIFERENÇA DE DIÁRIAS (CAB)', 'GANHO DE PESO DIA(KG)', 'GANHO DE PESO DIA(CARCAÇA)', 'DATA DE ENTRADA', 'DATA DE SAÍDA', 'CONSUMO MN(CAB/DIA)', 'CONSUMO MS(CAB/DIA)', 'CONSUMO MN(CAB/PERÍODO)', 'CONSUMO MS(CAB/PERÍODO)', 'CONVERSÃO ALIMENTAR', 'EFICIÊNCIA ALIMENTAR', 'EFICIÊNCIA BIOLÓGICA', 'IMS(%PV)', 'CUSTO COMPRA BOI MAGRO(CAB)', 'CUSTO FRETE(CAB)', 'CUSTO BOI MAGRO(CAB)', 'CUSTO ARROBA COMPRA', 'CUSTO FIXO(CAB/DIA)', 'CUSTO FIXO(CAB/PERÍODO)', 'CUSTO ALIMENTAR(CAB/PERÍODO)', 'CUSTO ALIMENTAR(CAB/DIA)', 'CUSTO SANIDADE(CAB/PERÍODO)', 'CUSTO SANIDADE(CAB/DIA)', 'CUSTO OUTROS CUSTOS(CAB/PERÍODO)', 'CUSTO OUTROS CUSTOS(CAB/DIA)', 'CUSTO PRODUÇÃO(CAB/PERÍODO)', 'CUSTO PRODUÇÃO(CAB/DIA)', 'CUSTO ARROBA PRODUZIDA', 'CUSTO TOTAL(CAB/PERÍODO)', 'RECEITA(CAB)', 'VALOR DE VENDA(@)', 'LUCRO LÍQUIDO(CAB/PERÍODO)', 'PERCENTUAL CUSTO COMPRA NO CUSTO TOTAL', 'PERCENTUAL CUSTO FIXO NO CUSTO TOTAL', 'PERCENTUAL CUSTO ALIMENTAR NO CUSTO TOTAL', 'PERCENTUAL CUSTO SANIDADE NO CUSTO TOTAL', 'PERCENTUAL OUTROS CUSTOS NO CUSTO TOTAL', 'RENTABILIDADE (PERÍODO)', 'RENTABILIDADE (MÊS)', 'ÚLTIMO CURRAL ', 'Nº ORDEM DE COMPRA', 'CLASSIFICAÇÃO CARCAÇA', 'DENTIÇÃO'];
+// Colunas do TGC que entram na conta dos lotes (as outras podem ficar em branco).
+const TGC_USADAS = ['LOTE_SAIDA', 'CATEGORIA', 'RAÇA', 'PESO ENTRADA(KG)', 'PESO SAÍDA(KG)', 'PESO SAÍDA(CARCAÇA)', 'RENDIMENTO CARCAÇA (SAÍDA)', '@ PRODUZIDA (CAB)', 'DIAS CONF (CAB)', 'DIÁRIAS ALIMENTAR (TOTAL)', 'GANHO DE PESO DIA(KG)', 'DATA DE SAÍDA', 'CONSUMO MN(CAB/DIA)', 'CONSUMO MS(CAB/DIA)', 'CONVERSÃO ALIMENTAR', 'EFICIÊNCIA BIOLÓGICA', 'IMS(%PV)', 'CUSTO COMPRA BOI MAGRO(CAB)', 'CUSTO FRETE(CAB)', 'CUSTO FIXO(CAB/PERÍODO)', 'CUSTO ALIMENTAR(CAB/PERÍODO)', 'CUSTO TOTAL(CAB/PERÍODO)', 'RECEITA(CAB)', 'ÚLTIMO CURRAL '];
+const TGC_DATAS = ['DATA DE ENTRADA', 'DATA DE SAÍDA'];
+
+export const MODELOS = {
+  feed: { label: 'Feed Manager', desc: 'Um lote por linha: abas BD_Zootec_Feed e BD_Econom_Feed (engorda) e BD_Zootec_Feed_ Recria_Conf.' },
+  tgc: { label: 'TGC', desc: 'Um animal por linha, como sai do TGC: abas BD_TGC_Conf (engorda) e BD_TGC_Conf_Recria.' },
+};
 
 function colLetter(n) {
   let s = '';
@@ -15,6 +28,11 @@ function colLetter(n) {
 }
 
 const FORMATO = { date: 'Data (dd/mm/aaaa)', int: 'Número inteiro', num: 'Número', text: 'Texto', list: 'Escolha da lista' };
+const fill = (argb) => ({ type: 'pattern', pattern: 'solid', fgColor: { argb } });
+const VERDE = fill('FF094140');
+const CINZA = fill('FF6B8A88');
+const CLARO = fill('FFE6EFEE');
+const AMARELO = fill('FFFFFDE7');
 
 let excelJsLoading = null;
 function loadExcelJs() {
@@ -31,28 +49,36 @@ function loadExcelJs() {
   return excelJsLoading;
 }
 
-export async function baixarModelo(settings, cliente) {
+export async function baixarModelo(tipo, settings, cliente) {
   const ExcelJS = await loadExcelJs();
   const wb = new ExcelJS.Workbook();
-  const verde = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF094140' } };
-  const claro = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE6EFEE' } };
+  const tgc = tipo === 'tgc';
 
   // Instruções primeiro, para ser a aba que abre.
   const ins = wb.addWorksheet('Instruções');
   ins.getColumn(1).width = 110;
+  const passos = tgc
+    ? [
+        '1. Exporte do TGC o relatório de saída por animal e cole a partir da linha 4: animais da engorda na aba "BD_TGC_Conf" e da recria confinada na "BD_TGC_Conf_Recria".',
+        '2. Um animal por linha. O portal junta os animais por LOTE_SAIDA (contagem de animais e média de cada coluna), como a tabela dinâmica da planilha.',
+        '3. Títulos em verde escuro são as colunas usadas na conta; as em cinza podem ficar em branco.',
+        '4. O TGC não traz o tipo de entrada: depois de importar, complete no portal com "Preencher em lote".',
+      ]
+    : [
+        '1. Cole o relatório do Feed Manager a partir da linha 4, um lote por linha: dados zootécnicos na aba "BD_Zootec_Feed" e econômicos na "BD_Econom_Feed" (o lote é ligado pela coluna A).',
+        '2. Recria confinada: aba "BD_Zootec_Feed_ Recria_Conf", mesmas colunas da BD_Zootec_Feed.',
+        '3. Títulos em verde escuro são obrigatórios; os em cinza são opcionais. Passe o mouse no título para ver o formato.',
+        '4. Tipo de entrada, raça e categoria têm lista suspensa: use os nomes da lista. Datas em dd/mm/aaaa.',
+      ];
   [
-    [`Benchmarking Confinamento Probeef ${settings.ano}${cliente ? ` · ${cliente}` : ''}`, { bold: true, size: 14 }],
+    [`Benchmarking Confinamento Probeef ${settings.ano} · modelo ${MODELOS[tipo].label}${cliente ? ` · ${cliente}` : ''}`, { bold: true, size: 14 }],
     [''],
     ['Como usar este modelo', { bold: true }],
-    ['1. Preencha um lote por linha nas abas "Lotes engorda" e, se a fazenda faz recria confinada, "Lotes recria".'],
-    ['2. Colunas com * são obrigatórias. Passe o mouse no título da coluna para ver a unidade e o formato.'],
-    ['3. Tipo de entrada, raça, categoria e origem têm lista suspensa: use os nomes da lista.'],
-    ['4. Datas no formato dd/mm/aaaa. Números sem unidade (ex.: 1.250,5 ou 1250,5).'],
-    ['5. Na aba "Questionário", escreva a resposta na coluna "Resposta". Quando der para marcar mais de uma opção, separe por ponto e vírgula (;).'],
-    ['6. No portal, clique em "Importar planilha" e escolha este arquivo. Os erros e alertas aparecem na tela para corrigir lá mesmo.'],
+    ...passos.map((t) => [t]),
+    [`${passos.length + 1}. Na aba "${QUESTIONARIO_SHEET}", escreva a resposta na coluna "Resposta". Quando der para marcar mais de uma opção, separe por ponto e vírgula (;).`],
+    [`${passos.length + 2}. No portal, clique em "Importar planilha" e escolha este arquivo. Os erros e alertas aparecem na tela para corrigir lá mesmo.`],
     [''],
-    ['Não mude o nome das abas nem os títulos das colunas: a importação usa esses nomes.'],
-    ['Quem usa o TGC pode importar direto o relatório por animal exportado do TGC, sem este modelo.'],
+    ['Não mude o nome das abas nem a posição das colunas: a importação usa a mesma estrutura da planilha de benchmarking.'],
   ].forEach(([text, font]) => {
     const row = ins.addRow([text]);
     row.getCell(1).alignment = { wrapText: true, vertical: 'top' };
@@ -71,29 +97,57 @@ export async function baixarModelo(settings, cliente) {
   };
   for (const [id, values] of Object.entries(settings.listas)) addLista(id, values);
 
-  const loteSheet = (name, fields, recria) => {
+  // Aba no formato da planilha: aviso na linha 1, títulos na linha 3, dados a partir da 4.
+  // spec(i) → { usado, note, date, list } de cada coluna.
+  const dataSheet = (name, titles, aviso, spec) => {
     const ws = wb.addWorksheet(name);
-    ws.columns = fields.map((f) => ({ header: header(f, recria), key: f.key, width: Math.max(12, Math.round((f.w || 80) / 6.5)) }));
-    const head = ws.getRow(1);
-    head.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-    head.fill = verde;
-    head.alignment = { vertical: 'middle', wrapText: true };
-    head.height = 32;
-    fields.forEach((f, i) => {
+    ws.getCell('A1').value = aviso;
+    ws.getCell('A1').font = { italic: true, color: { argb: 'FF555555' } };
+    const head = ws.getRow(3);
+    titles.forEach((t, i) => {
+      const s = spec(i);
+      const cell = head.getCell(i + 1);
+      cell.value = t;
+      cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      cell.fill = s.usado ? VERDE : CINZA;
+      cell.alignment = { vertical: 'middle', wrapText: true };
+      if (s.note) cell.note = s.note;
+      ws.getColumn(i + 1).width = Math.max(s.date ? 12 : 10, Math.min(24, String(t).length + 2));
       const c = colLetter(i);
-      ws.getCell(`${c}1`).note = [FORMATO[f.type], f.unit ? `Unidade: ${f.unit}` : null, (recria ? f.reqRecria : f.req) ? 'Obrigatório' : 'Opcional'].filter(Boolean).join('\n');
-      const range = `${c}2:${c}${LINHAS + 1}`;
-      if (f.type === 'date') ws.getColumn(i + 1).numFmt = 'dd/mm/yyyy';
-      if (f.type === 'list' && refs[f.list]) {
-        ws.dataValidations.add(range, { type: 'list', allowBlank: true, formulae: [refs[f.list]], showErrorMessage: true, errorStyle: 'warning', errorTitle: f.label, error: 'Valor fora da lista. Use um dos nomes da lista para não dar erro na validação.' });
+      if (s.date) ws.getColumn(i + 1).numFmt = 'dd/mm/yyyy';
+      if (s.list && refs[s.list]) {
+        ws.dataValidations.add(`${c}4:${c}${LINHAS + 3}`, { type: 'list', allowBlank: true, formulae: [refs[s.list]], showErrorMessage: true, errorStyle: 'warning', errorTitle: t, error: 'Valor fora da lista. Use um dos nomes da lista para não dar erro na validação.' });
       }
     });
-    ws.views = [{ state: 'frozen', xSplit: 1, ySplit: 1 }];
+    head.height = 45;
+    ws.views = [{ state: 'frozen', xSplit: 1, ySplit: 3 }];
   };
-  loteSheet(MODELO_SHEETS.engorda, [...ZOO_FIELDS, ...ECO_FIELDS], false);
-  loteSheet(MODELO_SHEETS.recria, ZOO_FIELDS, true);
 
-  const qs = wb.addWorksheet(MODELO_SHEETS.questionario);
+  if (tgc) {
+    const spec = (i) => {
+      const t = TGC[i];
+      return { usado: TGC_USADAS.includes(t), date: TGC_DATAS.includes(t), note: TGC_USADAS.includes(t) ? 'Usada na conta do lote' : 'Opcional' };
+    };
+    const aviso = 'Cole aqui o relatório por animal do TGC, a partir da linha 4 (um animal por linha).';
+    dataSheet('BD_TGC_Conf', TGC, aviso, spec);
+    dataSheet('BD_TGC_Conf_Recria', TGC, aviso, spec);
+  } else {
+    const byCol = (fields) => new Map(fields.filter((f) => f.col).map((f) => [colIndex(f.col), f]));
+    const zoo = byCol(ZOO_FIELDS);
+    const eco = byCol([{ key: 'lote', label: 'Lote', type: 'text', col: 'A', req: true }, ...ECO_FIELDS]);
+    const fieldSpec = (map, recria) => (i) => {
+      const f = map.get(i);
+      if (!f) return { usado: false, note: 'Não é usada pelo portal (calculada ou repetida)' };
+      const req = recria ? f.reqRecria : f.req;
+      return { usado: req, date: f.type === 'date', list: f.type === 'list' ? f.list : null, note: [FORMATO[f.type], f.unit ? `Unidade: ${f.unit}` : null, req ? 'Obrigatório' : 'Opcional'].filter(Boolean).join('\n') };
+    };
+    const aviso = 'Cole aqui o relatório do Feed Manager a partir da linha 4 (um lote por linha).';
+    dataSheet('BD_Zootec_Feed', FEED_ZOO, aviso, fieldSpec(zoo, false));
+    dataSheet('BD_Econom_Feed', FEED_ECO, `${aviso} O lote (coluna A) liga com a BD_Zootec_Feed.`, fieldSpec(eco, false));
+    dataSheet('BD_Zootec_Feed_ Recria_Conf', FEED_ZOO, 'Recria confinada: cole o relatório do Feed Manager a partir da linha 4.', fieldSpec(zoo, true));
+  }
+
+  const qs = wb.addWorksheet(QUESTIONARIO_SHEET);
   qs.columns = [
     { header: 'Código', key: 'id', width: 8 },
     { header: 'Nº', key: 'n', width: 5 },
@@ -103,11 +157,11 @@ export async function baixarModelo(settings, cliente) {
   ];
   const qh = qs.getRow(1);
   qh.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-  qh.fill = verde;
+  qh.fill = VERDE;
   for (const sec of QUESTIONARIO) {
     const r = qs.addRow({ text: sec.title });
     r.font = { bold: true };
-    r.fill = claro;
+    r.fill = CLARO;
     for (const q of sec.questions) {
       const opts = q.options || (q.type === 'sn' ? OPTIONS.SN : q.type === 'uf' ? OPTIONS.UFS : null);
       const how = [
@@ -122,7 +176,7 @@ export async function baixarModelo(settings, cliente) {
       const row = qs.addRow({ id: q.id, n: q.n, text: `${questionText(q, settings)}${q.req ? ' *' : ''}`, how: how.join(' · ') });
       row.alignment = { wrapText: true, vertical: 'top' };
       const resp = row.getCell('resp');
-      resp.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFDE7' } };
+      resp.fill = AMARELO;
       if (opts && q.type !== 'multi') {
         addLista(q.id, opts);
         resp.dataValidation = { type: 'list', allowBlank: true, formulae: [refs[q.id]], showErrorMessage: !q.other, errorStyle: 'warning', error: 'Use uma das opções da lista.' };
@@ -134,46 +188,27 @@ export async function baixarModelo(settings, cliente) {
   const blob = new Blob([await wb.xlsx.writeBuffer()], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `Modelo-Benchmarking-Confinamento-${settings.ano}.xlsx`;
+  a.download = `Modelo-Benchmarking-${settings.ano}-${tgc ? 'TGC' : 'Feed-Manager'}.xlsx`;
   document.body.append(a);
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 10000);
 }
 
-// Lê as abas do modelo (pelos títulos das colunas). Devolve null se o arquivo não é o modelo.
-export function lerModelo(XLSX, wb, { excelDate, answerFromCell }) {
-  const engWs = wb.Sheets[MODELO_SHEETS.engorda];
-  const recWs = wb.Sheets[MODELO_SHEETS.recria];
-  const qWs = wb.Sheets[MODELO_SHEETS.questionario];
-  if (!engWs && !recWs) return null;
-  const lotes = (ws, fields) => {
-    if (!ws) return [];
-    const [head = [], ...rows] = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: null });
-    const byLabel = new Map(fields.map((f) => [norm(fieldLabel(f.key)), f]));
-    const cols = head.map((t) => byLabel.get(norm(t)) || null);
-    return rows
-      .map((r) => {
-        const raw = {};
-        cols.forEach((f, i) => {
-          const v = r[i];
-          if (!f || v === null || v === undefined || v === '') return;
-          raw[f.key] = f.type === 'date' ? excelDate(v, XLSX) : v;
-        });
-        return raw;
-      })
-      .filter((r) => r.lote !== undefined && String(r.lote).trim() !== '');
-  };
+// Respostas da aba "Questionário" do modelo (pela coluna Código). null se a aba não existe.
+export function lerQuestionario(XLSX, wb, answerFromCell) {
+  const ws = wb.Sheets[QUESTIONARIO_SHEET];
+  if (!ws) return null;
+  const [head = [], ...rows] = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: null });
+  const norm = (s) => String(s ?? '').trim().toLowerCase();
+  const iId = head.findIndex((t) => norm(t) === 'código');
+  const iResp = head.findIndex((t) => norm(t) === 'resposta');
   const respostas = {};
-  if (qWs) {
-    const [head = [], ...rows] = XLSX.utils.sheet_to_json(qWs, { header: 1, raw: true, defval: null });
-    const iId = head.findIndex((t) => norm(t) === 'código');
-    const iResp = head.findIndex((t) => norm(t) === 'resposta');
-    for (const r of rows) {
-      const q = QUESTIONS.find((x) => x.id === String(r[iId] ?? '').trim());
-      const a = q ? answerFromCell(q, r[iResp]) : null;
-      if (a !== null && !(Array.isArray(a) && !a.length)) respostas[q.id] = a;
-    }
+  if (iId < 0 || iResp < 0) return respostas;
+  for (const r of rows) {
+    const q = QUESTIONS.find((x) => x.id === String(r[iId] ?? '').trim());
+    const a = q ? answerFromCell(q, r[iResp]) : null;
+    if (a !== null && !(Array.isArray(a) && !a.length)) respostas[q.id] = a;
   }
-  return { engorda: lotes(engWs, [...ZOO_FIELDS, ...ECO_FIELDS]), recria: lotes(recWs, ZOO_FIELDS), respostas };
+  return respostas;
 }

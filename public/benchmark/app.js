@@ -5,7 +5,7 @@ import { api, h, toast } from '/js/common.js';
 import { initTicker } from '/js/ticker.js';
 import { initChat } from '/js/chat.js';
 import { renderDashboard } from './dashboard.js';
-import { baixarModelo, lerModelo } from './modelo.js';
+import { baixarModelo, lerQuestionario, MODELOS } from './modelo.js';
 import {
   calcLote,
   cleanAnswer,
@@ -643,13 +643,34 @@ function pasteDialog(kind) {
 
 // ---------- Modelo em Excel para preencher e importar ----------
 
-async function downloadModelo() {
-  try {
-    toast('Montando o modelo…');
-    await baixarModelo(settings(), state.clients.find((c) => c.id === state.clientId)?.name);
-  } catch (err) {
-    toast(err.message, 'error');
-  }
+// Feed Manager (um lote por linha) ou TGC (um animal por linha): as abas são as da planilha.
+function downloadModelo() {
+  const baixar = async (tipo) => {
+    dialog.close();
+    try {
+      toast('Montando o modelo…');
+      await baixarModelo(tipo, settings(), state.clients.find((c) => c.id === state.clientId)?.name);
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  };
+  fill(
+    dialog,
+    h(
+      'form',
+      { class: 'bmk-dialog', onsubmit: (e) => e.preventDefault() },
+      h('h2', {}, 'Baixar modelo em Excel'),
+      h('p', { class: 'muted' }, 'Escolha o software de onde vêm os dados. O modelo tem as mesmas abas e colunas da planilha de benchmarking, mais uma aba para o questionário. Depois de preencher, suba o arquivo em "Importar planilha".'),
+      h(
+        'div',
+        { class: 'bmk-clear-list' },
+        Object.entries(MODELOS).map(([tipo, m]) => h('button', { class: 'btn bmk-modelo-opt', type: 'button', onclick: () => baixar(tipo) }, h('strong', {}, m.label), h('small', { class: 'muted' }, m.desc))),
+      ),
+      h('div', { class: 'dialog-actions' }, h('button', { class: 'btn', type: 'button', onclick: () => dialog.close() }, 'Cancelar')),
+    ),
+  );
+  // Também é aberto de dentro da janela de importação, que já está aberta.
+  if (!dialog.open) dialog.showModal();
 }
 
 // ---------- Importar a planilha atual (.xlsb/.xlsx) ----------
@@ -715,12 +736,6 @@ function answerFromCell(q, v) {
 async function readWorkbook(file) {
   const XLSX = await loadXlsx();
   const wb = XLSX.read(await file.arrayBuffer(), { type: 'array' });
-  // Modelo baixado do portal (botão "Baixar modelo").
-  const modelo = lerModelo(XLSX, wb, { excelDate, answerFromCell });
-  if (modelo) {
-    const vazio = { lotes: [], faltando: [] };
-    return { ...modelo, modelo: true, tgc: { engorda: vazio, recria: vazio }, tgcRaw: null, sheets: wb.SheetNames };
-  }
   const engZoo = sheetRows(XLSX, wb.Sheets.BD_Zootec_Feed, COLUNAS_ZOO);
   const engEco = sheetRows(XLSX, wb.Sheets.BD_Econom_Feed, COLUNAS_ECO);
   const recria = sheetRows(XLSX, wb.Sheets['BD_Zootec_Feed_ Recria_Conf'], COLUNAS_ZOO);
@@ -745,7 +760,8 @@ async function readWorkbook(file) {
       }
     }
   }
-  const respostas = {};
+  // Modelo baixado do portal: questionário na aba "Questionário" (código + resposta).
+  const respostas = lerQuestionario(XLSX, wb, answerFromCell) || {};
   const q1 = wb.Sheets.Q1;
   if (q1) {
     const rows = XLSX.utils.sheet_to_json(q1, { header: 'A', raw: true, defval: null });
@@ -803,9 +819,9 @@ function importDialog() {
           : h(
               'ul',
               { class: 'bmk-import-list' },
-              h('li', {}, h('strong', {}, parsed.engorda.length), ' lotes de engorda', t.engorda.lotes.length ? ` (${parsed.engorda.length - t.engorda.lotes.length} do Feed Manager + ${t.engorda.lotes.length} do TGC: ${tgcResumo(t.engorda)})` : parsed.modelo ? ' (modelo do portal)' : ' (BD_Zootec_Feed + BD_Econom_Feed)', faltando(t.engorda)),
+              h('li', {}, h('strong', {}, parsed.engorda.length), ' lotes de engorda', t.engorda.lotes.length ? ` (${parsed.engorda.length - t.engorda.lotes.length} do Feed Manager + ${t.engorda.lotes.length} do TGC: ${tgcResumo(t.engorda)})` : ' (BD_Zootec_Feed + BD_Econom_Feed)', faltando(t.engorda)),
               h('li', {}, h('strong', {}, parsed.recria.length), ' lotes de recria confinada', t.recria.lotes.length ? ` (${t.recria.lotes.length} do TGC: ${tgcResumo(t.recria)})` : '', faltando(t.recria)),
-              h('li', {}, h('strong', {}, nResp), parsed.modelo ? ' respostas do questionário' : ' respostas do questionário (aba Q1)'),
+              h('li', {}, h('strong', {}, nResp), ' respostas do questionário'),
             ),
         !parsed.tgcRaw && !parsed.engorda.length && !parsed.recria.length && !nResp ? h('p', { class: 'alert' }, `Não encontrei as abas do modelo de benchmarking nem um relatório do TGC (coluna LOTE_SAIDA) neste arquivo (abas: ${parsed.sheets.join(', ')}).`) : null,
       );
