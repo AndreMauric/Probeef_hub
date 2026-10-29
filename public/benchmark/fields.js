@@ -847,7 +847,7 @@ export const tgcHeader = (s) =>
     .toUpperCase()
     .replace(/[^A-Z0-9]/g, '');
 
-// Campo do lote ← coluna do TGC. media: média dos animais; moda: valor mais comum;
+// Campo do lote ← coluna do TGC. media: média dos animais; soma: soma dos animais; moda: valor mais comum;
 // totalLote: média por cabeça × animais (os campos econômicos do lote são totais, como no Feed Manager).
 const TGC_MAP = [
   ['curral', 'ULTIMOCURRAL', 'moda'],
@@ -863,7 +863,8 @@ const TGC_MAP = [
   ['diasConf', 'DIASCONFCAB', 'media', 0],
   // A tabela dinâmica usa os dias de confinamento como dias de trato (GPD e conversão).
   ['diasTrato', 'DIASCONFCAB', 'media', 0],
-  ['totalDiarias', 'DIARIASALIMENTARTOTAL', 'media', 1],
+  // Total de diárias do lote = soma das diárias alimentares de todos os animais.
+  ['totalDiarias', 'DIARIASALIMENTARTOTAL', 'soma', 0],
   ['consMO', 'CONSUMOMNCABDIA', 'media', 2],
   ['consMS', 'CONSUMOMSCABDIA', 'media', 2],
   ['consMSpctPV', 'IMSPV', 'media', 2],
@@ -921,6 +922,11 @@ export function lotesFromTgc(animais) {
         const ms = rows.map((r) => tgcDateMs(r[col])).filter((v) => v !== null);
         if (ms.length) l[key] = new Date(Math.round(ms.reduce((s, v) => s + v, 0) / ms.length / 86400000) * 86400000).toISOString().slice(0, 10);
       } else {
+        if (how === 'soma') {
+          const vals = rows.map((r) => toNumber(r[col])).filter((x) => x !== null && Number.isFinite(x));
+          if (vals.length) l[key] = round(vals.reduce((t, x) => t + x, 0), d);
+          continue;
+        }
         let v = media(col);
         // Rendimento às vezes vem em fração (0,55): no lote é em % (55).
         if (how === 'rc' && v !== null && v <= 1.5) v *= 100;
@@ -1064,7 +1070,8 @@ export function lotesFromCfm(animais) {
     const dias = mean(vendidos, 'dias', (v) => v > 0);
     set('diasConf', dias, 0);
     set('diasTrato', dias, 0); // como no TGC: os dias de confinamento são os dias de trato
-    set('totalDiarias', mean(vendidos, 'totalDiarias', (v) => v > 0), 1);
+    // Total de diárias do lote = soma das diárias alimentares de todos os animais (mortos inclusos).
+    set('totalDiarias', sum(rows, 'totalDiarias'), 0);
     set('consMO', mean(vendidos, 'consMO', (v) => v > 0), 2);
     set('consMS', mean(vendidos, 'consMS', (v) => v > 0), 2);
     const ims = mean(vendidos, 'ims', (v) => v > 0);

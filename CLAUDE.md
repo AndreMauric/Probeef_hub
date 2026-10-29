@@ -147,7 +147,8 @@ cliente veem o card. Página `/benchmark` (`public/benchmark/`), API `/api/bench
   "LOTE Saída confinamento": animais = todas as linhas, mortes = linhas com causa de morte;
   zootécnico = média dos vendidos (carcaça, rendimento e @ produzida só de quem tem carcaça > 0 —
   vendas em leilão vêm sem carcaça); eficiência e conversão no lote (MS total ÷ @ ou kg ganhos);
-  custos e receita somados (mortos inclusos); "Tipo de Cadastro = Compra" vira origem Compra
+  custos, receita e total de diárias somados (mortos inclusos; total de diárias = soma da "DIÁRIAS
+  ALIMENTAR (TOTAL)" de todos os animais, igual no TGC); "Tipo de Cadastro = Compra" vira origem Compra
   Direta. Lotes só com mortos (o programa põe os mortos num lote de saída próprio) ficam de fora
   e a tela avisa. Conferido em out/2026 contra um relatório real (7.932 animais, 85 lotes). Entra
   pelas abas BD_CFM_Conf(_Recria) da planilha/modelo, pela exportação pura ou colando com o
