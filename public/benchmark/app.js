@@ -25,6 +25,8 @@ import {
   resultadoEngorda,
   resultadoRecria,
   STATUS,
+  CFM_LOTE,
+  lotesFromCfm,
   TGC_LOTE,
   tgcHeader,
   toIsoDate,
@@ -550,27 +552,50 @@ function mergeLotes(kind, incoming) {
   return { added, updated };
 }
 
-// ---------- TGC (relatório por animal) ----------
+// ---------- Relatórios por animal (TGC e Cargill Feed Manager) ----------
+// Os dois exportam um animal por linha; o portal junta por lote (lotesFromTgc / lotesFromCfm em
+// fields.js). O tipo de relatório é reconhecido pela coluna do lote no cabeçalho.
 
-// Linhas de uma planilha ou texto colado → animais com as chaves normalizadas (tgcHeader).
-// Acha o cabeçalho pela coluna LOTE_SAIDA; sem ela, não é um relatório do TGC (null).
-function tgcAnimalsFromMatrix(matrix) {
-  const hi = matrix.slice(0, 30).findIndex((row) => (row || []).some((c) => tgcHeader(c) === TGC_LOTE));
-  if (hi < 0) return null;
-  const head = matrix[hi].map(tgcHeader);
-  return matrix
-    .slice(hi + 1)
-    .filter((row) => (row || []).some((c) => c !== null && c !== undefined && String(c).trim() !== ''))
-    .map((row) => Object.fromEntries(head.map((k, i) => [k, row[i]]).filter(([k]) => k)));
+const ANIMAL_SOURCES = {
+  cfm: { label: 'Cargill Feed Manager', lote: CFM_LOTE, loteCol: 'LOTE Saída confinamento', toLotes: lotesFromCfm, sheets: { engorda: 'BD_CFM_Conf', recria: 'BD_CFM_Conf_Recria' } },
+  tgc: { label: 'TGC', lote: TGC_LOTE, loteCol: 'LOTE_SAIDA', toLotes: lotesFromTgc, sheets: { engorda: 'BD_TGC_Conf', recria: 'BD_TGC_Conf_Recria' } },
+};
+
+// Linhas de uma planilha ou texto colado → lotes, com { source } e o resumo da conversão.
+// Sem a coluna do lote de nenhum dos dois, não é um relatório por animal (null).
+function animalReport(matrix) {
+  for (const [source, src] of Object.entries(ANIMAL_SOURCES)) {
+    const hi = matrix.slice(0, 30).findIndex((row) => (row || []).some((c) => tgcHeader(c) === src.lote));
+    if (hi < 0) continue;
+    const head = matrix[hi].map(tgcHeader);
+    const animais = matrix
+      .slice(hi + 1)
+      .filter((row) => (row || []).some((c) => c !== null && c !== undefined && String(c).trim() !== ''))
+      .map((row) => Object.fromEntries(head.map((k, i) => [k, row[i]]).filter(([k]) => k)));
+    return { source, ...src.toLotes(animais) };
+  }
+  return null;
 }
-const tgcFromSheet = (XLSX, ws) => (ws ? tgcAnimalsFromMatrix(XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: null })) : null);
-const tgcFromText = (text) => tgcAnimalsFromMatrix(text.replace(/\r/g, '').split('\n').map((line) => line.split('\t')));
-const tgcResumo = (t) => `${nf(t.animais, 0)} animais em ${t.lotes.length} ${t.lotes.length === 1 ? 'lote' : 'lotes'}${t.semLote ? ` (${t.semLote} linha(s) sem LOTE_SAIDA ignorada(s))` : ''}`;
+const reportFromSheet = (XLSX, ws) => (ws ? animalReport(XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: null })) : null);
+const reportFromText = (text) => animalReport(text.replace(/\r/g, '').split('\n').map((line) => line.split('\t')));
+const reportLabel = (t) => ANIMAL_SOURCES[t.source].label;
+function reportResumo(t) {
+  const src = ANIMAL_SOURCES[t.source];
+  return [
+    `${nf(t.animais, 0)} animais em ${t.lotes.length} ${t.lotes.length === 1 ? 'lote' : 'lotes'}`,
+    t.mortes ? `${nf(t.mortes, 0)} morte(s)` : null,
+    t.soMortes?.lotes ? `${t.soMortes.lotes} lote(s) só com animais mortos (${t.soMortes.animais} animais) ficaram de fora` : null,
+    t.semLote ? `${t.semLote} linha(s) sem ${src.loteCol} ignorada(s)` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+}
 
-// Depois de trazer lotes do TGC: raça/categoria vêm escritas do jeito do TGC e não há tipo de entrada.
-function afterTgcImport(kind) {
+// Depois de trazer lotes de um relatório por animal: raça/categoria vêm escritas do jeito do
+// programa e não há tipo de entrada.
+function afterAnimalImport(kind, source) {
   setTimeout(() => standardizeDialog(kind, { auto: true }), 400);
-  if (state.data[kind].some((l) => !l.tipoEntrada)) toast('O TGC não traz o tipo de entrada: use "Preencher em lote" para completar.', 'info');
+  if (state.data[kind].some((l) => !l.tipoEntrada)) toast(`O ${ANIMAL_SOURCES[source]?.label || 'relatório'} não traz o tipo de entrada: use "Preencher em lote" para completar.`, 'info');
 }
 
 function pasteDialog(kind) {
@@ -580,7 +605,7 @@ function pasteDialog(kind) {
   const info = h('p', { class: 'muted' });
   const showInfo = () => {
     const cols = which === 'zoo' ? COLUNAS_ZOO : COLUNAS_ECO;
-    info.textContent = `Feed Manager (um lote por linha) — ordem esperada (como na aba ${which === 'zoo' ? (recria ? 'BD_Zootec_Feed_ Recria_Conf' : 'BD_Zootec_Feed') : 'BD_Econom_Feed'}, a partir da coluna A): ${cols.map((f) => `${f.col} ${f.label || 'Lote'}`).join(' · ')}. Colunas que não estão na lista (como Mortes % e as calculadas) são ignoradas. Lotes já existentes são atualizados pelo número do lote. TGC (um animal por linha): cole o relatório junto com a linha de cabeçalho (LOTE_SAIDA, RAÇA…); os animais são juntados por lote, como a tabela dinâmica da planilha.`;
+    info.textContent = `Feed Manager (um lote por linha) — ordem esperada (como na aba ${which === 'zoo' ? (recria ? 'BD_Zootec_Feed_ Recria_Conf' : 'BD_Zootec_Feed') : 'BD_Econom_Feed'}, a partir da coluna A): ${cols.map((f) => `${f.col} ${f.label || 'Lote'}`).join(' · ')}. Colunas que não estão na lista (como Mortes % e as calculadas) são ignoradas. Lotes já existentes são atualizados pelo número do lote. TGC ou Cargill Feed Manager (um animal por linha): cole o relatório junto com a linha de cabeçalho (LOTE_SAIDA ou "LOTE Saída confinamento", RAÇA…); os animais são juntados por lote, como a tabela dinâmica da planilha.`;
   };
   showInfo();
   fill(
@@ -591,17 +616,16 @@ function pasteDialog(kind) {
         class: 'bmk-dialog',
         onsubmit: (e) => {
           e.preventDefault();
-          // Relatório do TGC colado com o cabeçalho: um animal por linha, junta por lote.
-          const animais = tgcFromText(area.value);
-          if (animais) {
-            const t = lotesFromTgc(animais);
-            if (!t.lotes.length) return toast('O relatório do TGC não tem nenhuma linha com LOTE_SAIDA.', 'error');
+          // Relatório por animal (TGC ou Cargill Feed Manager) colado com o cabeçalho: junta por lote.
+          const t = reportFromText(area.value);
+          if (t) {
+            if (!t.lotes.length) return toast(`O relatório do ${reportLabel(t)} não tem nenhum lote com animal vendido.`, 'error');
             const { added, updated } = mergeLotes(kind, t.lotes);
             changed();
             dialog.close();
             lotesPanel(kind);
-            toast(`Relatório do TGC: ${tgcResumo(t)}. ${added} lote(s) incluído(s), ${updated} atualizado(s).`);
-            afterTgcImport(kind);
+            toast(`Relatório do ${reportLabel(t)}: ${reportResumo(t)}. ${added} lote(s) incluído(s), ${updated} atualizado(s).`);
+            afterAnimalImport(kind, t.source);
             return;
           }
           const rows = rowsFromTsv(area.value, which === 'zoo' ? COLUNAS_ZOO : COLUNAS_ECO);
@@ -646,7 +670,7 @@ function pasteDialog(kind) {
 
 // ---------- Modelo em Excel para preencher e importar ----------
 
-// Feed Manager (um lote por linha) ou TGC (um animal por linha): as abas são as da planilha.
+// Feed Manager (um lote por linha), TGC ou Cargill Feed Manager (um animal por linha).
 function downloadModelo() {
   const baixar = async (tipo) => {
     dialog.close();
@@ -736,20 +760,24 @@ async function readWorkbook(file) {
   const ecoById = new Map(engEco.map((r) => [String(r.lote), r]));
   const engorda = engZoo.map((r) => ({ ...r, ...(ecoById.get(String(r.lote)) || {}) }));
   for (const r of engEco) if (!engZoo.some((z) => String(z.lote) === String(r.lote))) engorda.push(r);
-  // Clientes TGC: relatório por animal nas abas BD_TGC_Conf (engorda) e BD_TGC_Conf_Recria.
-  const tgc = {
-    engorda: lotesFromTgc(tgcFromSheet(XLSX, wb.Sheets.BD_TGC_Conf) || []),
-    recria: lotesFromTgc(tgcFromSheet(XLSX, wb.Sheets.BD_TGC_Conf_Recria) || []),
-  };
-  engorda.push(...tgc.engorda.lotes);
-  recria.push(...tgc.recria.lotes);
-  // Arquivo que não é a planilha de benchmarking: pode ser a exportação pura do TGC.
-  let tgcRaw = null;
+  const feedManager = { engorda: engorda.length, recria: recria.length };
+  // Relatórios por animal nas abas próprias: BD_TGC_Conf(_Recria) e BD_CFM_Conf(_Recria).
+  const porAnimal = { engorda: [], recria: [] };
+  for (const src of Object.values(ANIMAL_SOURCES)) {
+    for (const kind of ['engorda', 'recria']) {
+      const r = reportFromSheet(XLSX, wb.Sheets[src.sheets[kind]]);
+      if (r?.lotes.length) porAnimal[kind].push(r);
+    }
+  }
+  engorda.push(...porAnimal.engorda.flatMap((r) => r.lotes));
+  recria.push(...porAnimal.recria.flatMap((r) => r.lotes));
+  // Arquivo que não é a planilha de benchmarking: pode ser a exportação pura do TGC ou do CFM.
+  let raw = null;
   if (!engorda.length && !recria.length) {
     for (const name of wb.SheetNames) {
-      const animais = tgcFromSheet(XLSX, wb.Sheets[name]);
-      if (animais?.length) {
-        tgcRaw = { ...lotesFromTgc(animais), sheet: name };
+      const r = reportFromSheet(XLSX, wb.Sheets[name]);
+      if (r?.animais) {
+        raw = { ...r, sheet: name };
         break;
       }
     }
@@ -765,7 +793,7 @@ async function readWorkbook(file) {
       if (q && a !== null && !(typeof a === 'number' && a === 0 && ['q45', 'q46', 'q52', 'q53', 'q54'].includes(id))) respostas[id] = a;
     });
   }
-  return { engorda, recria, respostas, tgc, tgcRaw, sheets: wb.SheetNames };
+  return { engorda, recria, respostas, feedManager, porAnimal, raw, sheets: wb.SheetNames };
 }
 
 function importDialog() {
@@ -780,7 +808,7 @@ function importDialog() {
     h('label', { class: 'check' }, h('input', { type: 'checkbox', name: 'respostas', checked: true }), h('span', {}, 'Trazer também as respostas do questionário')),
   );
   const submitBtn = h('button', { class: 'btn btn-primary', type: 'submit', disabled: true }, 'Importar');
-  // Exportação pura do TGC: a pessoa diz se os animais são da engorda ou da recria.
+  // Exportação pura do TGC ou do CFM: a pessoa diz se os animais são da engorda ou da recria.
   let rawKind = state.tab === 'recria' ? 'recria' : 'engorda';
   fileInput.addEventListener('change', async () => {
     const file = fileInput.files[0];
@@ -789,13 +817,26 @@ function importDialog() {
     try {
       parsed = await readWorkbook(file);
       const nResp = Object.keys(parsed.respostas).length;
-      const t = parsed.tgc;
       const faltando = (x) => (x.faltando.length > 0 && x.lotes.length ? h('small', { class: 'muted' }, ` · colunas que não vieram: ${x.faltando.join(', ')}`) : null);
+      // "12 lotes de engorda (3 do Feed Manager + 9 do TGC: …)".
+      const origem = (kind) => {
+        const reps = parsed.porAnimal[kind];
+        if (!reps.length) return kind === 'engorda' && parsed.feedManager.engorda ? [' (BD_Zootec_Feed + BD_Econom_Feed)'] : [''];
+        const parts = reps.map((r) => `${r.lotes.length} do ${reportLabel(r)}: ${reportResumo(r)}`);
+        if (parsed.feedManager[kind]) parts.unshift(`${parsed.feedManager[kind]} do Feed Manager`);
+        return [` (${parts.join(' + ')})`, ...reps.map(faltando)];
+      };
+      const raw = parsed.raw;
       fill(
         result,
-        parsed.tgcRaw
+        raw
           ? [
-              h('p', { class: 'bmk-callout ok' }, `Relatório do TGC (aba "${parsed.tgcRaw.sheet}"): ${tgcResumo(parsed.tgcRaw)}. Os animais são juntados por LOTE_SAIDA (contagem e média de cada coluna), como a tabela dinâmica da planilha.`, faltando(parsed.tgcRaw)),
+              h(
+                'p',
+                { class: 'bmk-callout ok' },
+                `Relatório do ${reportLabel(raw)} (aba "${raw.sheet}"): ${reportResumo(raw)}. Os animais são juntados por ${ANIMAL_SOURCES[raw.source].loteCol}${raw.source === 'cfm' ? ': zootécnico pela média dos vendidos, custos e receita somados no lote' : ' (contagem e média de cada coluna), como a tabela dinâmica da planilha'}.`,
+                faltando(raw),
+              ),
               h(
                 'div',
                 { class: 'bmk-field' },
@@ -813,15 +854,15 @@ function importDialog() {
           : h(
               'ul',
               { class: 'bmk-import-list' },
-              h('li', {}, h('strong', {}, parsed.engorda.length), ' lotes de engorda', t.engorda.lotes.length ? ` (${parsed.engorda.length - t.engorda.lotes.length} do Feed Manager + ${t.engorda.lotes.length} do TGC: ${tgcResumo(t.engorda)})` : ' (BD_Zootec_Feed + BD_Econom_Feed)', faltando(t.engorda)),
-              h('li', {}, h('strong', {}, parsed.recria.length), ' lotes de recria confinada', t.recria.lotes.length ? ` (${t.recria.lotes.length} do TGC: ${tgcResumo(t.recria)})` : '', faltando(t.recria)),
+              h('li', {}, h('strong', {}, parsed.engorda.length), ' lotes de engorda', ...origem('engorda')),
+              h('li', {}, h('strong', {}, parsed.recria.length), ' lotes de recria confinada', ...origem('recria')),
               h('li', {}, h('strong', {}, nResp), ' respostas do questionário'),
             ),
-        !parsed.tgcRaw && !parsed.engorda.length && !parsed.recria.length && !nResp ? h('p', { class: 'alert' }, `Não encontrei as abas do modelo de benchmarking nem um relatório do TGC (coluna LOTE_SAIDA) neste arquivo (abas: ${parsed.sheets.join(', ')}).`) : null,
+        !raw && !parsed.engorda.length && !parsed.recria.length && !nResp ? h('p', { class: 'alert' }, `Não encontrei as abas do modelo de benchmarking nem um relatório por animal do TGC (coluna LOTE_SAIDA) ou do Cargill Feed Manager (coluna "LOTE Saída confinamento") neste arquivo (abas: ${parsed.sheets.join(', ')}).`) : null,
       );
       modes.hidden = false;
       modes.querySelector('[name=respostas]').closest('label').hidden = !nResp;
-      submitBtn.disabled = !parsed.tgcRaw && !parsed.engorda.length && !parsed.recria.length && !nResp;
+      submitBtn.disabled = !raw && !parsed.engorda.length && !parsed.recria.length && !nResp;
     } catch (err) {
       parsed = null;
       fill(result, h('p', { class: 'alert' }, `Não consegui ler o arquivo: ${err.message}`));
@@ -839,16 +880,16 @@ function importDialog() {
           const form = e.target;
           const mode = form.elements.mode.value;
           if (mode === 'replace' && (state.data.engorda.length || state.data.recria.length) && !confirm('Apagar os lotes atuais e ficar só com os da planilha?')) return;
-          if (parsed.tgcRaw) {
-            // Exportação pura do TGC: só a lista escolhida (engorda ou recria) é afetada.
+          if (parsed.raw) {
+            // Exportação pura (TGC ou CFM): só a lista escolhida (engorda ou recria) é afetada.
             if (mode === 'replace') state.data[rawKind] = [];
-            const r = mergeLotes(rawKind, parsed.tgcRaw.lotes);
+            const r = mergeLotes(rawKind, parsed.raw.lotes);
             changed();
             dialog.close();
             if (state.tab !== rawKind) selectTab(rawKind);
             renderAll();
-            toast(`Relatório do TGC: ${tgcResumo(parsed.tgcRaw)}. ${r.added} lote(s) incluído(s), ${r.updated} atualizado(s).`);
-            afterTgcImport(rawKind);
+            toast(`Relatório do ${reportLabel(parsed.raw)}: ${reportResumo(parsed.raw)}. ${r.added} lote(s) incluído(s), ${r.updated} atualizado(s).`);
+            afterAnimalImport(rawKind, parsed.raw.source);
             return;
           }
           if (mode === 'replace') {
@@ -863,12 +904,13 @@ function importDialog() {
           renderAll();
           toast(`Importado: ${a.added + a.updated} lotes de engorda, ${b.added + b.updated} de recria. Confira os erros e alertas.`);
           const sum = localSummary();
-          if (parsed.tgc.engorda.lotes.length || parsed.tgc.recria.lotes.length) afterTgcImport(state.tab === 'recria' ? 'recria' : 'engorda');
+          const rep = parsed.porAnimal.engorda[0] || parsed.porAnimal.recria[0];
+          if (rep) afterAnimalImport(state.tab === 'recria' ? 'recria' : 'engorda', rep.source);
           else if (sum.erros) setTimeout(() => standardizeDialog(state.tab === 'recria' ? 'recria' : 'engorda', { auto: true }), 400);
         },
       },
       h('h2', {}, 'Importar a planilha de benchmarking'),
-      h('p', { class: 'muted' }, 'Escolha o modelo baixado do portal depois de preenchido, a planilha de benchmarking ("Benchmarking Confinamento Probeef …", .xlsb ou .xlsx), com os dados do Feed Manager e/ou do TGC nas abas próprias, ou direto o relatório por animal exportado do TGC (.xlsx, .xls ou .csv). O arquivo é lido aqui no seu navegador; só os dados vão para o portal.'),
+      h('p', { class: 'muted' }, 'Escolha o modelo baixado do portal depois de preenchido, a planilha de benchmarking ("Benchmarking Confinamento Probeef …", .xlsb ou .xlsx), com os dados do Feed Manager, do TGC e/ou do Cargill Feed Manager nas abas próprias, ou direto o relatório por animal exportado do TGC ou do Cargill Feed Manager ("Relatório de fechamento individual", .xlsx, .xls ou .csv). O arquivo é lido aqui no seu navegador; só os dados vão para o portal.'),
       h('p', { class: 'muted' }, 'Ainda não tem o modelo? ', h('button', { class: 'btn btn-sm', type: 'button', onclick: downloadModelo }, 'Baixar modelo em Excel')),
       fileInput,
       result,
@@ -985,9 +1027,19 @@ function standardizeDialog(kind, { auto = false } = {}) {
     if (!auto) toast('Todos os valores de raça, categoria, origem e tipo de entrada já estão nas listas.');
     return;
   }
+  // Nomes que o TGC e o Cargill Feed Manager usam → item da lista (só se o item existir na lista).
+  const SINONIMOS = [
+    [/leite/, 'Cruz.Leiteiro'],
+    [/angus.*(cruz|mesti|f1)|(cruz|mesti|f1).*angus/, 'Cruz.Industrial(Angus)'],
+    [/anelorad/, 'Anelorado'],
+    [/novilha|femea/, 'Fêmea de Engorda'],
+    [/vaca/, 'Vaca de Descarte'],
+    [/^(macho|boi|garrote|novilho)/, 'Macho de Engorda'],
+  ];
   const guess = (v, opts) => {
     const fold = (t) => String(t).normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
-    return opts.find((o) => fold(o) === fold(v)) || opts.find((o) => fold(v).includes(fold(o).split(/[ (]/)[0])) || '';
+    const sinonimo = SINONIMOS.find(([re, o]) => re.test(fold(v)) && opts.includes(o))?.[1];
+    return opts.find((o) => fold(o) === fold(v)) || sinonimo || opts.find((o) => fold(v).includes(fold(o).split(/[ (]/)[0])) || '';
   };
   const rows = unknown.map((u) => {
     const sel = h('select', {}, h('option', { value: '' }, 'Deixar como está'), lists[u.f.list].map((o) => h('option', { value: o, selected: guess(u.v, lists[u.f.list]) === o }, o)));

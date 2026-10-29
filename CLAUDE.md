@@ -137,6 +137,18 @@ cliente veem o card. Página `/benchmark` (`public/benchmark/`), API `/api/bench
   (`tgcHeader`), não pela posição. Entra por "Importar planilha" (abas TGC da planilha ou a
   exportação pura), ou "Colar do Excel" com o cabeçalho. O TGC não traz tipo de entrada e escreve
   raça/categoria do jeito dele: depois da importação abre "Padronizar listas" e "Preencher em lote".
+- **Cargill Feed Manager** (o programa novo, não o Feed Manager das abas BD_Zootec_Feed): exporta o
+  "Relatório de fechamento individual", um animal por linha (cabeçalho na linha 4), **com os mortos**
+  ("Causa da morte conf") e rendimento/IMS em fração. `lotesFromCfm` em `fields.js` agrupa por
+  "LOTE Saída confinamento": animais = todas as linhas, mortes = linhas com causa de morte;
+  zootécnico = média dos vendidos (carcaça, rendimento e @ produzida só de quem tem carcaça > 0 —
+  vendas em leilão vêm sem carcaça); eficiência e conversão no lote (MS total ÷ @ ou kg ganhos);
+  custos e receita somados (mortos inclusos); "Tipo de Cadastro = Compra" vira origem Compra
+  Direta. Lotes só com mortos (o programa põe os mortos num lote de saída próprio) ficam de fora
+  e a tela avisa. Conferido em out/2026 contra um relatório real (7.932 animais, 85 lotes). Entra
+  pelas abas BD_CFM_Conf(_Recria) da planilha/modelo, pela exportação pura ou colando com o
+  cabeçalho; `ANIMAL_SOURCES` em `app.js` reconhece TGC ou CFM pela coluna do lote. O
+  "Padronizar listas" sugere os nomes desses programas (`SINONIMOS`).
 - Período do lote (`periodoLote` em `fields.js`, também em `calcLote`): entrada = saída − dias no
   confinamento (Dias conf.; sem ele, Dias de trato); "Águas" quando mais de 70% desses dias caem
   em dezembro–maio, senão "Seca". Aparece na tabela (ao lado de Saída), no detalhe do lote, no

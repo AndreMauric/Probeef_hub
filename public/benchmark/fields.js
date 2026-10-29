@@ -850,6 +850,161 @@ export function lotesFromTgc(animais) {
   return { lotes, animais: animais.length - semLote, semLote, faltando };
 }
 
+// ---------- Cargill Feed Manager: relatório de fechamento individual → lotes ----------
+// O Cargill Feed Manager (o novo, não o Feed Manager antigo das abas BD_Zootec_Feed) exporta o
+// "Relatório de fechamento individual": um animal por linha, cabeçalho depois de 3 linhas de título.
+// Diferenças para o TGC: traz os animais mortos (coluna "Causa da morte conf") e rendimento e
+// IMS vêm em fração (0,558). Cada lote (coluna "LOTE Saída confinamento") vira:
+//   - animais = todas as linhas; mortes = linhas com causa de morte;
+//   - zootécnico = média dos animais vendidos (carcaça, rendimento, @ produzida e eficiência só
+//     dos que têm peso de carcaça: alguns vendidos vêm com carcaça 0, sem abate registrado);
+//   - eficiência e conversão alimentar no lote: consumo total de MS ÷ @ produzidas (ou kg ganhos),
+//     como num relatório por lote (a média das razões de cada animal se afasta do recalculado);
+//   - econômico por cabeça = média; totais do lote = soma de todos os animais (os mortos também
+//     custaram). Custo de manejo = alimentar + fixo, como no TGC;
+//   - "lotes" só com animais mortos (o programa põe os mortos num lote de saída próprio) não viram
+//     lote: são contados à parte (soMortes) para a tela avisar.
+export const CFM_LOTE = 'LOTESAIDACONFINAMENTO';
+const CFM_CAUSA = 'CAUSADAMORTECONF';
+// Colunas usadas na conta (cabeçalhos normalizados por tgcHeader).
+const CFM_COLS = {
+  categoria: 'CATEGORIA',
+  raca: 'RACA',
+  cadastro: 'TIPODECADASTRO',
+  saida: 'DATADESAIDACONF',
+  pvEntrada: ['PESOPROCESSAMENTOKG', 'PESOBALANCAOKG'],
+  pvSaida: 'PESOSAIDACONFKG',
+  pesoCarc: 'PESOSAIDACARCACAKG',
+  rc: 'RENDIMENTOCARCACASAIDACONF',
+  ganhoArroba: 'PRODUZIDACABCONF',
+  dias: 'DIASCONFCAB',
+  totalDiarias: 'DIARIASALIMENTARTOTAL',
+  gpd: 'GANHODEPESODIAKG',
+  consMO: 'CONSUMOMNKGCABDIA',
+  consMS: 'CONSUMOMSKGCABDIA',
+  ims: 'IMSPV',
+  msTotal: 'CONSUMOMSTOTALKGCABPERIODO',
+  entrada: 'CUSTODEENTRADAANIMALRCAB',
+  frete: 'CUSTOFRETERCAB',
+  comissao: 'COMISSAOCOMPRARCAB',
+  receita: 'RECEITARCAB',
+  alimentar: 'CUSTOALIMENTARRCABPERIODO',
+  fixo: 'CUSTOFIXORCABPERIODO',
+  sanidade: 'CUSTOSANIDADERCABPERIODOCONF',
+  outros: 'OUTROSCUSTOSRCABPERIODOCONF',
+  total: 'CUSTOTOTALRCABPERIODOCONF',
+};
+// "Tipo de Cadastro" → origem do lote (só quando dá para saber: "Da fazenda" pode ser recria a pasto ou confinada).
+const CFM_ORIGEM = { compra: 'Compra Direta' };
+
+export function lotesFromCfm(animais) {
+  const presentes = new Set(animais.flatMap((a) => Object.keys(a)));
+  const faltando = [CFM_CAUSA, ...Object.values(CFM_COLS).map((c) => (Array.isArray(c) ? c[0] : c))].filter((c) => !presentes.has(c) && !(c === 'PESOPROCESSAMENTOKG' && presentes.has('PESOBALANCAOKG')));
+  const col = (k) => {
+    const c = CFM_COLS[k];
+    return Array.isArray(c) ? c.find((x) => presentes.has(x)) || c[0] : c;
+  };
+  const val = (r, k) => {
+    const n = toNumber(r[col(k)]);
+    return n !== null && Number.isFinite(n) ? n : null;
+  };
+  const grupos = new Map();
+  let semLote = 0;
+  for (const a of animais) {
+    const lote = String(a[CFM_LOTE] ?? '').trim();
+    if (!lote || lote === '-') {
+      semLote += 1;
+      continue;
+    }
+    if (!grupos.has(lote)) grupos.set(lote, []);
+    grupos.get(lote).push(a);
+  }
+  const round = (v, d) => (v === null ? null : Number(v.toFixed(d)));
+  const mean = (rows, k, keep = () => true) => {
+    const vals = rows.map((r) => val(r, k)).filter((v) => v !== null && keep(v));
+    return vals.length ? vals.reduce((s, v) => s + v, 0) / vals.length : null;
+  };
+  const sum = (rows, ...ks) => {
+    let any = false;
+    const total = rows.reduce((s, r) => s + ks.reduce((t, k) => {
+      const v = val(r, k);
+      if (v !== null) any = true;
+      return t + (v ?? 0);
+    }, 0), 0);
+    return any ? total : null;
+  };
+  const moda = (rows, key) => {
+    const count = new Map();
+    for (const r of rows) {
+      const v = String(r[key] ?? '').trim();
+      if (v && v !== '0' && v !== '-') count.set(v, (count.get(v) || 0) + 1);
+    }
+    return [...count].sort((a, b) => b[1] - a[1])[0]?.[0];
+  };
+  const pct = (v) => (v !== null && v <= 1.5 ? v * 100 : v); // fração → %
+  let mortesTotal = 0;
+  const soMortes = { lotes: 0, animais: 0 };
+  const isMorte = (r) => /MORTE/i.test(String(r[CFM_CAUSA] ?? ''));
+  const lotes = [...grupos].flatMap(([lote, rows]) => {
+    const mortos = rows.filter(isMorte);
+    const vendidos = rows.filter((r) => !isMorte(r));
+    if (!vendidos.length) {
+      soMortes.lotes += 1;
+      soMortes.animais += rows.length;
+      return [];
+    }
+    const abatidos = vendidos.filter((r) => (val(r, 'pesoCarc') ?? 0) > 0);
+    mortesTotal += mortos.length;
+    const l = { lote, qtAnm: rows.length };
+    if (presentes.has(CFM_CAUSA)) l.mortes = mortos.length;
+    const set = (key, v, d) => {
+      if (v !== null && v !== undefined && Number.isFinite(v)) l[key] = round(v, d);
+    };
+    const categoria = moda(rows, col('categoria'));
+    const raca = moda(rows, col('raca'));
+    if (categoria) l.categoria = categoria;
+    if (raca) l.raca = raca;
+    const origem = CFM_ORIGEM[String(moda(rows, col('cadastro')) || '').toLowerCase()];
+    if (origem) l.origem = origem;
+    const ms = vendidos.map((r) => tgcDateMs(r[col('saida')])).filter((v) => v !== null);
+    if (ms.length) l.saida = new Date(Math.round(ms.reduce((s, v) => s + v, 0) / ms.length / 86400000) * 86400000).toISOString().slice(0, 10);
+    set('pvEntrada', mean(vendidos, 'pvEntrada', (v) => v > 0), 1);
+    set('pvSaida', mean(vendidos, 'pvSaida', (v) => v > 0), 1);
+    set('pesoCarc', mean(abatidos, 'pesoCarc'), 1);
+    set('rc', pct(mean(abatidos, 'rc', (v) => v > 0)), 2);
+    set('ganhoArroba', mean(abatidos, 'ganhoArroba'), 2);
+    set('gpd', mean(vendidos, 'gpd'), 3);
+    const dias = mean(vendidos, 'dias', (v) => v > 0);
+    set('diasConf', dias, 0);
+    set('diasTrato', dias, 0); // como no TGC: os dias de confinamento são os dias de trato
+    set('totalDiarias', mean(vendidos, 'totalDiarias', (v) => v > 0), 1);
+    set('consMO', mean(vendidos, 'consMO', (v) => v > 0), 2);
+    set('consMS', mean(vendidos, 'consMS', (v) => v > 0), 2);
+    const ims = mean(vendidos, 'ims', (v) => v > 0);
+    set('consMSpctPV', ims !== null && ims < 1 ? ims * 100 : ims, 2);
+    const ratio = (rows2, num, den) => {
+      const n = rows2.reduce((t, r) => t + (num(r) ?? 0), 0);
+      const d = rows2.reduce((t, r) => t + (den(r) ?? 0), 0);
+      return n > 0 && d > 0 ? n / d : null;
+    };
+    set('eficAlim', ratio(abatidos, (r) => val(r, 'msTotal'), (r) => val(r, 'ganhoArroba')), 1);
+    set('convAlim', ratio(vendidos, (r) => val(r, 'msTotal'), (r) => (val(r, 'pvSaida') > 0 && val(r, 'pvEntrada') > 0 ? val(r, 'pvSaida') - val(r, 'pvEntrada') : null)), 2);
+    // Econômico.
+    set('valorEntradaCab', mean(rows, 'entrada'), 2);
+    set('freteCab', mean(rows, 'frete'), 2);
+    set('comissaoCab', mean(rows, 'comissao'), 2);
+    set('valorSaidaCab', mean(vendidos, 'receita', (v) => v > 0), 2);
+    set('custoTotalTrato', sum(rows, 'alimentar'), 2);
+    set('custoTotalManejo', sum(rows, 'alimentar', 'fixo'), 2);
+    const extra = sum(rows, 'sanidade', 'outros');
+    if (extra) set('custoTotalExtra', extra, 2);
+    set('custoTotalLote', sum(rows, 'total'), 2);
+    set('valorTotalVenda', sum(rows, 'receita'), 2);
+    return [l];
+  });
+  return { lotes, animais: animais.length - semLote, semLote, mortes: mortesTotal + soMortes.animais, soMortes, faltando };
+}
+
 // Ordem das colunas da planilha original (para colar do Excel / importar o arquivo).
 export const COLUNAS_ZOO = ZOO_FIELDS.filter((f) => f.col).sort((a, b) => colIndex(a.col) - colIndex(b.col));
 export const COLUNAS_ECO = [{ key: 'lote', col: 'A' }, ...ECO_FIELDS].sort((a, b) => colIndex(a.col) - colIndex(b.col));
