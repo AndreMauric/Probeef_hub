@@ -25,7 +25,7 @@ export function computeAlerts() {
 
   for (const c of usage.clients) {
     const client = clients.find((x) => x.id === c.id);
-    const people = users.filter((u) => u.role === 'client' && u.active && u.clientIds?.includes(c.id));
+    const people = users.filter((u) => u.role === 'client' && u.active && !u.bmkOnly && u.clientIds?.includes(c.id));
     if (!people.length) continue; // sem ninguém para acessar, não há o que cobrar
     const base = { clientId: c.id, client: c.name };
     if (c.health === 'inativo') {

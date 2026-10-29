@@ -353,7 +353,7 @@ export async function computeCcvAlerts(report, { refresh = false } = {}) {
     const severity = signals.some((s) => s.severity === 'alta') ? 'alta' : signals.length ? 'media' : 'ok';
     const clientIds = owners.map((c) => c.id);
     const recipients = users
-      .filter((u) => u.active && u.role === 'client' && u.clientIds.some((id) => clientIds.includes(id)))
+      .filter((u) => u.active && u.role === 'client' && !u.bmkOnly && u.clientIds.some((id) => clientIds.includes(id)))
       .filter((u) => !u.ccvFarms?.length || u.ccvFarms.includes(farm.name))
       .map((u) => ({ id: u.id, name: u.name, phone: u.phone || null }));
     out.push({

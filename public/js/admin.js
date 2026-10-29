@@ -183,6 +183,7 @@ function renderUsers() {
       u.bmkGestor ? ' · Gestor' : '',
       u.bmkCreateTeam ? ' (cria equipe)' : '',
       u.bmkValidator ? ' · Valida BMK' : '',
+      u.bmkOnly ? ' · só Benchmarking' : '',
       boss ? ` · responde a ${boss}` : '',
     );
     if (!names.length) return [h('span', { class: 'pill', title: 'Sem cliente vinculado: usa as ferramentas liberadas e, se for do Time ou de Canais, o Benchmarking pela equipe' }, u.kind === 'cliente' || !u.kind ? 'Só ferramentas' : 'Sem cliente vinculado'), bmk];
@@ -3836,6 +3837,7 @@ function userDialog(user) {
   const gestor = check(user?.bmkGestor, 'Gestor', 'Tem equipe e cria usuários de Canais e de Cliente Cargill na aba Equipe do Benchmarking. Time Cargill só o admin cria.');
   const createTeam = check(user?.bmkCreateTeam, 'Pode criar equipe', 'Pode tornar outras pessoas gestoras.');
   const validator = check(user?.bmkValidator, 'Valida o Benchmarking', 'Aprova ou devolve para correção as fazendas da equipe do gestor a quem responde (e da própria equipe, se for gestor).');
+  const bmkOnly = check(user?.bmkOnly, 'Só Benchmarking', 'Não acessa a plataforma (relatórios, CCV, 4M, 3P): só o Benchmarking das fazendas dele. Quem o gestor cria na aba Equipe já nasce assim.');
   const reportsField = field('Responde a', reportsTo, 'Gestor do Time Cargill. A pessoa e as fazendas dela entram na equipe desse gestor.');
   const bmkField = h(
     'fieldset',
@@ -3846,6 +3848,7 @@ function userDialog(user) {
     gestor.el,
     createTeam.el,
     validator.el,
+    bmkOnly.el,
   );
   const syncKind = () => {
     const k = kind.value;
@@ -3907,6 +3910,7 @@ function userDialog(user) {
           bmkGestor: gestor.box.checked,
           bmkCreateTeam: createTeam.box.checked,
           bmkValidator: validator.box.checked,
+          bmkOnly: bmkOnly.box.checked,
           active: active.checked,
         };
         const applyTools = async (saved) => {

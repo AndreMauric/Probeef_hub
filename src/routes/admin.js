@@ -907,9 +907,11 @@ function readUser(body, existing) {
       bmkGestor: cargill && Boolean(body.bmkGestor),
       bmkValidator: cargill && Boolean(body.bmkValidator),
       bmkCreateTeam: cargill && Boolean(body.bmkGestor) && Boolean(body.bmkCreateTeam),
+      // Só Benchmarking: sem relatórios, CCV nem ferramentas (ver userClients em src/auth.js).
+      bmkOnly: Boolean(body.bmkOnly),
     });
   } else {
-    Object.assign(user, { kind: undefined, reportsTo: null, bmkGestor: false, bmkValidator: false, bmkCreateTeam: false });
+    Object.assign(user, { kind: undefined, reportsTo: null, bmkGestor: false, bmkValidator: false, bmkCreateTeam: false, bmkOnly: false });
   }
   if (user.phone && (user.phone.length < 12 || user.phone.length > 15)) fail('Telefone inválido. Use DDD + número, ex.: (61) 99999-8888.');
   const phoneOwner = user.phone && db().users.find((u) => u.id !== existing?.id && samePhone(u.phone, user.phone));

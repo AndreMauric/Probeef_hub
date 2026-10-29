@@ -108,8 +108,13 @@ configurações (Admin → Benchmarking → "Ciclo, limites e listas"), com a ch
 - Cadastrar fazenda: admin e qualquer pessoa do Time (`canCreateFarm`). Criar login: só gestor e admin.
   **Canais não cria nada** (nem é gestor). **Cliente nunca cria usuário nem fazenda** — o antigo
   "gestor da empresa" (`isManager`, `/api/team`, "Minha equipe") foi removido.
+- Quem o gestor cria é **só Benchmarking** (`user.bmkOnly`): `userClients` devolve vazio, então não vê
+  relatórios, CCV, visões nem ferramentas (pedido de 4M/3P é recusado), não recebe alertas de relatório/CCV
+  e entra mesmo com a fazenda sendo cliente da plataforma. O admin marca/desmarca "Só Benchmarking".
+  Quem foi criado pela aba Equipe antes disso é marcado no `normalize` pela auditoria (`bmk-team.create`).
 - Gestor cria cliente só nas fazendas da equipe; edita/desativa/troca senha de quem está abaixo dele
-  e dos logins de cliente cujas fazendas estão todas no alcance dele (`managedBy`).
+  e dos logins de cliente **só Benchmarking** cujas fazendas estão todas no alcance dele (`managedBy`). Quem
+  também usa a plataforma só o admin desativa ou troca a senha.
 - Aba **Clientes** do `/benchmark` (admin, Time e Canais): andamento das fazendas e o responsável
   (o Time troca entre as pessoas da equipe, `PUT /api/benchmark/clients/:id/owner`).
 - Admin: perfil, "responde a" e poderes no cadastro do usuário; responsável no cadastro do cliente.

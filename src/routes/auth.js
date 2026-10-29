@@ -36,7 +36,7 @@ authRouter.post('/login', async (req, res) => {
   // Empresa desativada bloqueia quem é dela, a não ser que a pessoa tenha alguma ferramenta liberada.
   // Usuário sem cliente nenhum (só ferramentas) entra normalmente.
   const toolApproved = user.confinamento?.status === 'approved' || user.pasto?.status === 'approved';
-  if (user.role === 'client' && user.clientIds.length && !userClients(user).length && !toolApproved) {
+  if (user.role === 'client' && !user.bmkOnly && user.clientIds.length && !userClients(user).length && !toolApproved) {
     return res.status(403).json({ error: 'O acesso da sua empresa está desativado. Fale com o administrador.' });
   }
 

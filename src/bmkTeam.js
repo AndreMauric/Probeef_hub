@@ -9,6 +9,8 @@
 // em qualquer nível. Cada fazenda do benchmarking tem um responsável (client.bmkOwner: alguém do
 // Time ou de Canais) e é vista por ele e por quem está acima dele. Canais não cria nada: usa o
 // Benchmarking nas fazendas em que é responsável. O cliente nunca cria usuário nem fazenda.
+// Quem o gestor cria (Canais e Cliente) é "só Benchmarking" (user.bmkOnly): não acessa relatórios,
+// CCV nem ferramentas, mesmo que a fazenda também seja cliente da plataforma (ver userClients).
 // Por enquanto tudo isso vale só para o Benchmarking; relatórios e ferramentas seguem como antes.
 import { generatePassword, hashPassword } from './auth.js';
 import { db, newId, save } from './store.js';
@@ -90,7 +92,8 @@ function managedBy(user, farmIds) {
   return db().users.filter((u) => {
     if (u.role === 'admin' || u.id === user.id) return false;
     if (isInternal(u)) return user.role === 'admin' || team.has(u.id);
-    return u.clientIds.length > 0 && u.clientIds.every((id) => farmIds.has(id));
+    // Logins de cliente da plataforma (com relatórios) são do admin; o gestor cuida dos do Benchmarking.
+    return Boolean(u.bmkOnly) && u.clientIds.length > 0 && u.clientIds.every((id) => farmIds.has(id));
   });
 }
 
@@ -104,6 +107,7 @@ const publicMember = (u) => ({
   bmkValidator: Boolean(u.bmkValidator),
   clientIds: u.clientIds,
   active: u.active,
+  bmkOnly: Boolean(u.bmkOnly),
   lastLoginAt: u.lastLoginAt || null,
 });
 
@@ -177,6 +181,7 @@ export async function createMember(user, body, farms) {
     ccvFarms: [],
     bmkValidator: false,
     bmkCreateTeam: false,
+    bmkOnly: true,
     ...fields,
     confinamento: { status: 'none', requestedAt: null, decidedAt: null },
     pasto: { status: 'none', requestedAt: null, decidedAt: null },
@@ -206,6 +211,8 @@ export async function updateMember(user, id, body, farms) {
   const { member, farmIds } = memberOr404(user, id, farms);
   const fields = readMember(user, { ...body, kind: body.kind || kindOf(member) }, farmIds, member);
   const active = body.active !== false;
+  // Quem também usa a plataforma (cadastrado pelo admin) só o admin desativa.
+  if (active !== member.active && !member.bmkOnly && user.role !== 'admin') throw new TeamError('Esta pessoa também usa a plataforma: só o administrador pode desativá-la.', 403);
   if (active !== member.active) member.sessionVersion = (member.sessionVersion || 1) + 1;
   Object.assign(member, fields, { active });
   audit(user, 'bmk-team.update', member.id);
@@ -216,6 +223,7 @@ export async function updateMember(user, id, body, farms) {
 export async function resetMemberPassword(user, id, farms) {
   if (!isGestor(user)) throw new TeamError('Só gestores do Time Cargill administram equipe.', 403);
   const { member } = memberOr404(user, id, farms);
+  if (!member.bmkOnly && user.role !== 'admin') throw new TeamError('Esta pessoa também usa a plataforma: só o administrador troca a senha dela.', 403);
   const password = generatePassword();
   member.passwordHash = await hashPassword(password);
   member.mustChangePassword = true;

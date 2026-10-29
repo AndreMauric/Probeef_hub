@@ -1890,7 +1890,7 @@ function memberDialog(team, member) {
   const kind = h('select', {}, kinds.map(([k, t]) => h('option', { value: k, selected: (member?.kind || 'cliente') === k }, t)));
   const reportsTo = h('select', {}, team.gestores.map((g) => h('option', { value: g.id, selected: g.id === (member?.reportsTo || team.me.id) }, g.id === team.me.id ? `${g.name} (você)` : g.name)));
   const gestor = h('input', { type: 'checkbox', checked: Boolean(member?.bmkGestor), disabled: !team.canCreateTeam });
-  const active = h('input', { type: 'checkbox', checked: member ? member.active : true });
+  const active = h('input', { type: 'checkbox', checked: member ? member.active : true, disabled: Boolean(member && !member.bmkOnly) });
   const farmBoxes = team.farms.map((f) => ({ f, box: h('input', { type: 'checkbox', value: f.id, checked: Boolean(member?.clientIds.includes(f.id)) }) }));
   const reportsField = h('label', { class: 'bmk-field' }, h('span', {}, 'Responde a'), reportsTo);
   const gestorField = h('label', { class: 'check bmk-check' }, gestor, h('span', {}, h('strong', {}, 'Gestor'), ' — tem equipe e cria usuários.', team.canCreateTeam ? '' : ' (só quem pode criar equipe marca isso)'));
@@ -1999,8 +1999,8 @@ async function renderTeam() {
       h('td', {}, h('span', { style: `padding-left: ${depth * 18}px` }, depth ? '└ ' : '', h('strong', {}, m.name)), h('small', { class: 'muted bmk-sub' }, m.email)),
       h('td', {}, KIND_LABEL[m.kind], m.bmkGestor ? ' · Gestor' : '', m.bmkValidator ? ' · Valida' : ''),
       h('td', {}, m.kind === 'cliente' ? m.clientIds.map((id) => farmNames.get(id)).filter(Boolean).join(', ') || '—' : names.get(m.reportsTo) || '—'),
-      h('td', {}, m.active ? 'Ativo' : 'Desativado', h('small', { class: 'muted bmk-sub' }, m.lastLoginAt ? `último acesso ${fmtDateTime(m.lastLoginAt)}` : 'nunca entrou')),
-      h('td', { class: 'bmk-actions' }, readOnly ? null : [h('button', { class: 'btn btn-sm', type: 'button', onclick: () => memberDialog(team, m) }, 'Editar'), ' ', h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => resetPassword(m) }, 'Nova senha')]),
+      h('td', {}, m.active ? 'Ativo' : 'Desativado', m.bmkOnly ? null : h('small', { class: 'muted bmk-sub' }, 'também usa a plataforma'), h('small', { class: 'muted bmk-sub' }, m.lastLoginAt ? `último acesso ${fmtDateTime(m.lastLoginAt)}` : 'nunca entrou')),
+      h('td', { class: 'bmk-actions' }, readOnly ? null : [h('button', { class: 'btn btn-sm', type: 'button', onclick: () => memberDialog(team, m) }, 'Editar'), ' ', m.bmkOnly ? h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => resetPassword(m) }, 'Nova senha') : null]),
     );
   const table = (title, rows, empty) =>
     h(
@@ -2024,7 +2024,7 @@ async function renderTeam() {
       'div',
       { class: 'bmk-toolbar' },
       readOnly ? null : h('button', { class: 'btn btn-sm btn-primary', type: 'button', onclick: () => memberDialog(team, null) }, '+ Novo usuário'),
-      h('p', { class: 'muted' }, 'Você cria usuários de Canais Cargill e os logins dos clientes das fazendas da sua equipe. Pessoas do Time Cargill são cadastradas pelo administrador.', team.canCreateTeam ? ' Também pode tornar alguém gestor.' : ''),
+      h('p', { class: 'muted' }, 'Você cria usuários de Canais Cargill e os logins dos clientes das fazendas da sua equipe, só para o Benchmarking (não acessam relatórios nem ferramentas da plataforma). Pessoas do Time Cargill são cadastradas pelo administrador.', team.canCreateTeam ? ' Também pode tornar alguém gestor.' : ''),
     ),
     table('Equipe Cargill', ordered, 'Ninguém responde a você ainda.'),
     table('Clientes', clientes.map((m) => [m, 0]), 'Nenhum login de cliente nas fazendas da sua equipe.'),

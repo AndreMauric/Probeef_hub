@@ -89,8 +89,11 @@ export function clearFailedLogins(key) {
   attempts.delete(key);
 }
 
-// Clientes ativos aos quais o usuário tem acesso, em ordem alfabética.
+// Clientes ativos aos quais o usuário tem acesso, em ordem alfabética. Usuário "só Benchmarking"
+// (bmkOnly, criado por um gestor na aba Equipe) não tem acesso à plataforma: nenhum relatório,
+// painel CCV ou visão; as fazendas dele valem só no Benchmarking (src/benchmark.js usa clientIds).
 export function userClients(user) {
+  if (user.bmkOnly) return [];
   const ids = new Set(user.clientIds || []);
   return db()
     .clients.filter((c) => ids.has(c.id) && c.active)
@@ -109,5 +112,6 @@ export function publicUser(user, impersonator = null) {
     mustChangePassword: Boolean(user.mustChangePassword),
     // Perfil no Benchmarking (src/bmkTeam.js).
     kind: user.role === 'admin' ? 'admin' : user.kind || 'cliente',
+    bmkOnly: user.role !== 'admin' && Boolean(user.bmkOnly),
   };
 }

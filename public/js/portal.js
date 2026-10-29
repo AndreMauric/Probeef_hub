@@ -204,6 +204,8 @@ async function requestTool(tool) {
 }
 
 function toolsSection() {
+  // Usuário só do Benchmarking não vê as ferramentas da plataforma.
+  if (me.bmkOnly) return null;
   return h(
     'section',
     { class: 'home-group' },
@@ -792,8 +794,8 @@ async function init() {
   // Usuário sem cliente (só ferramentas): sem a lista de relatórios e com o título das ferramentas.
   if (me.role !== 'admin' && !clients.length && !reports.length) {
     document.querySelector('.portal').classList.add('tools-only');
-    document.getElementById('home-title').textContent = 'Suas ferramentas';
-    document.querySelector('#home .home-head .muted').textContent = 'Escolha uma ferramenta para abrir.';
+    document.getElementById('home-title').textContent = me.bmkOnly ? 'Benchmarking' : 'Suas ferramentas';
+    document.querySelector('#home .home-head .muted').textContent = me.bmkOnly ? 'Abra o Benchmarking para preencher e acompanhar a coleta.' : 'Escolha uma ferramenta para abrir.';
   }
 
   // Sem relatórios, a tela inicial ainda mostra as ferramentas (4M, 3P), que têm acesso próprio.
