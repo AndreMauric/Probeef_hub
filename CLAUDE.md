@@ -55,7 +55,7 @@ Esse é o padrão pra adicionar a próxima ferramenta:
    se aparecer uma terceira. Administradores sempre têm acesso, sem pedir. Usuário pode não ter
    cliente nenhum ("Só ferramentas"): entra, vê só os cards das ferramentas (sem a lista de
    relatórios) e usa as que o admin liberou — no formulário de usuário, "Ferramentas liberadas"
-   aprova direto. Gestor da empresa precisa de cliente; cliente desativado só bloqueia o login de
+   aprova direto. Cliente desativado só bloqueia o login de
    quem não tem nenhuma ferramenta liberada.
 2. **Front-end estático** em `public/<nome>/`, com seu próprio `index.html`/`app.js`. Gate de
    acesso em `server.js` (`app.use('/<nome>', middleware-de-sessão, express.static(...))`) —
@@ -87,11 +87,37 @@ essa conferência. No portal e no admin, as ferramentas já são listas (`TOOL_C
 é gerado no navegador com `exceljs` (`/vendor/exceljs.min.js`) e o relatório é uma página para
 imprimir/salvar em PDF (`@media print`).
 
-### Benchmarking Confinamento (coleta com validação)
+### Benchmarking (coleta com validação)
 
 Substitui a coleta pela planilha "Benchmarking Confinamento Probeef 2026 Feed Manager.xlsb"
-(`Documentos\`). Não usa pedido de acesso: o admin marca `client.benchmark` e os usuários desse
-cliente veem o card. Página `/benchmark` (`public/benchmark/`), API `/api/benchmark`
+(`Documentos\`). **Não é uma ferramenta**: tem seção própria no portal ("Benchmarking", acima de
+Ferramentas) e não usa pedido de acesso. O nome não leva o ano: o **ciclo** é o `ano` das
+configurações (Admin → Benchmarking → "Ciclo, limites e listas"), com a chave **coleta aberta**
+(`settings.aberta`; fechada = só o admin cadastra fazenda, altera ou envia — `assertAberta`).
+
+**Equipes e acessos (só no Benchmarking, por enquanto; `src/bmkTeam.js`)**:
+- Perfil `user.kind`: `cliente` (Cliente Cargill, a fazenda), `cargill` (Time Cargill) ou `canal`
+  (Canais Cargill). Poderes, só do Time: `bmkGestor` (cria usuários Time/Canais/Cliente na aba
+  **Equipe** do `/benchmark`), `bmkCreateTeam` (pode tornar alguém gestor) e `bmkValidator`.
+- `user.reportsTo` aponta para um gestor; a equipe de alguém é todo mundo abaixo dele, em qualquer
+  nível (`teamIds`; ciclo na árvore é recusado em `checkReportsTo`).
+- Cada fazenda tem um responsável `client.bmkOwner` (Time ou Canais). Time e Canais veem as fazendas
+  cujo responsável está no alcance deles (`ownerScope`: a própria pessoa e a equipe; **quem valida
+  soma a equipe do gestor direto**), mais as vinculadas por `clientIds` (legado). Cliente vê só as
+  dele (`clientIds`). Admin vê todas.
+- Cadastrar fazenda: admin e qualquer pessoa do Time (`canCreateFarm`). Criar login: só gestor e admin.
+  **Canais não cria nada** (nem é gestor). **Cliente nunca cria usuário nem fazenda** — o antigo
+  "gestor da empresa" (`isManager`, `/api/team`, "Minha equipe") foi removido.
+- Gestor cria cliente só nas fazendas da equipe; edita/desativa/troca senha de quem está abaixo dele
+  e dos logins de cliente cujas fazendas estão todas no alcance dele (`managedBy`).
+- Aba **Clientes** do `/benchmark` (admin, Time e Canais): andamento das fazendas e o responsável
+  (o Time troca entre as pessoas da equipe, `PUT /api/benchmark/clients/:id/owner`).
+- Admin: perfil, "responde a" e poderes no cadastro do usuário; responsável no cadastro do cliente.
+- Usuários antigos sem perfil: Time Cargill se já validavam, senão Cliente Cargill (`normalize`).
+- Teste das regras: script com 32 verificações (gestor, validador, Canais, cliente, coleta fechada) —
+  se mexer em `bmkTeam.js`/`participantClients`, refaça algo equivalente contra o servidor local.
+
+O admin marca `client.benchmark` (ou o Time cadastra a fazenda já participando). Página `/benchmark` (`public/benchmark/`), API `/api/benchmark`
 (`src/routes/benchmark.js`), regras em `src/benchmark.js`; rotas só de admin em `admin.js`.
 
 - `public/benchmark/fields.js` é a fonte única das regras — campos dos lotes (com a letra da
@@ -102,16 +128,12 @@ cliente veem o card. Página `/benchmark` (`public/benchmark/`), API `/api/bench
   RECRIA). É importado pelo navegador e pelo servidor (Node importa de `public/`).
 - Dados: `db().bmkSubmissions` (um por cliente por ano; `version` evita sobrescrever o trabalho
   de outra pessoa) e `db().bmkSettings` (limites e listas, editáveis no admin). Fluxo
-  rascunho → enviado → correção/aprovado; devolver/aprovar avisa os usuários pelo chat.
-  **Validadores**: usuário com `bmkValidator` (caixa "Valida o Benchmarking" no cadastro; precisa
-  de cliente) aprova/devolve/reabre como o admin, mas **só nos clientes vinculados a ele**
-  (`clientIds`) — só o admin vê todos. Tem a aba "Clientes" na própria página `/benchmark`
-  (`GET /api/benchmark/overview`, a lista do admin filtrada pelos clientes dele). A tela usa
-  `view.access` ({edit, review}) vindo do servidor para mostrar os botões.
-  Quem valida também **cadastra clientes só para o benchmarking** ("+ Cadastrar cliente" na aba
-  Clientes; `POST /api/benchmark/clients`, `createClientFor`): o cliente nasce com `benchmark: true`,
-  sem relatórios, `createdVia: 'benchmark'` e `createdBy`, e já vinculado a quem cadastrou. Nome
-  repetido (sem acento/maiúsculas) é recusado. Os logins da fazenda continuam com o admin.
+  rascunho → enviado → correção/aprovado; devolver/aprovar avisa os logins de cliente pelo chat.
+  **Validadores** (Time Cargill com `bmkValidator`) aprovam/devolvem/reabrem como o admin nas
+  fazendas que enxergam (ver Equipes acima). A tela usa `view.access` ({edit, review}) vindo do
+  servidor para mostrar os botões. "+ Cadastrar fazenda" (`POST /api/benchmark/clients`,
+  `createClientFor`): nasce com `benchmark: true`, sem relatórios, `createdVia: 'benchmark'`,
+  `createdBy` e `bmkOwner`. Nome repetido (sem acento/maiúsculas) é recusado.
 - **Métricas do processo** (Admin → Benchmarking → Métricas do processo; projeto DMAIC):
   `src/benchmarkMetrics.js` junta o histórico do envio (`sub.messages`: enviado/devolver/aprovar,
   o envio guarda um `snapshot` da validação), as sessões de trabalho (`sub.metrics.sessions`,

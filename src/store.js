@@ -10,8 +10,12 @@ const empty = () => ({ users: [], clients: [], reports: [], images: [], categori
 // Usuários antigos tinham um único "clientId"; hoje cada usuário tem uma lista "clientIds".
 function normalize(raw) {
   const next = { ...empty(), ...raw };
-  next.users = next.users.map(({ clientId, ...user }) => ({
+  // "Gestor da empresa" (isManager) deixou de existir: só o admin e os gestores do Time Cargill
+  // criam usuários (src/bmkTeam.js). Perfil (kind) de quem não tem: Time Cargill se já validava o
+  // benchmarking, senão Cliente Cargill.
+  next.users = next.users.map(({ clientId, isManager, ...user }) => ({
     ...user,
+    ...(user.role === 'admin' ? {} : { kind: ['cliente', 'cargill', 'canal'].includes(user.kind) ? user.kind : user.bmkValidator ? 'cargill' : 'cliente' }),
     clientIds: Array.isArray(user.clientIds) ? user.clientIds : clientId ? [clientId] : [],
     // Acesso à calculadora 4M Confinamento: pedido e aprovação, como o acesso a um relatório.
     confinamento: user.confinamento || { status: 'none', requestedAt: null, decidedAt: null },

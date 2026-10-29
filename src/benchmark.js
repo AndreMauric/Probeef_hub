@@ -4,11 +4,14 @@
 // editáveis pelo admin: db().bmkSettings (o padrão é o da aba Configurações da planilha).
 //
 // Fluxo: rascunho → enviado → (correcao ↔ enviado) → aprovado. O cliente edita em rascunho e
-// correcao; o admin pode editar sempre e reabrir um aprovado. Validadores (user.bmkValidator,
-// marcado no cadastro do usuário) aprovam/devolvem/reabrem como o admin, mas só nos clientes
-// vinculados a eles. Só o admin vê todos os participantes.
+// correcao; o admin pode editar sempre e reabrir um aprovado. Validadores (user.bmkValidator, do
+// Time Cargill) aprovam/devolvem/reabrem como o admin, nas fazendas que enxergam pela equipe.
+// Quem vê o quê (perfis, gestores, "responde a", responsável pela fazenda): src/bmkTeam.js.
+// O ciclo é o "ano" das configurações; com a coleta fechada (settings.aberta = false) ninguém além
+// do admin cadastra fazenda nem altera ou envia dados.
 import { adminSend, userSend } from './chat.js';
 import { cleanAnswer, cleanLote, editableStatus, mergeSettings, QUESTIONS, validateLotes, validateQuestionario } from '../public/benchmark/fields.js';
+import { canCreateFarm, isInternal, kindOf, ownerCandidates, ownerScope } from './bmkTeam.js';
 import { db, newId, save } from './store.js';
 
 const MAX_LOTES = 2000;
@@ -22,18 +25,25 @@ class BenchmarkError extends Error {
 
 export const settings = () => mergeSettings(db().bmkSettings || {});
 
-export const isValidator = (user) => user.role === 'admin' || Boolean(user.bmkValidator);
+export const isValidator = (user) => user.role === 'admin' || (kindOf(user) === 'cargill' && Boolean(user.bmkValidator));
 
-// Clientes do benchmarking que o usuário pode abrir (admin: todos os participantes; os demais,
-// inclusive quem valida, só os clientes vinculados a eles).
+// Fazendas do benchmarking que o usuário pode abrir. Admin: todas. Cliente: as vinculadas a ele.
+// Time e Canais: as que têm como responsável alguém do alcance dele (ownerScope), mais as
+// vinculadas diretamente no cadastro (como era antes das equipes).
 export function participantClients(user) {
   const list = db().clients.filter((c) => c.benchmark && c.active !== false);
   if (user.role === 'admin') return list;
-  return list.filter((c) => user.clientIds?.includes(c.id));
+  const scope = isInternal(user) ? ownerScope(user) : null;
+  return list.filter((c) => user.clientIds?.includes(c.id) || (scope && c.bmkOwner && scope.has(c.bmkOwner)));
 }
 
-// Quem valida entra mesmo sem cliente ainda (para cadastrar o primeiro).
-export const canUseBenchmark = (user) => isValidator(user) || participantClients(user).length > 0;
+// O Time Cargill entra mesmo sem fazenda ainda (para cadastrar a primeira).
+export const canUseBenchmark = (user) => canCreateFarm(user) || participantClients(user).length > 0;
+
+export const coletaAberta = () => settings().aberta !== false;
+function assertAberta(user) {
+  if (user.role !== 'admin' && !coletaAberta()) throw new BenchmarkError(`A coleta do Benchmarking ${settings().ano} está fechada.`, 409);
+}
 
 function clientOr404(user, clientId) {
   const client = participantClients(user).find((c) => c.id === clientId);
@@ -129,7 +139,7 @@ function view(user, client, sub) {
   const status = sub?.status || 'rascunho';
   return {
     // O que este usuário pode fazer aqui (a tela esconde os botões; as rotas conferem de novo).
-    access: { edit: user.role === 'admin' || editableStatus(status), review: isValidator(user) },
+    access: { edit: user.role === 'admin' || (coletaAberta() && editableStatus(status)), review: isValidator(user) },
     client: { id: client.id, name: client.name },
     // sub.metrics (sessões de trabalho de cada pessoa) é só para o admin: fica fora da tela.
     submission: sub
@@ -170,6 +180,7 @@ function cleanLotes(list, label) {
 // Salva o rascunho. version evita que duas pessoas sobrescrevam o trabalho uma da outra.
 export async function saveDraft(user, clientId, body = {}) {
   const client = clientOr404(user, clientId);
+  assertAberta(user);
   const sub = submissionOf(clientId, { create: true });
   if (user.role !== 'admin' && !editableStatus(sub.status)) throw new BenchmarkError('Este benchmarking já foi enviado e está travado para edição.', 409);
   if (Number(body.version) !== sub.version) throw new BenchmarkError('Outra pessoa salvou alterações neste benchmarking. Recarregue a página para ver a versão mais nova.', 409);
@@ -193,6 +204,7 @@ export async function saveDraft(user, clientId, body = {}) {
 const CLEAR_PARTS = { engorda: 'lotes de engorda', recria: 'lotes de recria', respostas: 'questionário' };
 export async function clearDraft(user, clientId, { version, parts } = {}) {
   const client = clientOr404(user, clientId);
+  assertAberta(user);
   const sub = submissionOf(clientId, { create: true });
   if (user.role !== 'admin' && !editableStatus(sub.status)) throw new BenchmarkError('Este benchmarking já foi enviado e está travado para edição.', 409);
   if (Number(version) !== sub.version) throw new BenchmarkError('Outra pessoa salvou alterações neste benchmarking. Recarregue a página para ver a versão mais nova.', 409);
@@ -215,6 +227,7 @@ function log(sub, user, action, text = '', extra = {}) {
 // Cliente envia para a Cargill validar: sem erros e com o questionário obrigatório respondido.
 export async function submit(user, clientId, { text, impersonating = false } = {}) {
   const client = clientOr404(user, clientId);
+  assertAberta(user);
   const sub = submissionOf(clientId);
   if (!sub) throw new BenchmarkError('Preencha os dados antes de enviar.');
   if (!editableStatus(sub.status)) throw new BenchmarkError('Este benchmarking já foi enviado.', 409);
@@ -231,7 +244,7 @@ export async function submit(user, clientId, { text, impersonating = false } = {
   await save();
   // Avisa a equipe pelas Mensagens do portal (não quando é o admin "entrando como").
   if (user.role === 'client' && !impersonating) {
-    await userSend(user, { text: `Enviei o Benchmarking Confinamento ${sub.ano} de ${client.name} para validação.${text ? `\n\n${text}` : ''}` }).catch(() => {});
+    await userSend(user, { text: `Enviei o Benchmarking ${sub.ano} de ${client.name} para validação.${text ? `\n\n${text}` : ''}` }).catch(() => {});
   }
   return view(user, client, sub);
 }
@@ -251,37 +264,52 @@ export async function review(admin, clientId, { action, text }) {
   log(sub, admin, action, text);
   // Quem preenche fica sabendo pelo botão Mensagens do portal, com o link da ferramenta.
   const aviso = {
-    devolver: `O Benchmarking Confinamento ${sub.ano} de ${client.name} voltou para correção:\n\n${String(text).trim()}`,
-    aprovar: `O Benchmarking Confinamento ${sub.ano} de ${client.name} foi aprovado. Obrigado pelo envio!${text ? `\n\n${String(text).trim()}` : ''}`,
-    reabrir: `O Benchmarking Confinamento ${sub.ano} de ${client.name} foi reaberto para edição.${text ? `\n\n${String(text).trim()}` : ''}`,
+    devolver: `O Benchmarking ${sub.ano} de ${client.name} voltou para correção:\n\n${String(text).trim()}`,
+    aprovar: `O Benchmarking ${sub.ano} de ${client.name} foi aprovado. Obrigado pelo envio!${text ? `\n\n${String(text).trim()}` : ''}`,
+    reabrir: `O Benchmarking ${sub.ano} de ${client.name} foi reaberto para edição.${text ? `\n\n${String(text).trim()}` : ''}`,
   }[action];
-  const people = db().users.filter((u) => u.role === 'client' && u.active && u.clientIds?.includes(clientId));
+  const people = db().users.filter((u) => u.role === 'client' && kindOf(u) === 'cliente' && u.active && u.clientIds?.includes(clientId));
   for (const u of people) await adminSend(admin, u.id, { text: aviso, origin: { type: 'benchmark', action } }, { persist: false });
   await save();
   return view(admin, client, sub);
 }
 
-// Quem valida pode cadastrar um cliente só para o benchmarking: entra participando, sem relatórios,
-// e já vinculado a quem cadastrou (que passa a vê-lo e validá-lo). Os logins da fazenda continuam
-// com o admin. Nome repetido é recusado para não duplicar um cliente que já existe.
+// O Time Cargill (e o admin) cadastra fazendas só para o benchmarking: entram participando, sem
+// relatórios. O responsável é quem cadastrou ou alguém da equipe dele (pode ser de Canais).
+// Canais e clientes não cadastram. Os logins da fazenda são criados pelos gestores (aba Equipe).
+// Nome repetido é recusado para não duplicar um cliente que já existe.
 const foldName = (t) => String(t || '').normalize('NFD').replace(/\p{M}/gu, '').replace(/\s+/g, ' ').trim().toLowerCase();
-export async function createClientFor(user, { name } = {}) {
-  if (!isValidator(user)) throw new BenchmarkError('Só quem valida o benchmarking pode cadastrar clientes.', 403);
+function ownerFor(user, ownerId) {
+  const id = ownerId || (user.role === 'admin' ? null : user.id);
+  if (!id) return null;
+  if (!ownerCandidates(user).some((u) => u.id === id)) throw new BenchmarkError('O responsável precisa ser você ou alguém da sua equipe (Time ou Canais Cargill).', 403);
+  return id;
+}
+
+export async function createClientFor(user, { name, ownerId } = {}) {
+  if (!canCreateFarm(user)) throw new BenchmarkError('Só o Time Cargill cadastra fazendas no benchmarking.', 403);
+  assertAberta(user);
   const nome = String(name || '').replace(/\s+/g, ' ').trim().slice(0, 120);
   if (nome.length < 3) throw new BenchmarkError('Informe o nome do cliente (empresa + unidade do confinamento).');
   const data = db();
-  if (data.clients.some((c) => foldName(c.name) === foldName(nome))) throw new BenchmarkError('Já existe um cliente com esse nome no portal. Se é o mesmo, peça ao admin para vincular você a ele.', 409);
-  const client = { id: newId(), name: nome, rlsUsername: '', rlsRoles: [], reportIds: [], active: true, tagIds: [], ccvFarms: [], benchmark: true, createdBy: user.id, createdVia: 'benchmark', createdAt: new Date().toISOString() };
+  if (data.clients.some((c) => foldName(c.name) === foldName(nome))) throw new BenchmarkError('Já existe um cliente com esse nome no portal. Se é o mesmo, peça ao admin para incluí-lo na sua equipe.', 409);
+  const client = { id: newId(), name: nome, rlsUsername: '', rlsRoles: [], reportIds: [], active: true, tagIds: [], ccvFarms: [], benchmark: true, bmkOwner: ownerFor(user, ownerId), createdBy: user.id, createdVia: 'benchmark', createdAt: new Date().toISOString() };
   data.clients.push(client);
-  // Admin já vê todos os participantes; quem valida passa a ter o cliente na lista dele.
-  const owner = data.users.find((u) => u.id === user.id);
-  if (owner && owner.role !== 'admin') owner.clientIds = [...new Set([...(owner.clientIds || []), client.id])];
   await save();
   return { id: client.id, name: client.name };
 }
 
-// Andamento dos clientes participantes: todos para o admin; para quem valida, os clientes dele
-// (clientIds) que estão ativos.
+// Troca o responsável de uma fazenda que a pessoa enxerga (Time Cargill e admin).
+export async function setOwner(user, clientId, { ownerId } = {}) {
+  if (!canCreateFarm(user)) throw new BenchmarkError('Só o Time Cargill define o responsável pela fazenda.', 403);
+  const client = clientOr404(user, clientId);
+  client.bmkOwner = ownerFor(user, ownerId);
+  await save();
+  return { id: client.id, bmkOwner: client.bmkOwner };
+}
+
+// Andamento dos clientes participantes: todos para o admin; para os demais, as fazendas que
+// enxergam (participantClients).
 export function adminList({ clientIds = null } = {}) {
   const ano = settings().ano;
   return db()
@@ -292,6 +320,8 @@ export function adminList({ clientIds = null } = {}) {
         clientId: c.id,
         client: c.name,
         active: c.active !== false,
+        ownerId: c.bmkOwner || null,
+        owner: userName(c.bmkOwner),
         status: sub?.status || 'nao_iniciado',
         updatedAt: sub?.updatedAt || null,
         updatedBy: userName(sub?.updatedBy),
@@ -326,6 +356,7 @@ export async function saveSettings(body = {}) {
     if (!(ano >= 2020 && ano <= 2100)) throw new BenchmarkError('Ano inválido.');
     next.ano = ano;
   }
+  if (body.aberta !== undefined) next.aberta = body.aberta !== false;
   if (body.prazo !== undefined) next.prazo = /^\d{4}-\d{2}-\d{2}$/.test(body.prazo || '') ? body.prazo : null;
   if (body.tolerancias) for (const k of Object.keys(cur.tolerancias)) next.tolerancias[k] = Math.max(0, numOr(body.tolerancias[k], cur.tolerancias[k]));
   if (body.faixas) {

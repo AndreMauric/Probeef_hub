@@ -1392,3 +1392,60 @@
     print-color-adjust: exact;
   }
 }
+
+/* Clientes: responsável pela fazenda; Equipe (gestores) */
+.bmk-owner {
+  max-width: 220px;
+  font-size: 13px;
+}
+
+.bmk-team-block {
+  display: grid;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.bmk-team-block h3 {
+  margin: 0;
+  font: 600 14px/1.2 var(--font-ui);
+  color: var(--muted);
+}
+
+.bmk-toolbar > p {
+  margin: 0;
+}
+
+.bmk-row-off td {
+  opacity: 0.55;
+}
+
+.bmk-actions {
+  white-space: nowrap;
+}
+
+.bmk-checklist {
+  display: grid;
+  gap: 6px;
+  max-height: 220px;
+  overflow: auto;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-weight: 400;
+}
+
+.bmk-checklist .check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.bmk-password {
+  font: 600 16px/1.4 var(--font-data);
+  user-select: all;
+}
+
+.bmk-team-block .bmk-grid-wrap {
+  min-height: 0;
+  max-height: none;
+}

@@ -16,6 +16,9 @@ const matches = (searchId, ...fields) => {
 
 // ---------- Diálogos ----------
 
+// Perfis de usuário no Benchmarking (os mesmos de KINDS em src/bmkTeam.js).
+const KIND_LABEL = { cliente: 'Cliente Cargill', cargill: 'Time Cargill', canal: 'Canais Cargill' };
+
 function field(label, input, hint) {
   return h('label', { class: 'field' }, h('span', {}, label), input, hint ? h('small', {}, hint) : null);
 }
@@ -171,14 +174,20 @@ function renderUsers() {
   const access = (u) => {
     if (u.role === 'admin') return h('span', { class: 'pill pill-accent' }, 'Administrador');
     const names = clientNames(u);
-    const validator = u.bmkValidator ? h('span', { class: 'pill pill-accent', style: 'margin-left: 6px', title: 'Aprova ou devolve o Benchmarking dos clientes dele' }, 'Valida BMK') : null;
-    if (!names.length) return [h('span', { class: 'pill', title: 'Sem cliente: usa só as ferramentas liberadas' }, 'Só ferramentas'), validator];
+    // Perfil e poderes no Benchmarking (ver src/bmkTeam.js).
+    const boss = u.reportsTo ? state.users.find((x) => x.id === u.reportsTo)?.name : null;
+    const bmk = h(
+      'span',
+      { class: 'sub' },
+      KIND_LABEL[u.kind || 'cliente'],
+      u.bmkGestor ? ' · Gestor' : '',
+      u.bmkCreateTeam ? ' (cria equipe)' : '',
+      u.bmkValidator ? ' · Valida BMK' : '',
+      boss ? ` · responde a ${boss}` : '',
+    );
+    if (!names.length) return [h('span', { class: 'pill', title: 'Sem cliente vinculado: usa as ferramentas liberadas e, se for do Time ou de Canais, o Benchmarking pela equipe' }, u.kind === 'cliente' || !u.kind ? 'Só ferramentas' : 'Sem cliente vinculado'), bmk];
     const shown = names.slice(0, 2).join(', ');
-    return [
-      h('span', { title: names.join(', ') }, names.length > 2 ? `${shown} +${names.length - 2}` : shown),
-      u.isManager ? h('span', { class: 'pill pill-accent', style: 'margin-left: 6px' }, 'Gestor') : null,
-      validator,
-    ];
+    return [h('span', { title: names.join(', ') }, names.length > 2 ? `${shown} +${names.length - 2}` : shown), bmk];
   };
   table(
     document.getElementById('users-table'),
@@ -1054,7 +1063,7 @@ async function copyDigest() {
   }
 }
 
-// ---------- Benchmarking Confinamento ----------
+// ---------- Benchmarking ----------
 
 const BMK_STATUS = {
   nao_iniciado: ['Não iniciado', 'pill'],
@@ -1087,13 +1096,14 @@ function renderBenchmark() {
   const tableEl = h('table');
   table(
     tableEl,
-    ['Cliente', 'Situação', 'Lotes', 'Erros / alertas', 'Questionário', 'Última alteração', ''],
+    ['Cliente', 'Responsável', 'Situação', 'Lotes', 'Erros / alertas', 'Questionário', 'Última alteração', ''],
     clients.map((c) => {
       const [label, cls] = BMK_STATUS[c.status] || BMK_STATUS.nao_iniciado;
       return h(
         'tr',
         {},
         h('td', {}, h('strong', {}, c.client), c.active ? null : h('span', { class: 'sub' }, 'cliente desativado')),
+        h('td', {}, c.owner || h('span', { class: 'muted' }, '—')),
         h('td', {}, h('span', { class: cls }, label), c.submittedAt ? h('span', { class: 'sub' }, `enviado ${fmtDate(c.submittedAt)}`) : null),
         h('td', { class: 'mono' }, `${c.lotesEngorda} eng. · ${c.lotesRecria} rec.`),
         h('td', {}, c.erros ? h('span', { class: 'pill pill-danger' }, `${c.erros} erros`) : h('span', { class: 'muted' }, '0 erros'), ' ', c.alertas ? h('span', { class: 'pill pill-warn' }, `${c.alertas} alertas`) : null),
@@ -1102,13 +1112,13 @@ function renderBenchmark() {
         h('td', { class: 'actions' }, h('a', { class: `btn btn-sm${c.status === 'enviado' ? ' btn-primary' : ' btn-ghost'}`, href: `/benchmark?cliente=${c.clientId}`, target: '_blank', rel: 'noopener' }, c.status === 'enviado' ? 'Validar' : 'Abrir')),
       );
     }),
-    'Nenhum cliente no benchmarking. Em Clientes → Editar, marque "Participa do Benchmarking Confinamento".',
+    'Nenhum cliente no benchmarking. Em Clientes → Editar, marque "Participa do Benchmarking".',
   );
   box.replaceChildren(
     h(
       'div',
       { class: 'stats' },
-      statTile(`Clientes no benchmarking ${settings.ano}`, num(clients.length), settings.prazo ? h('span', { class: 'muted' }, `prazo ${fmtDateOnly(`${settings.prazo}T12:00:00`)}`) : null),
+      statTile(`Clientes no ciclo ${settings.ano}`, num(clients.length), h('span', { class: 'muted' }, settings.aberta === false ? 'coleta fechada' : 'coleta aberta', settings.prazo ? ` · prazo ${fmtDateOnly(`${settings.prazo}T12:00:00`)}` : '')),
       statTile('Enviados para validar', num(waiting)),
       statTile('Em correção', num(count('correcao'))),
       statTile('Aprovados', num(count('aprovado'))),
@@ -1127,11 +1137,13 @@ function benchmarkSettingsDialog() {
     const ls = Object.entries(LIST_LABELS).map(([k, label]) => ({ k, label, el: h('textarea', { rows: 6 }, s.listas[k].join('\n')) }));
     const ano = input('bmk-ano', { value: String(s.ano), type: 'text' });
     const prazo = h('input', { type: 'date', value: s.prazo || '' });
+    const aberta = h('input', { type: 'checkbox', checked: s.aberta !== false });
     const parse = (el) => Number(String(el.value).trim().replace(/\./g, '').replace(',', '.'));
     formDialog(
-      'Limites e listas do benchmarking',
+      'Ciclo, limites e listas do benchmarking',
       [
-        h('div', { class: 'grid-2' }, field('Ano do benchmarking', ano, 'Os dados se referem ao ano anterior.'), field('Prazo de envio (opcional)', prazo)),
+        h('div', { class: 'grid-2' }, field('Ciclo (ano do benchmarking)', ano, 'Os dados se referem ao ano anterior. Mudar o ano abre um ciclo novo; os anteriores ficam guardados.'), field('Prazo de envio (opcional)', prazo)),
+        h('label', { class: 'check' }, aberta, h('span', {}, h('strong', {}, 'Coleta aberta'), h('br'), h('span', { class: 'muted' }, 'Fechada: os clientes e a equipe só consultam (não cadastram fazendas nem alteram ou enviam dados). O admin continua podendo tudo.'))),
         h('h3', { class: 'usage-title' }, 'Tolerâncias de coerência (valor informado × recalculado)'),
         h('div', { class: 'table-wrap' }, h('table', {}, h('tbody', {}, tol.map((t) => h('tr', {}, h('td', {}, t.label), h('td', {}, t.el), h('td', { class: 'muted' }, t.unit)))))),
         h('h3', { class: 'usage-title' }, 'Faixas esperadas dos indicadores econômicos (mínimo e máximo)'),
@@ -1145,6 +1157,7 @@ function benchmarkSettingsDialog() {
         onSubmit: async () => {
           const body = {
             ano: parse(ano),
+            aberta: aberta.checked,
             prazo: prazo.value || null,
             tolerancias: Object.fromEntries(tol.map((t) => [t.k, parse(t.el)])),
             faixas: Object.fromEntries(fx.map((f) => [f.k, [parse(f.min), parse(f.max)]])),
@@ -1152,7 +1165,7 @@ function benchmarkSettingsDialog() {
           };
           await api('/api/admin/benchmark/settings', { method: 'PUT', body });
           await loadBenchmark();
-          toast('Limites e listas salvos.');
+          toast('Ciclo, limites e listas salvos.');
         },
       },
     );
@@ -3626,6 +3639,20 @@ function farmPicker({ label, hint, selected = [], options }) {
 function clientDialog(client) {
   const active = h('input', { id: 'active', type: 'checkbox', checked: client ? client.active : true });
   const benchmark = h('input', { type: 'checkbox', checked: Boolean(client?.benchmark) });
+  // Responsável no Benchmarking (Time ou Canais Cargill): quem está acima dele na equipe enxerga a fazenda.
+  const owner = h(
+    'select',
+    { 'aria-label': 'Responsável no Benchmarking' },
+    h('option', { value: '' }, '— Sem responsável (só o admin e quem estiver vinculado) —'),
+    state.users
+      .filter((u) => u.role !== 'admin' && ['cargill', 'canal'].includes(u.kind) && (u.active || u.id === client?.bmkOwner))
+      .sort(byName)
+      .map((u) => h('option', { value: u.id, selected: u.id === client?.bmkOwner }, `${u.name} · ${KIND_LABEL[u.kind]}`)),
+  );
+  const ownerField = field('Responsável no Benchmarking', owner, 'A fazenda aparece para o responsável e para os gestores acima dele (e para quem valida nessa equipe).');
+  const syncOwner = () => (ownerField.hidden = !benchmark.checked);
+  benchmark.addEventListener('change', syncOwner);
+  syncOwner();
   const tagPicker = h(
     'div',
     { class: 'tag-picker' },
@@ -3691,7 +3718,8 @@ function clientDialog(client) {
         h('span', {}, 'Tags'),
         state.tags.length ? tagPicker : h('small', {}, 'Crie tags em Clientes → Tags (ex.: Porte: Grande, Médio, Pequeno).'),
       ),
-      h('label', { class: 'check' }, benchmark, h('span', {}, h('strong', {}, 'Participa do Benchmarking Confinamento'), h('br'), h('span', { class: 'muted' }, 'Os usuários deste cliente veem a ferramenta de coleta no portal.'))),
+      h('label', { class: 'check' }, benchmark, h('span', {}, h('strong', {}, 'Participa do Benchmarking'), h('br'), h('span', { class: 'muted' }, 'Os usuários deste cliente veem o Benchmarking no portal.'))),
+      ownerField,
       h('label', { class: 'check' }, active, h('span', {}, 'Cliente ativo (desmarque para bloquear o acesso de todos os usuários dele)')),
     ],
     {
@@ -3704,6 +3732,7 @@ function clientDialog(client) {
           reportIds: [...form.querySelectorAll('#client-reports input:checked')].map((i) => i.value),
           ccvFarms: farms.values(),
           benchmark: benchmark.checked,
+          bmkOwner: owner.value || null,
           active: active.checked,
         };
         if (client) await api(`/api/admin/clients/${client.id}`, { method: 'PUT', body });
@@ -3789,20 +3818,45 @@ function userDialog(user) {
   );
   const active = h('input', { id: 'user-active', type: 'checkbox', checked: user ? user.active : true });
   const notify = h('input', { id: 'user-notify', type: 'checkbox', checked: Boolean(user?.whatsappNotify) });
-  const manager = h('input', { id: 'user-manager', type: 'checkbox', checked: Boolean(user?.isManager) });
-  const managerField = h(
-    'label',
-    { class: 'check' },
-    manager,
-    h('span', {}, h('strong', {}, 'Gestor da empresa'), h('br'), h('span', { class: 'muted' }, 'Pode cadastrar, editar e bloquear as pessoas das fazendas dele no portal (Conta → Minha equipe).')),
+  // Benchmarking: perfil, a quem responde e os poderes do Time Cargill (regras em src/bmkTeam.js).
+  const kind = h('select', { 'aria-label': 'Perfil' }, Object.entries(KIND_LABEL).map(([k, t]) => h('option', { value: k, selected: (user?.kind || 'cliente') === k }, t)));
+  const reportsTo = h(
+    'select',
+    { 'aria-label': 'Responde a' },
+    h('option', { value: '' }, '— Ninguém (topo da equipe) —'),
+    state.users
+      .filter((u) => u.id !== user?.id && u.role !== 'admin' && u.kind === 'cargill' && u.bmkGestor && (u.active || u.id === user?.reportsTo))
+      .sort(byName)
+      .map((u) => h('option', { value: u.id, selected: u.id === user?.reportsTo }, u.name)),
   );
-  const validator = h('input', { type: 'checkbox', checked: Boolean(user?.bmkValidator) });
-  const validatorField = h(
-    'label',
-    { class: 'check' },
-    validator,
-    h('span', {}, h('strong', {}, 'Valida o Benchmarking'), h('br'), h('span', { class: 'muted' }, 'Acompanha o Benchmarking dos clientes marcados acima e aprova ou devolve para correção, como o admin.')),
+  const check = (checked, title, hint) => {
+    const box = h('input', { type: 'checkbox', checked: Boolean(checked) });
+    return { box, el: h('label', { class: 'check' }, box, h('span', {}, h('strong', {}, title), h('br'), h('span', { class: 'muted' }, hint))) };
+  };
+  const gestor = check(user?.bmkGestor, 'Gestor', 'Tem equipe e cria usuários (Time, Canais ou Cliente Cargill) na aba Equipe do Benchmarking.');
+  const createTeam = check(user?.bmkCreateTeam, 'Pode criar equipe', 'Pode tornar outras pessoas gestoras.');
+  const validator = check(user?.bmkValidator, 'Valida o Benchmarking', 'Aprova ou devolve para correção as fazendas da equipe do gestor a quem responde (e da própria equipe, se for gestor).');
+  const reportsField = field('Responde a', reportsTo, 'Gestor do Time Cargill. A pessoa e as fazendas dela entram na equipe desse gestor.');
+  const bmkField = h(
+    'fieldset',
+    { class: 'field bmk-access' },
+    h('legend', {}, 'Benchmarking'),
+    field('Perfil', kind, 'Cliente Cargill: a fazenda. Time e Canais Cargill veem as fazendas em que são responsáveis (Clientes → Responsável) e as da equipe.'),
+    reportsField,
+    gestor.el,
+    createTeam.el,
+    validator.el,
   );
+  const syncKind = () => {
+    const k = kind.value;
+    reportsField.hidden = k === 'cliente';
+    gestor.el.hidden = k !== 'cargill';
+    validator.el.hidden = k !== 'cargill';
+    createTeam.el.hidden = k !== 'cargill' || !gestor.box.checked;
+  };
+  kind.addEventListener('change', syncKind);
+  gestor.box.addEventListener('change', syncKind);
+  syncKind();
   const whatsappField = h(
     'div',
     { class: 'grid-2' },
@@ -3812,8 +3866,7 @@ function userDialog(user) {
   const syncRole = () => {
     clientField.hidden = role.value === 'admin';
     whatsappField.hidden = role.value === 'admin';
-    managerField.hidden = role.value === 'admin';
-    validatorField.hidden = role.value === 'admin';
+    bmkField.hidden = role.value === 'admin';
     toolField.hidden = role.value === 'admin';
     syncFarms();
   };
@@ -3833,8 +3886,7 @@ function userDialog(user) {
       clientField,
       farms.el,
       toolField,
-      managerField,
-      validatorField,
+      bmkField,
       whatsappField,
       user ? null : h('p', { class: 'muted', style: 'margin: 0; font-size: 13px' }, 'Uma senha temporária será gerada e mostrada a seguir.'),
       h('label', { class: 'check' }, active, h('span', {}, 'Usuário ativo')),
@@ -3850,8 +3902,11 @@ function userDialog(user) {
           ccvFarms: farms.values().filter((f) => clientFarms().includes(f)),
           phone: form.elements['phone'].value,
           whatsappNotify: notify.checked,
-          isManager: manager.checked,
-          bmkValidator: validator.checked,
+          kind: kind.value,
+          reportsTo: reportsTo.value || null,
+          bmkGestor: gestor.box.checked,
+          bmkCreateTeam: createTeam.box.checked,
+          bmkValidator: validator.box.checked,
           active: active.checked,
         };
         const applyTools = async (saved) => {

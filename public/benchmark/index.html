@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>Benchmarking Confinamento</title>
+    <title>Benchmarking</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Saira:wght@500;600;700&display=swap" />
@@ -18,7 +18,7 @@
     <div class="app">
       <header class="topbar">
         <a class="brand" href="/portal#inicio"><img class="brand-logo logo-on-light" src="/img/probeef-horizontal.png" alt="Probeef" width="108" height="24" /><img class="brand-logo logo-on-dark" src="/img/probeef-horizontal-light.png" alt="Probeef" width="108" height="24" /><span class="brand-sub">BMK</span></a>
-        <span class="bmk-title" id="bmk-title">Benchmarking Confinamento</span>
+        <span class="bmk-title" id="bmk-title">Benchmarking</span>
         <span class="spacer"></span>
         <label class="bmk-client" id="client-field" hidden><span class="label">Cliente</span><select id="client-select"></select></label>
         <button class="btn btn-sm chat-button" id="chat-button" type="button" aria-controls="chat-panel" aria-expanded="false" hidden>Mensagens<span class="chat-badge" id="chat-badge" hidden></span></button>
@@ -39,6 +39,7 @@
             <button class="tab" role="tab" type="button" data-tab="questionario" aria-selected="false">Questionário<span class="count" id="count-questionario"></span></button>
             <button class="tab" role="tab" type="button" data-tab="resultado" aria-selected="false">Resultado</button>
             <button class="tab" role="tab" type="button" data-tab="historico" aria-selected="false">Histórico</button>
+            <button class="tab" role="tab" type="button" data-tab="equipe" aria-selected="false" hidden>Equipe</button>
           </div>
           <section data-panel="engorda"></section>
           <section data-panel="recria" hidden></section>
@@ -46,6 +47,7 @@
           <section data-panel="resultado" hidden></section>
           <section data-panel="historico" hidden></section>
           <section data-panel="clientes" hidden></section>
+          <section data-panel="equipe" hidden></section>
         </div>
       </main>
     </div>

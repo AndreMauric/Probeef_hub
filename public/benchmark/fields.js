@@ -7,7 +7,8 @@
 // ---------- Limites e listas (aba Configurações; editáveis no admin) ----------
 
 export const DEFAULT_SETTINGS = {
-  ano: 2026,
+  ano: 2026, // ciclo do benchmarking (os dados são do ano anterior)
+  aberta: true, // coleta aberta: com false, só o admin cadastra e altera
   prazo: null, // AAAA-MM-DD, opcional
   // Diferença máxima entre o valor informado e o recalculado a partir dos dados brutos.
   tolerancias: { pesoCarc: 10, gpd: 0.1, ganhoArroba: 0.5, rc: 1, eficAlim: 5, convAlim: 0.5, diasTrato: 2 },

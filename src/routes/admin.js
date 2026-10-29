@@ -11,6 +11,7 @@ import { ccvUsage, computeCcvAlerts, listFarms, messageFor, oneLine, RULES } fro
 import { ccvPages, ccvPdfJob, publicJob, startCcvPdf } from '../ccvPdf.js';
 import { adminQuotes, deleteManual, saveManual, setManualValue, setQuoteOptions } from '../quotes.js';
 import { processMetrics } from '../benchmarkMetrics.js';
+import { checkReportsTo, KINDS } from '../bmkTeam.js';
 import { adminList as bmkList, exportAll as bmkExport, saveSettings as saveBmkSettings, settings as bmkSettings } from '../benchmark.js';
 import { adminConversation, adminInbox, adminMarkRead, adminSend, chatFile, forgetChat, saveChatFile, setThreadStatus } from '../chat.js';
 import { exportData, listSnapshots, snapshotPath, validateBackup } from '../backup.js';
@@ -773,8 +774,14 @@ function readClient(body) {
   }
   // Fazendas do painel CCV (nomes exatamente como estão no modelo). Mesma regra das tags.
   if (Array.isArray(body.ccvFarms)) client.ccvFarms = farmList(body.ccvFarms);
-  // Participa do Benchmarking Confinamento (só muda quando o formulário envia o campo).
+  // Participa do Benchmarking (só muda quando o formulário envia o campo) e o responsável por ele
+  // (Time ou Canais Cargill; define quem enxerga a fazenda pela equipe, ver src/bmkTeam.js).
   if (typeof body.benchmark === 'boolean') client.benchmark = body.benchmark;
+  if (body.bmkOwner !== undefined) {
+    const owner = body.bmkOwner && db().users.find((u) => u.id === body.bmkOwner && u.role !== 'admin' && ['cargill', 'canal'].includes(u.kind));
+    if (body.bmkOwner && !owner) fail('O responsável no Benchmarking precisa ser do Time ou de Canais Cargill.');
+    client.bmkOwner = owner ? owner.id : null;
+  }
   if (!client.name) fail('Informe o nome do cliente.');
   if (client.rlsRoles.length && !client.rlsUsername) fail('Informe o usuário RLS junto com as funções.');
   return client;
@@ -886,14 +893,24 @@ function readUser(body, existing) {
     clientIds: body.role === 'admin' ? [] : [...new Set((Array.isArray(body.clientIds) ? body.clientIds : []).map((id) => text(id, 36)))],
     phone: cleanPhoneInput(body.phone),
     whatsappNotify: Boolean(body.whatsappNotify),
-    // Gestor da empresa: cadastra e gerencia as pessoas das fazendas dele no portal.
-    isManager: body.role !== 'admin' && Boolean(body.isManager),
     // Painel CCV: só estas fazendas (dentre as dos clientes dele); vazio = todas as dos clientes.
     ccvFarms: body.role === 'admin' || !Array.isArray(body.ccvFarms) ? [] : farmList(body.ccvFarms),
-    // Valida o Benchmarking dos clientes dele: aprova/devolve como o admin (o admin vê todos).
-    bmkValidator: body.role !== 'admin' && Boolean(body.bmkValidator),
     active: body.active !== false,
   };
+  // Benchmarking (src/bmkTeam.js): perfil, a quem responde e os poderes do Time Cargill.
+  if (user.role !== 'admin') {
+    const kind = KINDS[body.kind] ? body.kind : 'cliente';
+    const cargill = kind === 'cargill';
+    Object.assign(user, {
+      kind,
+      reportsTo: kind === 'cliente' ? null : checkReportsTo(existing?.id, text(body.reportsTo, 36) || null),
+      bmkGestor: cargill && Boolean(body.bmkGestor),
+      bmkValidator: cargill && Boolean(body.bmkValidator),
+      bmkCreateTeam: cargill && Boolean(body.bmkGestor) && Boolean(body.bmkCreateTeam),
+    });
+  } else {
+    Object.assign(user, { kind: undefined, reportsTo: null, bmkGestor: false, bmkValidator: false, bmkCreateTeam: false });
+  }
   if (user.phone && (user.phone.length < 12 || user.phone.length > 15)) fail('Telefone inválido. Use DDD + número, ex.: (61) 99999-8888.');
   const phoneOwner = user.phone && db().users.find((u) => u.id !== existing?.id && samePhone(u.phone, user.phone));
   if (phoneOwner) fail(`Este telefone já está no usuário ${phoneOwner.name}.`);
@@ -902,10 +919,8 @@ function readUser(body, existing) {
   if (db().users.some((u) => u.email === user.email && u.id !== existing?.id)) fail('Já existe um usuário com este e-mail.');
   const known = new Set(db().clients.map((c) => c.id));
   user.clientIds = user.clientIds.filter((id) => known.has(id));
-  // Sem cliente é válido: a pessoa só usa as ferramentas (4M, 3P), liberadas uma a uma. O gestor
-  // cuida da equipe de uma empresa, então precisa de cliente.
-  if (user.isManager && !user.clientIds.length) fail('O gestor da empresa precisa de ao menos um cliente.');
-  if (user.bmkValidator && !user.clientIds.length) fail('Quem valida o Benchmarking precisa de ao menos um cliente: valida os clientes marcados.');
+  // Sem cliente é válido: a pessoa só usa as ferramentas (4M, 3P), liberadas uma a uma, ou é do
+  // Time/Canais Cargill e vê as fazendas do benchmarking pela equipe.
   return user;
 }
 

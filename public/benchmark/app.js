@@ -1,4 +1,4 @@
-// Benchmarking Confinamento Probeef: coleta por cliente, com validação na hora (antes: planilha
+// Benchmarking (Confinamento) Probeef: coleta por cliente, com validação na hora (antes: planilha
 // "Benchmarking Confinamento Probeef 2026 Feed Manager.xlsb"). As regras ficam em fields.js,
 // as mesmas que o servidor usa. Fluxo: rascunho → enviado → correção/aprovado (ver src/benchmark.js).
 import { api, h, toast } from '/js/common.js';
@@ -1512,7 +1512,7 @@ async function abrirRelatorio() {
         'header',
         { class: 'rel-head' },
         h('img', { src: '/img/probeef-horizontal.png', alt: 'Probeef', width: 150, height: 33 }),
-        h('div', {}, h('h1', {}, `Benchmarking Confinamento ${state.ano}`), h('p', {}, h('strong', {}, client), ` · ${STATUS[sub.status]?.label || 'Em preenchimento'}${sub.status === 'aprovado' && sub.decidedAt ? ` em ${new Date(sub.decidedAt).toLocaleDateString('pt-BR')}` : ''}`), h('p', { class: 'rel-muted' }, `Gerado em ${new Date().toLocaleDateString('pt-BR')} pelo Probeef Analytics`)),
+        h('div', {}, h('h1', {}, `Benchmarking Confinamento · ciclo ${state.ano}`), h('p', {}, h('strong', {}, client), ` · ${STATUS[sub.status]?.label || 'Em preenchimento'}${sub.status === 'aprovado' && sub.decidedAt ? ` em ${new Date(sub.decidedAt).toLocaleDateString('pt-BR')}` : ''}`), h('p', { class: 'rel-muted' }, `Gerado em ${new Date().toLocaleDateString('pt-BR')} pelo Probeef Analytics`)),
       ),
       h('h2', {}, 'Resumo'),
       h(
@@ -1693,7 +1693,7 @@ function reviewDialog(action) {
   text.focus();
 }
 
-// ---------- Clientes (para quem valida) ----------
+// ---------- Clientes (andamento das fazendas da equipe: admin, Time e Canais Cargill) ----------
 
 function fillClientSelect(clients) {
   const select = document.getElementById('client-select');
@@ -1703,9 +1703,22 @@ function fillClientSelect(clients) {
   document.getElementById('client-field').hidden = clients.length < 2;
 }
 
-// Quem valida cadastra um cliente só para o benchmarking; ele já entra vinculado a quem cadastrou.
-function newClientDialog() {
+// Depois de cadastrar uma fazenda: atualiza a lista e, se era a primeira, abre a página completa.
+async function reloadClients() {
+  const had = state.clients.length;
+  const info = await api('/api/benchmark/clients');
+  state.clients = info.clients;
+  if (!had && info.clients.length) return location.reload();
+  fillClientSelect(info.clients);
+}
+
+const ownerOptions = (owners, selected) => owners.map((o) => h('option', { value: o.id, selected: o.id === selected }, `${o.name}${o.kind === 'canal' ? ' · Canais' : ''}`));
+
+// O Time Cargill cadastra a fazenda só para o benchmarking. O responsável é quem cadastra ou alguém
+// da equipe (pode ser de Canais); o login de quem preenche na fazenda é criado na aba Equipe.
+function newClientDialog(owners = []) {
   const name = h('input', { type: 'text', required: true, minlength: 3, maxlength: 120, placeholder: 'Ex.: Fazenda Boa Vista — Confinamento Uberaba' });
+  const owner = h('select', {}, state.isAdmin ? h('option', { value: '' }, '— Sem responsável —') : null, ownerOptions(owners, state.isAdmin ? '' : state.me.id));
   fill(
     dialog,
     h(
@@ -1715,21 +1728,20 @@ function newClientDialog() {
         onsubmit: async (e) => {
           e.preventDefault();
           try {
-            const { client } = await api('/api/benchmark/clients', { method: 'POST', body: { name: name.value } });
-            const info = await api('/api/benchmark/clients');
-            state.clients = info.clients;
-            fillClientSelect(info.clients);
+            const { client } = await api('/api/benchmark/clients', { method: 'POST', body: { name: name.value, ownerId: owner.value || null } });
             dialog.close();
-            toast(`Cliente "${client.name}" cadastrado no benchmarking.`);
+            toast(`Fazenda "${client.name}" cadastrada no benchmarking.`);
+            await reloadClients();
             renderOverview();
           } catch (err) {
             toast(err.message, 'error');
           }
         },
       },
-      h('h2', {}, 'Cadastrar cliente no benchmarking'),
+      h('h2', {}, 'Cadastrar fazenda no benchmarking'),
       h('label', { class: 'bmk-field' }, h('span', {}, 'Nome do cliente (empresa + unidade do confinamento)'), name),
-      h('p', { class: 'muted' }, 'O cliente entra só no Benchmarking (sem relatórios do portal) e já fica vinculado a você, para acompanhar e validar. O login de quem vai preencher na fazenda é criado pelo admin.'),
+      owners.length ? h('label', { class: 'bmk-field' }, h('span', {}, 'Responsável'), owner) : null,
+      h('p', { class: 'muted' }, 'A fazenda entra só no Benchmarking (sem relatórios do portal) e aparece para o responsável e para os gestores acima dele. O login de quem vai preencher na fazenda é criado por um gestor, na aba Equipe.'),
       h('div', { class: 'dialog-actions' }, h('button', { class: 'btn', type: 'button', onclick: () => dialog.close() }, 'Cancelar'), h('button', { class: 'btn btn-primary', type: 'submit' }, 'Cadastrar')),
     ),
   );
@@ -1774,12 +1786,37 @@ async function renderOverview() {
     const s = STATUS[st];
     return h('span', { class: `bmk-pill ${s?.cls || 'neutral'}` }, s?.label || 'Não iniciado');
   };
+  const readOnly = Boolean(state.me.impersonatedBy);
+  // Responsável: o Time Cargill troca entre as pessoas da equipe; os demais só veem o nome.
+  const ownerCell = (c) => {
+    if (!data.owners.length || readOnly) return c.owner || h('span', { class: 'muted' }, '—');
+    const known = data.owners.some((o) => o.id === c.ownerId);
+    return h(
+      'select',
+      {
+        class: 'bmk-owner',
+        'aria-label': `Responsável por ${c.client}`,
+        onchange: async (e) => {
+          try {
+            await api(`/api/benchmark/clients/${c.clientId}/owner`, { method: 'PUT', body: { ownerId: e.target.value || null } });
+            toast(`Responsável por ${c.client} atualizado.`);
+          } catch (err) {
+            toast(err.message, 'error');
+          }
+          renderOverview();
+        },
+      },
+      !c.ownerId || state.isAdmin ? h('option', { value: '' }, '— Sem responsável —') : null,
+      c.ownerId && !known ? h('option', { value: c.ownerId, selected: true }, c.owner || 'Fora da sua equipe') : null,
+      ownerOptions(data.owners, c.ownerId),
+    );
+  };
   fill(
     panel,
     h(
       'div',
       { class: 'bmk-toolbar' },
-      state.me.impersonatedBy ? null : h('button', { class: 'btn btn-sm btn-primary', type: 'button', onclick: newClientDialog }, '+ Cadastrar cliente'),
+      state.canCreateFarm && state.aberta && !readOnly ? h('button', { class: 'btn btn-sm btn-primary', type: 'button', onclick: () => newClientDialog(data.owners) }, '+ Cadastrar fazenda') : null,
       h(
         'div',
         { class: 'bmk-seg', role: 'radiogroup', 'aria-label': 'Situação' },
@@ -1792,7 +1829,7 @@ async function renderOverview() {
       h(
         'table',
         { class: 'bmk-grid bmk-overview' },
-        h('thead', {}, h('tr', {}, ['Cliente', 'Situação', 'Lotes', 'Erros / alertas', 'Questionário', 'Última alteração', ''].map((t) => h('th', {}, t)))),
+        h('thead', {}, h('tr', {}, ['Cliente', 'Responsável', 'Situação', 'Lotes', 'Erros / alertas', 'Questionário', 'Última alteração', ''].map((t) => h('th', {}, t)))),
         h(
           'tbody',
           {},
@@ -1802,37 +1839,215 @@ async function renderOverview() {
                   'tr',
                   {},
                   h('td', {}, h('strong', {}, c.client)),
+                  h('td', {}, ownerCell(c)),
                   h('td', {}, pill(c.status), c.submittedAt ? h('small', { class: 'muted bmk-sub' }, `enviado ${fmtDateTime(c.submittedAt)}`) : null),
                   h('td', {}, `${c.lotesEngorda} eng. · ${c.lotesRecria} rec.`),
                   h('td', {}, c.erros ? h('span', { class: 'bmk-chip crit' }, `✕ ${c.erros}`) : h('span', { class: 'muted' }, '0 erros'), ' ', c.alertas ? h('span', { class: 'bmk-chip warn' }, `⚠ ${c.alertas}`) : null),
                   h('td', {}, `${c.questionario.respondidas}/${c.questionario.visiveis}`, c.questionario.faltando ? h('small', { class: 'muted bmk-sub' }, `faltam ${c.questionario.faltando} obrigatórias`) : null),
                   h('td', {}, c.updatedAt ? fmtDateTime(c.updatedAt) : '—', c.updatedBy ? h('small', { class: 'muted bmk-sub' }, c.updatedBy) : null),
-                  h('td', {}, h('button', { class: `btn btn-sm${c.status === 'enviado' ? ' btn-primary' : ''}`, type: 'button', onclick: () => open(c.clientId) }, c.status === 'enviado' ? 'Validar' : 'Abrir')),
+                  h('td', {}, h('button', { class: `btn btn-sm${c.status === 'enviado' && state.isValidator ? ' btn-primary' : ''}`, type: 'button', onclick: () => open(c.clientId) }, c.status === 'enviado' && state.isValidator ? 'Validar' : 'Abrir')),
                 ),
               )
-            : h('tr', {}, h('td', { colspan: 7, class: 'muted bmk-empty' }, 'Nenhum cliente nesta situação.')),
+            : h('tr', {}, h('td', { colspan: 8, class: 'muted bmk-empty' }, data.clients.length ? 'Nenhuma fazenda nesta situação.' : state.canCreateFarm ? 'Nenhuma fazenda na sua equipe ainda. Use "+ Cadastrar fazenda".' : 'Nenhuma fazenda na sua equipe ainda.')),
         ),
       ),
     ),
   );
 }
 
+// ---------- Equipe (gestores do Time Cargill; regras em src/bmkTeam.js) ----------
+// O gestor cria e administra os usuários abaixo dele: Time Cargill, Canais Cargill (que só usam o
+// Benchmarking nas fazendas em que são responsáveis) e os logins dos clientes das fazendas da equipe.
+
+const KIND_LABEL = { cliente: 'Cliente Cargill', cargill: 'Time Cargill', canal: 'Canais Cargill' };
+
+function showPassword(title, email, password) {
+  const code = h('code', { class: 'bmk-password' }, password);
+  fill(
+    dialog,
+    h(
+      'div',
+      { class: 'bmk-dialog' },
+      h('h2', {}, title),
+      h('p', {}, 'Envie à pessoa o endereço do portal, o e-mail e a senha temporária abaixo. No primeiro acesso ela troca a senha.'),
+      h('p', {}, h('strong', {}, email), h('br'), code),
+      h(
+        'div',
+        { class: 'dialog-actions' },
+        h('button', { class: 'btn', type: 'button', onclick: () => navigator.clipboard?.writeText(`${location.origin}\nE-mail: ${email}\nSenha temporária: ${password}`).then(() => toast('Copiado.')) }, 'Copiar'),
+        h('button', { class: 'btn btn-primary', type: 'button', onclick: () => dialog.close() }, 'Fechar'),
+      ),
+    ),
+  );
+  if (!dialog.open) dialog.showModal();
+}
+
+function memberDialog(team, member) {
+  const kinds = Object.entries(KIND_LABEL);
+  const name = h('input', { type: 'text', required: true, maxlength: 120, value: member?.name || '' });
+  const email = h('input', { type: 'email', required: true, maxlength: 200, value: member?.email || '', disabled: Boolean(member) });
+  const kind = h('select', {}, kinds.map(([k, t]) => h('option', { value: k, selected: (member?.kind || 'cliente') === k }, t)));
+  const reportsTo = h('select', {}, team.gestores.map((g) => h('option', { value: g.id, selected: g.id === (member?.reportsTo || team.me.id) }, g.id === team.me.id ? `${g.name} (você)` : g.name)));
+  const gestor = h('input', { type: 'checkbox', checked: Boolean(member?.bmkGestor), disabled: !team.canCreateTeam });
+  const active = h('input', { type: 'checkbox', checked: member ? member.active : true });
+  const farmBoxes = team.farms.map((f) => ({ f, box: h('input', { type: 'checkbox', value: f.id, checked: Boolean(member?.clientIds.includes(f.id)) }) }));
+  const reportsField = h('label', { class: 'bmk-field' }, h('span', {}, 'Responde a'), reportsTo);
+  const gestorField = h('label', { class: 'check bmk-check' }, gestor, h('span', {}, h('strong', {}, 'Gestor'), ' — tem equipe e cria usuários.', team.canCreateTeam ? '' : ' (só quem pode criar equipe marca isso)'));
+  const farmsField = h(
+    'div',
+    { class: 'bmk-field' },
+    h('span', {}, 'Fazendas que este cliente vê'),
+    team.farms.length ? h('div', { class: 'bmk-checklist' }, farmBoxes.map(({ f, box }) => h('label', { class: 'check' }, box, h('span', {}, f.name)))) : h('p', { class: 'muted' }, 'Nenhuma fazenda na sua equipe ainda. Cadastre a fazenda na aba Clientes primeiro.'),
+  );
+  const sync = () => {
+    const k = kind.value;
+    reportsField.hidden = k === 'cliente';
+    gestorField.hidden = k !== 'cargill';
+    farmsField.hidden = k !== 'cliente';
+  };
+  kind.addEventListener('change', sync);
+  sync();
+  fill(
+    dialog,
+    h(
+      'form',
+      {
+        class: 'bmk-dialog',
+        onsubmit: async (e) => {
+          e.preventDefault();
+          const body = {
+            name: name.value,
+            email: email.value,
+            kind: kind.value,
+            reportsTo: reportsTo.value || null,
+            bmkGestor: gestor.checked,
+            clientIds: farmBoxes.filter((x) => x.box.checked).map((x) => x.f.id),
+            active: active.checked,
+          };
+          try {
+            if (member) {
+              await api(`/api/benchmark/team/${member.id}`, { method: 'PUT', body });
+              dialog.close();
+              toast('Usuário atualizado.');
+            } else {
+              const r = await api('/api/benchmark/team', { method: 'POST', body });
+              showPassword('Usuário criado', r.member.email, r.password);
+            }
+            renderTeam();
+          } catch (err) {
+            toast(err.message, 'error');
+          }
+        },
+      },
+      h('h2', {}, member ? 'Editar usuário' : 'Novo usuário'),
+      h('label', { class: 'bmk-field' }, h('span', {}, 'Nome'), name),
+      h('label', { class: 'bmk-field' }, h('span', {}, 'E-mail'), email),
+      h('label', { class: 'bmk-field' }, h('span', {}, 'Perfil'), kind),
+      reportsField,
+      gestorField,
+      farmsField,
+      member ? h('label', { class: 'check bmk-check' }, active, h('span', {}, 'Usuário ativo')) : h('p', { class: 'muted' }, 'Uma senha temporária será gerada e mostrada a seguir. Canais Cargill não criam usuários nem fazendas: usam o Benchmarking nas fazendas em que são responsáveis.'),
+      h('div', { class: 'dialog-actions' }, h('button', { class: 'btn', type: 'button', onclick: () => dialog.close() }, 'Cancelar'), h('button', { class: 'btn btn-primary', type: 'submit' }, member ? 'Salvar' : 'Criar usuário')),
+    ),
+  );
+  dialog.showModal();
+  name.focus();
+}
+
+let teamSeq = 0;
+async function renderTeam() {
+  const panel = document.querySelector('[data-panel="equipe"]');
+  const seq = ++teamSeq;
+  if (!panel.childElementCount) fill(panel, h('p', { class: 'muted' }, 'Carregando…'));
+  let team;
+  try {
+    team = await api('/api/benchmark/team');
+  } catch (err) {
+    fill(panel, h('p', { class: 'alert' }, err.message));
+    return;
+  }
+  if (seq !== teamSeq) return;
+  const readOnly = Boolean(state.me.impersonatedBy);
+  const names = new Map([[team.me.id, team.me.name], ...team.members.map((m) => [m.id, m.name])]);
+  const farmNames = new Map(team.farms.map((f) => [f.id, f.name]));
+  const resetPassword = async (m) => {
+    if (!confirm(`Gerar uma nova senha temporária para ${m.name}? A senha atual deixa de funcionar.`)) return;
+    try {
+      const { password } = await api(`/api/benchmark/team/${m.id}/reset-password`, { method: 'POST', body: {} });
+      showPassword('Nova senha gerada', m.email, password);
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  };
+  // Árvore: a partir de quem responde a mim, em profundidade; clientes logo abaixo da equipe.
+  const internos = team.members.filter((m) => m.kind !== 'cliente');
+  const ordered = [];
+  const walk = (bossId, depth) => {
+    for (const m of internos.filter((x) => x.reportsTo === bossId).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))) {
+      ordered.push([m, depth]);
+      walk(m.id, depth + 1);
+    }
+  };
+  walk(team.me.id, 0);
+  for (const m of internos) if (!ordered.some(([x]) => x.id === m.id)) ordered.push([m, 0]);
+  const clientes = team.members.filter((m) => m.kind === 'cliente');
+  const row = ([m, depth]) =>
+    h(
+      'tr',
+      { class: m.active ? '' : 'bmk-row-off' },
+      h('td', {}, h('span', { style: `padding-left: ${depth * 18}px` }, depth ? '└ ' : '', h('strong', {}, m.name)), h('small', { class: 'muted bmk-sub' }, m.email)),
+      h('td', {}, KIND_LABEL[m.kind], m.bmkGestor ? ' · Gestor' : '', m.bmkValidator ? ' · Valida' : ''),
+      h('td', {}, m.kind === 'cliente' ? m.clientIds.map((id) => farmNames.get(id)).filter(Boolean).join(', ') || '—' : names.get(m.reportsTo) || '—'),
+      h('td', {}, m.active ? 'Ativo' : 'Desativado', h('small', { class: 'muted bmk-sub' }, m.lastLoginAt ? `último acesso ${fmtDateTime(m.lastLoginAt)}` : 'nunca entrou')),
+      h('td', { class: 'bmk-actions' }, readOnly ? null : [h('button', { class: 'btn btn-sm', type: 'button', onclick: () => memberDialog(team, m) }, 'Editar'), ' ', h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => resetPassword(m) }, 'Nova senha')]),
+    );
+  const table = (title, rows, empty) =>
+    h(
+      'div',
+      { class: 'bmk-team-block' },
+      h('h3', {}, title),
+      h(
+        'div',
+        { class: 'bmk-grid-wrap' },
+        h(
+          'table',
+          { class: 'bmk-grid bmk-overview' },
+          h('thead', {}, h('tr', {}, ['Pessoa', 'Perfil', title === 'Equipe Cargill' ? 'Responde a' : 'Fazendas', 'Situação', ''].map((t) => h('th', {}, t)))),
+          h('tbody', {}, rows.length ? rows.map(row) : h('tr', {}, h('td', { colspan: 5, class: 'muted bmk-empty' }, empty))),
+        ),
+      ),
+    );
+  fill(
+    panel,
+    h(
+      'div',
+      { class: 'bmk-toolbar' },
+      readOnly ? null : h('button', { class: 'btn btn-sm btn-primary', type: 'button', onclick: () => memberDialog(team, null) }, '+ Novo usuário'),
+      h('p', { class: 'muted' }, 'Você cria usuários do Time Cargill, de Canais Cargill e os logins dos clientes das fazendas da sua equipe.', team.canCreateTeam ? ' Também pode tornar alguém gestor.' : ''),
+    ),
+    table('Equipe Cargill', ordered, 'Ninguém responde a você ainda.'),
+    table('Clientes', clientes.map((m) => [m, 0]), 'Nenhum login de cliente nas fazendas da sua equipe.'),
+  );
+}
+
 // ---------- Abas e carregamento ----------
 
 function renderAll() {
+  if (state.tab === 'equipe') return renderTeam();
+  if (state.tab === 'clientes') return renderOverview();
+  if (!state.view) return;
   renderStatus();
   if (state.tab === 'engorda' || state.tab === 'recria') lotesPanel(state.tab);
   if (state.tab === 'questionario') renderQuestions();
   if (state.tab === 'resultado') renderResult();
   if (state.tab === 'historico') renderHistory();
-  if (state.tab === 'clientes') renderOverview();
 }
 
 function selectTab(name) {
   state.tab = name;
   beat(); // o tempo até aqui vai para a aba anterior
   // Na visão geral o quadro do cliente aberto não faz sentido.
-  document.getElementById('status').hidden = name === 'clientes';
+  document.getElementById('status').hidden = name === 'clientes' || name === 'equipe' || !state.view;
   document.querySelectorAll('[data-tab]').forEach((t) => t.setAttribute('aria-selected', String(t.dataset.tab === name)));
   document.querySelectorAll('[data-panel]').forEach((p) => (p.hidden = p.dataset.panel !== name));
   history.replaceState(null, '', `#${name}`);
@@ -1845,7 +2060,7 @@ function applyView(view) {
   state.data = { engorda: structuredClone(view.submission.engorda), recria: structuredClone(view.submission.recria), respostas: structuredClone(view.submission.respostas) };
   // Primeira vez: já preenche nome, e-mail e empresa a partir do portal.
   const r = state.data.respostas;
-  if (!view.submission.updatedAt && canEdit() && !state.isAdmin) {
+  if (!view.submission.updatedAt && canEdit() && state.kind === 'cliente') {
     r.q1 ??= view.client.name;
     r.q5 ??= state.me.name;
     r.q6 ??= state.me.email;
@@ -1885,7 +2100,8 @@ async function init() {
   state.me = user;
   initTicker();
   // Mensagens com a equipe: a mesma conversa do portal; cada mensagem leva o Benchmarking e o cliente.
-  if (user.role === 'client') {
+  // Só o cliente (a fazenda) conversa com a equipe por aqui; o Time e os Canais são a equipe.
+  if (user.role === 'client' && (user.kind || 'cliente') === 'cliente') {
     initChat({
       button: document.getElementById('chat-button'),
       badge: document.getElementById('chat-badge'),
@@ -1900,22 +2116,38 @@ async function init() {
     document.getElementById('impersonation').hidden = false;
   }
   const info = await api('/api/benchmark/clients');
-  Object.assign(state, { clients: info.clients, isAdmin: info.isAdmin, isValidator: info.isValidator, ano: info.ano, prazo: info.prazo });
-  // Quem valida tem a aba Clientes: o andamento de todos e o atalho para validar cada um.
-  document.querySelector('[data-tab="clientes"]').hidden = !info.isValidator;
-  document.getElementById('bmk-title').textContent = `Benchmarking Confinamento ${info.ano}`;
+  Object.assign(state, {
+    clients: info.clients,
+    isAdmin: info.isAdmin,
+    isValidator: info.isValidator,
+    kind: info.kind,
+    canCreateFarm: info.canCreateFarm,
+    aberta: info.aberta,
+    ano: info.ano,
+    prazo: info.prazo,
+  });
+  // Aba Clientes (andamento das fazendas da equipe): admin, Time e Canais. Aba Equipe: gestores
+  // do Time Cargill (o admin cuida dos usuários no admin).
+  const extraTabs = [...(info.seesOverview ? ['clientes'] : []), ...(info.isGestor && !info.isAdmin ? ['equipe'] : [])];
+  document.querySelector('[data-tab="clientes"]').hidden = !info.seesOverview;
+  document.querySelector('[data-tab="equipe"]').hidden = !extraTabs.includes('equipe');
+  document.getElementById('bmk-title').textContent = `Benchmarking · ciclo ${info.ano}${info.aberta ? '' : ' · coleta fechada'}`;
   document.title = `Benchmarking ${info.ano}`;
+  document.querySelectorAll('[data-tab]').forEach((t) => (t.onclick = () => selectTab(t.dataset.tab)));
   if (!info.clients.length) {
+    // Sem fazenda ainda: o Time e os gestores usam só as abas Clientes e Equipe.
+    if (extraTabs.length) {
+      document.querySelectorAll('[data-tab]').forEach((t) => (t.hidden = !extraTabs.includes(t.dataset.tab)));
+      selectTab(extraTabs.includes(location.hash.slice(1)) ? location.hash.slice(1) : extraTabs[0]);
+      return;
+    }
     fill(
       document.getElementById('status'),
       h(
         'div',
         { class: 'bmk-blank' },
-        h('h3', {}, 'Nenhum cliente no benchmarking'),
-        h('p', { class: 'muted' }, info.isAdmin ? 'Marque "Participa do Benchmarking" no cadastro dos clientes (Admin → Clientes).' : info.isValidator ? 'Cadastre os clientes que você vai acompanhar.' : 'A sua empresa ainda não está no benchmarking. Fale com o seu coordenador Cargill.'),
-        info.isValidator && !user.impersonatedBy
-          ? h('button', { class: 'btn btn-primary', type: 'button', onclick: async () => { newClientDialog(); dialog.addEventListener('close', () => state.clients.length && location.reload(), { once: true }); } }, '+ Cadastrar cliente')
-          : null,
+        h('h3', {}, 'Nenhuma fazenda no benchmarking'),
+        h('p', { class: 'muted' }, info.isAdmin ? 'Marque "Participa do Benchmarking" no cadastro dos clientes (Admin → Clientes).' : info.kind === 'cliente' ? 'A sua empresa ainda não está no benchmarking. Fale com o seu contato Cargill.' : 'Ainda não há fazendas suas no benchmarking. Fale com o seu gestor.'),
       ),
     );
     document.querySelectorAll('.tabs, [data-panel]').forEach((el) => (el.hidden = true));
@@ -1933,9 +2165,8 @@ async function init() {
   const first = [params.get('cliente'), saved].find((id) => info.clients.some((c) => c.id === id)) || info.clients[0].id;
   select.value = first;
   select.onchange = () => loadClient(select.value).catch((err) => toast(err.message, 'error'));
-  document.querySelectorAll('[data-tab]').forEach((t) => (t.onclick = () => selectTab(t.dataset.tab)));
-  const tabs = ['engorda', 'recria', 'questionario', 'resultado', 'historico', ...(info.isValidator ? ['clientes'] : [])];
-  state.tab = tabs.includes(location.hash.slice(1)) ? location.hash.slice(1) : info.isValidator && !params.get('cliente') ? 'clientes' : 'engorda';
+  const tabs = ['engorda', 'recria', 'questionario', 'resultado', 'historico', ...extraTabs];
+  state.tab = tabs.includes(location.hash.slice(1)) ? location.hash.slice(1) : info.seesOverview && !params.get('cliente') ? 'clientes' : 'engorda';
   await loadClient(first);
   selectTab(state.tab);
   openUsage();

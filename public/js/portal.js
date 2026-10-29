@@ -3,7 +3,6 @@ import { mountCcv } from './ccv.js';
 import { initChat } from './chat.js';
 import { initTicker } from './ticker.js';
 import { initNps } from './nps.js';
-import { openTeam } from './team.js';
 import { setupViews } from './views.js';
 import { api, h, loadConfig, logout, openPasswordDialog, setupMenu, toast } from './common.js';
 
@@ -209,22 +208,41 @@ function toolsSection() {
     'section',
     { class: 'home-group' },
     h('h2', { class: 'label' }, 'Ferramentas'),
-    h('div', { class: 'cards' }, benchmarkCard(), TOOL_CARDS.map((t) => h('div', { class: 'card-wrap' }, toolCard(t)))),
+    h('div', { class: 'cards' }, TOOL_CARDS.map((t) => h('div', { class: 'card-wrap' }, toolCard(t)))),
   );
 }
 
-// Benchmarking Confinamento: aparece para quem é de um cliente participante (sem pedido de acesso).
+// Benchmarking: seção própria (não é ferramenta nem tem pedido de acesso). Aparece para o cliente
+// participante e para o Time e os Canais Cargill com fazendas no benchmarking (o Time também sem
+// fazenda, para cadastrar a primeira).
 let benchmarkInfo = null;
-function benchmarkCard() {
-  if (!benchmarkInfo?.clients.length && !benchmarkInfo?.isValidator) return null;
+function benchmarkSection() {
+  const b = benchmarkInfo;
+  if (!b || (!b.clients.length && !b.canCreateFarm)) return null;
+  const n = b.clients.length;
+  const desc =
+    b.kind === 'cliente'
+      ? 'Envie os dados dos lotes e o questionário, com validação na hora, e veja o seu resultado.'
+      : b.isValidator
+        ? `Acompanhe e valide a coleta de ${n} fazenda(s) da sua equipe.`
+        : `Acompanhe a coleta de ${n} fazenda(s) da sua equipe${b.canCreateFarm ? ' e cadastre novas' : ''}.`;
   return h(
-    'div',
-    { class: 'card-wrap' },
+    'section',
+    { class: 'home-group' },
+    h('h2', { class: 'label' }, 'Benchmarking'),
     h(
-      'a',
-      { class: 'card', href: '/benchmark' },
-      h('span', { class: 'card-media placeholder', 'aria-hidden': 'true' }),
-      h('span', { class: 'card-body' }, h('strong', {}, `Benchmarking Confinamento ${benchmarkInfo.ano}`), h('span', {}, benchmarkInfo.isValidator ? `Acompanhe e valide a coleta de ${benchmarkInfo.clients.length} cliente(s).` : 'Envie os dados dos lotes e o questionário do benchmarking, com validação na hora.')),
+      'div',
+      { class: 'cards' },
+      h(
+        'div',
+        { class: 'card-wrap' },
+        h(
+          'a',
+          { class: 'card', href: '/benchmark' },
+          h('span', { class: 'card-media placeholder', 'aria-hidden': 'true' }),
+          h('span', { class: 'card-body' }, h('strong', {}, 'Benchmarking Confinamento'), h('span', {}, desc), h('span', { class: 'muted' }, `Ciclo ${b.ano} · coleta ${b.aberta ? 'aberta' : 'fechada'}`)),
+        ),
+      ),
     ),
   );
 }
@@ -295,6 +313,7 @@ function renderHome() {
   // Favoritos primeiro, depois as visões salvas, depois as categorias.
   const favCount = groups[0]?.favorites ? 1 : 0;
   els.homeGroups.replaceChildren(
+    ...[benchmarkSection()].filter(Boolean),
     toolsSection(),
     ...(list.length
       ? [...groups.slice(0, favCount).map((g) => g.el), viewsSection(), ...groups.slice(favCount).map((g) => g.el)].filter(Boolean)
@@ -723,13 +742,6 @@ async function init() {
   document.getElementById('user-name').textContent = me.name;
   els.clientName.textContent = me.role === 'admin' ? 'Administrador' : '';
   document.getElementById('admin-link').hidden = me.role !== 'admin';
-  // Gestor da empresa: gerencia as pessoas das fazendas dele.
-  const teamButton = document.getElementById('team-button');
-  teamButton.hidden = !me.isManager;
-  teamButton.onclick = () => {
-    document.getElementById('menu-list').hidden = true;
-    openTeam();
-  };
   if (me.impersonatedBy) {
     // Admin vendo o portal como este usuário: avisa e não pede troca de senha.
     document.getElementById('impersonation-text').textContent = `Você (${me.impersonatedBy.name}) está vendo o portal como ${me.name}. Seus acessos não contam no uso do cliente.`;

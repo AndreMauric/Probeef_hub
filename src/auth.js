@@ -107,6 +107,7 @@ export function publicUser(user, impersonator = null) {
     role: user.role,
     clients: clients.map((c) => ({ id: c.id, name: c.name })),
     mustChangePassword: Boolean(user.mustChangePassword),
-    isManager: user.role === 'client' && Boolean(user.isManager),
+    // Perfil no Benchmarking (src/bmkTeam.js).
+    kind: user.role === 'admin' ? 'admin' : user.kind || 'cliente',
   };
 }

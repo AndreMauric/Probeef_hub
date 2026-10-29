@@ -16,7 +16,6 @@ import { benchmarkRouter } from './src/routes/benchmark.js';
 import { canUseBenchmark } from './src/benchmark.js';
 import { confinamentoRouter } from './src/routes/confinamento.js';
 import { portalRouter } from './src/routes/portal.js';
-import { teamRouter } from './src/routes/team.js';
 import { whatsappRouter } from './src/routes/whatsapp.js';
 import { startRefreshWatcher } from './src/bot/notify.js';
 import { startDataHealthWatcher } from './src/dataHealth.js';
@@ -129,7 +128,6 @@ app.get('/api/config', (_req, res) => {
 app.use('/api/auth', authRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/assistant', assistantRouter);
-app.use('/api/team', teamRouter);
 app.use('/api/confinamento', confinamentoRouter);
 app.use('/api/ccv', ccvRouter);
 app.use('/api/chat', chatRouter);

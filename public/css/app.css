@@ -4391,3 +4391,18 @@ tr.row-on td {
   background: var(--surface-2);
   font-weight: 600;
 }
+
+/* Cadastro de usuário: bloco do Benchmarking (perfil, responde a, poderes) */
+.bmk-access {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 10px 14px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.bmk-access legend {
+  padding: 0 4px;
+  font-weight: 600;
+}
