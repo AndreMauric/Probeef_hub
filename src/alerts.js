@@ -138,9 +138,9 @@ export function alertsDigest() {
     const list = alerts.filter((a) => a.severity === sev);
     return list.length ? [`*${label}*`, ...list.map((a) => `• ${a.title} — ${a.detail}`), ''] : [];
   };
-  if (!alerts.length) return `BI Probeef · resumo de ${date}\n\nNenhum alerta. Clientes e dados em dia.`;
+  if (!alerts.length) return `Probeef Analytics · resumo de ${date}\n\nNenhum alerta. Clientes e dados em dia.`;
   return [
-    `BI Probeef · resumo de ${date}`,
+    `Probeef Analytics · resumo de ${date}`,
     '',
     ...section('alta', 'Prioridade alta'),
     ...section('media', 'Atenção'),

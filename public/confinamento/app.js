@@ -2,7 +2,7 @@
   "use strict";
 
   // ---------------- acesso ----------------
-  // A autenticação é a sessão do portal BI Probeef (cookie, confere no server.js
+  // A autenticação é a sessão do portal Probeef Analytics (cookie, confere no server.js
   // quem pode abrir /confinamento). Aqui só lemos quem está logado e, se não for
   // administrador, conferimos se o acesso a esta ferramenta já foi aprovado —
   // ver src/routes/confinamento.js no projeto do portal.

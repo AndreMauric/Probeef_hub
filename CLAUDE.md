@@ -1,4 +1,7 @@
-# BI Probeef — portal de BIs + ferramentas internas
+# Probeef Analytics — portal de BIs + ferramentas internas
+
+(Antes chamado "BI Probeef". O nome que aparece na tela vem de `PORTAL_NAME`; chaves internas como
+`bi-probeef:` no navegador e o `app: 'bi-probeef'` dos backups ficaram com o nome antigo de propósito.)
 
 Portal que distribui relatórios do Power BI Embedded para clientes (login por empresa, RLS
 opcional) e também hospeda ferramentas internas da Cargill/ProBeef por trás do mesmo login —

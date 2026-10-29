@@ -521,7 +521,7 @@ adminRouter.get('/bot/files/:id', (req, res) => {
 const stamp = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
 
 adminRouter.get('/backup', (_req, res) => {
-  res.attachment(`bi-probeef-backup-${stamp()}.json`);
+  res.attachment(`probeef-analytics-backup-${stamp()}.json`);
   res.type('application/json').send(JSON.stringify(exportData(), null, 2));
 });
 
@@ -532,7 +532,7 @@ adminRouter.get('/backups', route(async (_req, res) => {
 adminRouter.get('/backups/:name', (req, res) => {
   const file = snapshotPath(req.params.name);
   if (!file) return res.status(404).json({ error: 'Backup não encontrado.' });
-  res.download(file, `bi-probeef-${req.params.name}`, (err) => {
+  res.download(file, `probeef-analytics-${req.params.name}`, (err) => {
     if (err && !res.headersSent) res.status(404).json({ error: 'Backup não encontrado.' });
   });
 });
@@ -576,7 +576,7 @@ adminRouter.get('/usage/report/:id', (req, res) => {
 adminRouter.get('/usage.csv', (req, res) => {
   const days = periodDays(req);
   const stamp = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
-  res.attachment(`bi-probeef-uso-${days}dias-${stamp}.csv`);
+  res.attachment(`probeef-analytics-uso-${days}dias-${stamp}.csv`);
   res.type('text/csv; charset=utf-8').send(usageCsv(days, { tagIds: tagFilter(req) }));
 });
 

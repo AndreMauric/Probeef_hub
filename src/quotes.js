@@ -55,7 +55,7 @@ let autoCache = { at: 0, items: new Map() };
 let refreshing = null;
 
 async function getJson(url) {
-  const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 (BI Probeef)' }, signal: AbortSignal.timeout(12000) });
+  const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 (Probeef Analytics)' }, signal: AbortSignal.timeout(12000) });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }

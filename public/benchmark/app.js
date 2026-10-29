@@ -1512,7 +1512,7 @@ async function abrirRelatorio() {
         'header',
         { class: 'rel-head' },
         h('img', { src: '/img/probeef-horizontal.png', alt: 'Probeef', width: 150, height: 33 }),
-        h('div', {}, h('h1', {}, `Benchmarking Confinamento ${state.ano}`), h('p', {}, h('strong', {}, client), ` · ${STATUS[sub.status]?.label || 'Em preenchimento'}${sub.status === 'aprovado' && sub.decidedAt ? ` em ${new Date(sub.decidedAt).toLocaleDateString('pt-BR')}` : ''}`), h('p', { class: 'rel-muted' }, `Gerado em ${new Date().toLocaleDateString('pt-BR')} pelo portal BI Probeef`)),
+        h('div', {}, h('h1', {}, `Benchmarking Confinamento ${state.ano}`), h('p', {}, h('strong', {}, client), ` · ${STATUS[sub.status]?.label || 'Em preenchimento'}${sub.status === 'aprovado' && sub.decidedAt ? ` em ${new Date(sub.decidedAt).toLocaleDateString('pt-BR')}` : ''}`), h('p', { class: 'rel-muted' }, `Gerado em ${new Date().toLocaleDateString('pt-BR')} pelo Probeef Analytics`)),
       ),
       h('h2', {}, 'Resumo'),
       h(

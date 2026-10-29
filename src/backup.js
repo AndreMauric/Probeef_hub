@@ -25,7 +25,7 @@ export function exportData() {
 // Confere se o arquivo enviado é um backup válido antes de substituir os cadastros.
 export function validateBackup(backup) {
   const data = backup?.data;
-  if (backup?.app !== 'bi-probeef' || !data) return 'Este arquivo não é um backup do BI Probeef.';
+  if (backup?.app !== 'bi-probeef' || !data) return 'Este arquivo não é um backup do Probeef Analytics.';
   for (const key of ['users', 'clients', 'reports']) {
     if (!Array.isArray(data[key])) return `Backup incompleto: falta a lista "${key}".`;
   }

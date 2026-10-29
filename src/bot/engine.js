@@ -28,7 +28,7 @@ const firstName = (user) => String(user.name || '').split(' ')[0] || 'tudo bem';
 
 function menu(user) {
   return [
-    `Olá, ${firstName(user)}! Sou o assistente do *BI Probeef*.`,
+    `Olá, ${firstName(user)}! Sou o assistente do *Probeef Analytics*.`,
     '',
     '*1* – Receber um relatório em PDF',
     '*2* – Fazer uma pergunta sobre os seus dados',

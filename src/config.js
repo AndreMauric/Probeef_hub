@@ -18,7 +18,7 @@ export const config = {
   root,
   isProduction,
   port: Number(process.env.PORT || 3000),
-  portalName: process.env.PORTAL_NAME || 'BI Probeef',
+  portalName: process.env.PORTAL_NAME || 'Probeef Analytics',
   // Endereço público do portal (usado nos links enviados pelo WhatsApp), ex.: https://bi.probeef.com.br
   publicUrl: (process.env.PUBLIC_URL || '').replace(/\/$/, ''),
   sessionSecret,

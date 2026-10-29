@@ -1,4 +1,4 @@
-# Portal de BIs (Power BI Embedded)
+# Probeef Analytics — portal de BIs (Power BI Embedded)
 
 Portal para distribuir relatórios do Power BI para clientes. Cada cliente faz login e vê só os relatórios liberados para a empresa dele, opcionalmente filtrados por RLS (segurança em nível de linha).
 
@@ -117,6 +117,6 @@ criptografada com `KEY_ENCRYPTION_SECRET`. O servidor não usa uma chave própri
    - Verify token: o mesmo de `WHATSAPP_VERIFY_TOKEN`
    - Assine o campo **messages**.
 5. Para os avisos, crie um modelo de mensagem (categoria **Utilidade**) com duas variáveis, por exemplo:
-   `Olá, {{1}}! O relatório {{2}} foi atualizado no BI Probeef.` Depois de aprovado, informe o nome em `WHATSAPP_TEMPLATE_UPDATE`.
+   `Olá, {{1}}! O relatório {{2}} foi atualizado no Probeef Analytics.` Depois de aprovado, informe o nome em `WHATSAPP_TEMPLATE_UPDATE`.
 
 A verificação da empresa no Meta Business costuma pedir documentos da empresa; sem ela, o número funciona com limite diário de conversas.

@@ -42,7 +42,7 @@ async function handleIncoming(message) {
   if (!user) {
     await send({
       type: 'text',
-      text: 'Olá! Este número não está cadastrado no BI Probeef. Peça ao administrador do portal para incluir seu telefone no seu usuário.',
+      text: 'Olá! Este número não está cadastrado no Probeef Analytics. Peça ao administrador do portal para incluir seu telefone no seu usuário.',
     });
     return;
   }

@@ -658,7 +658,7 @@ async function exportExcel() {
   try {
     const ExcelJS = await loadExcelLib();
     const wb = new ExcelJS.Workbook();
-    wb.creator = 'BI Probeef · 3P';
+    wb.creator = 'Probeef Analytics · 3P';
     const sheet = (name, columns, rows) => {
       const ws = wb.addWorksheet(name);
       ws.columns = columns.map(([key, header, width]) => ({ header, key, width: width || Math.max(12, header.length + 2) }));

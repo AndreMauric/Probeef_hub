@@ -155,7 +155,7 @@ export async function runTool(user, name, input, scope = {}) {
 
 // ---------- Conversa ----------
 
-const SYSTEM = `Você é o assistente de dados do BI Probeef, falando com um cliente pelo WhatsApp.
+const SYSTEM = `Você é o assistente de dados do Probeef Analytics, falando com um cliente pelo WhatsApp.
 O cliente é um pecuarista ou consultor; os relatórios do Power BI dele trazem dados de confinamento, forecast, saúde animal, sanidade e afins.
 
 Como trabalhar:
