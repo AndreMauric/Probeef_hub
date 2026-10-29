@@ -1883,7 +1883,8 @@ function showPassword(title, email, password) {
 }
 
 function memberDialog(team, member) {
-  const kinds = Object.entries(KIND_LABEL);
+  // Time Cargill só o admin cria: o gestor cria Canais e Cliente, e quem já é do Time continua no Time.
+  const kinds = Object.entries(KIND_LABEL).filter(([k]) => (member?.kind === 'cargill' ? k === 'cargill' : k !== 'cargill'));
   const name = h('input', { type: 'text', required: true, maxlength: 120, value: member?.name || '' });
   const email = h('input', { type: 'email', required: true, maxlength: 200, value: member?.email || '', disabled: Boolean(member) });
   const kind = h('select', {}, kinds.map(([k, t]) => h('option', { value: k, selected: (member?.kind || 'cliente') === k }, t)));
@@ -1946,7 +1947,7 @@ function memberDialog(team, member) {
       reportsField,
       gestorField,
       farmsField,
-      member ? h('label', { class: 'check bmk-check' }, active, h('span', {}, 'Usuário ativo')) : h('p', { class: 'muted' }, 'Uma senha temporária será gerada e mostrada a seguir. Canais Cargill não criam usuários nem fazendas: usam o Benchmarking nas fazendas em que são responsáveis.'),
+      member ? h('label', { class: 'check bmk-check' }, active, h('span', {}, 'Usuário ativo')) : h('p', { class: 'muted' }, 'Uma senha temporária será gerada e mostrada a seguir. Canais Cargill não criam usuários nem fazendas: usam o Benchmarking nas fazendas em que são responsáveis. Pessoas do Time Cargill são cadastradas pelo administrador.'),
       h('div', { class: 'dialog-actions' }, h('button', { class: 'btn', type: 'button', onclick: () => dialog.close() }, 'Cancelar'), h('button', { class: 'btn btn-primary', type: 'submit' }, member ? 'Salvar' : 'Criar usuário')),
     ),
   );
@@ -2023,7 +2024,7 @@ async function renderTeam() {
       'div',
       { class: 'bmk-toolbar' },
       readOnly ? null : h('button', { class: 'btn btn-sm btn-primary', type: 'button', onclick: () => memberDialog(team, null) }, '+ Novo usuário'),
-      h('p', { class: 'muted' }, 'Você cria usuários do Time Cargill, de Canais Cargill e os logins dos clientes das fazendas da sua equipe.', team.canCreateTeam ? ' Também pode tornar alguém gestor.' : ''),
+      h('p', { class: 'muted' }, 'Você cria usuários de Canais Cargill e os logins dos clientes das fazendas da sua equipe. Pessoas do Time Cargill são cadastradas pelo administrador.', team.canCreateTeam ? ' Também pode tornar alguém gestor.' : ''),
     ),
     table('Equipe Cargill', ordered, 'Ninguém responde a você ainda.'),
     table('Clientes', clientes.map((m) => [m, 0]), 'Nenhum login de cliente nas fazendas da sua equipe.'),

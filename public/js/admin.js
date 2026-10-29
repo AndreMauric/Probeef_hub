@@ -3833,7 +3833,7 @@ function userDialog(user) {
     const box = h('input', { type: 'checkbox', checked: Boolean(checked) });
     return { box, el: h('label', { class: 'check' }, box, h('span', {}, h('strong', {}, title), h('br'), h('span', { class: 'muted' }, hint))) };
   };
-  const gestor = check(user?.bmkGestor, 'Gestor', 'Tem equipe e cria usuários (Time, Canais ou Cliente Cargill) na aba Equipe do Benchmarking.');
+  const gestor = check(user?.bmkGestor, 'Gestor', 'Tem equipe e cria usuários de Canais e de Cliente Cargill na aba Equipe do Benchmarking. Time Cargill só o admin cria.');
   const createTeam = check(user?.bmkCreateTeam, 'Pode criar equipe', 'Pode tornar outras pessoas gestoras.');
   const validator = check(user?.bmkValidator, 'Valida o Benchmarking', 'Aprova ou devolve para correção as fazendas da equipe do gestor a quem responde (e da própria equipe, se for gestor).');
   const reportsField = field('Responde a', reportsTo, 'Gestor do Time Cargill. A pessoa e as fazendas dela entram na equipe desse gestor.');

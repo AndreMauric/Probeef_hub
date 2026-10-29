@@ -97,7 +97,7 @@ configurações (Admin → Benchmarking → "Ciclo, limites e listas"), com a ch
 
 **Equipes e acessos (só no Benchmarking, por enquanto; `src/bmkTeam.js`)**:
 - Perfil `user.kind`: `cliente` (Cliente Cargill, a fazenda), `cargill` (Time Cargill) ou `canal`
-  (Canais Cargill). Poderes, só do Time: `bmkGestor` (cria usuários Time/Canais/Cliente na aba
+  (Canais Cargill). Poderes, só do Time: `bmkGestor` (cria usuários de Canais e Cliente — **Time Cargill só o admin cria** — na aba
   **Equipe** do `/benchmark`), `bmkCreateTeam` (pode tornar alguém gestor) e `bmkValidator`.
 - `user.reportsTo` aponta para um gestor; a equipe de alguém é todo mundo abaixo dele, em qualquer
   nível (`teamIds`; ciclo na árvore é recusado em `checkReportsTo`).

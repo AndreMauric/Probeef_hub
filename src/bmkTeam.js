@@ -2,7 +2,7 @@
 //
 // Perfis (user.kind, só para role 'client'): 'cliente' (Cliente Cargill: a fazenda), 'cargill'
 // (Time Cargill) e 'canal' (Canais Cargill). Poderes, só para o Time Cargill:
-//   bmkGestor      — cria usuários (Time, Canais ou Cliente) abaixo dele;
+//   bmkGestor      — cria usuários de Canais e de Cliente abaixo dele (Time Cargill só o admin cria);
 //   bmkValidator   — vê e valida as fazendas da equipe do gestor direto dele (e da própria, se for gestor);
 //   bmkCreateTeam  — pode tornar outra pessoa gestor (montar uma equipe nova).
 // Hierarquia: user.reportsTo aponta para um gestor; a equipe de alguém é todo mundo abaixo dele,
@@ -125,6 +125,12 @@ export function teamView(user, farms) {
 function readMember(user, body, farmIds, existing) {
   const kind = KINDS[body.kind] ? body.kind : null;
   if (!kind) throw new TeamError('Escolha o perfil: Time Cargill, Canais Cargill ou Cliente Cargill.');
+  // Time Cargill só o admin cria (no cadastro de usuários). O gestor edita quem já é do Time na
+  // equipe dele, mas não cria nem transforma ninguém em Time Cargill.
+  const wasCargill = existing && kindOf(existing) === 'cargill';
+  if (user.role !== 'admin' && (kind === 'cargill') !== Boolean(wasCargill)) {
+    throw new TeamError(kind === 'cargill' ? 'Só o administrador cadastra pessoas do Time Cargill.' : 'Só o administrador muda o perfil de alguém do Time Cargill.', 403);
+  }
   const name = String(body.name || '').replace(/\s+/g, ' ').trim().slice(0, 120);
   if (!name) throw new TeamError('Informe o nome da pessoa.');
   const out = { name, kind };
