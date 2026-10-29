@@ -1197,7 +1197,7 @@ function questionInput(q, editable) {
         ),
       ),
       q.other ? other : null,
-      q.max ? h('small', { class: 'muted' }, `Escolha até ${q.max}.`) : null,
+      q.max ? h('small', { class: 'muted' }, q.min === q.max ? `Escolha exatamente ${q.max}.` : `Escolha até ${q.max}.`) : null,
     );
   }
   return null;
@@ -1253,6 +1253,7 @@ function renderQuestions() {
               h('label', { class: 'bmk-q-label' }, h('span', { class: 'bmk-q-n' }, q.n), h('span', {}, questionText(q, settings()), q.req ? h('span', { class: 'bmk-req' }, ' *') : null)),
               q.hint ? h('small', { class: 'muted' }, questionText({ text: q.hint }, settings())) : null,
               questionInput(q, editable),
+              v.motivos[q.id] ? h('small', { class: 'bmk-q-err' }, `✕ ${v.motivos[q.id]}`) : null,
               v.alertas.filter((a) => a.id === q.id).map((a) => h('small', { class: 'bmk-q-warn' }, `⚠ ${a.msg}`)),
             ),
           ),

@@ -187,7 +187,7 @@ export async function baixarModelo(tipo, settings, cliente) {
     for (const q of sec.questions) {
       const opts = q.options || (q.type === 'sn' ? OPTIONS.SN : q.type === 'uf' ? OPTIONS.UFS : null);
       const how = [
-        q.type === 'multi' ? `Uma ou mais (separe por ;)${q.max ? `, no máximo ${q.max}` : ''}: ${q.options.join('; ')}` : null,
+        q.type === 'multi' ? `${q.min && q.min === q.max ? `Exatamente ${q.max} (separe por ;)` : `Uma ou mais (separe por ;)${q.max ? `, no máximo ${q.max}` : ''}`}: ${q.options.join('; ')}` : null,
         q.type === 'choice' ? 'Escolha uma da lista' : null,
         q.type === 'sn' ? 'Sim ou Não' : q.type === 'uf' ? 'Sigla do estado (ex.: MG)' : null,
         ['int', 'num', 'pct'].includes(q.type) ? `Número${q.unit ? ` em ${q.unit}` : ''}` : null,

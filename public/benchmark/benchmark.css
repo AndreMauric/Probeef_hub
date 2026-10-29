@@ -701,6 +701,7 @@
 }
 
 .bmk-q-error,
+.bmk-q-err,
 .bmk-q-warn {
   color: var(--danger);
 }

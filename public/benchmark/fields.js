@@ -388,23 +388,23 @@ export const QUESTIONARIO = [
     title: 'Sistema produtivo',
     questions: [
       { id: 'q8', n: 8, text: 'Capacidade estática do confinamento', unit: 'cab', type: 'int', req: true, min: 1 },
-      { id: 'q9', n: 9, text: 'Sistema produtivo', type: 'choice', options: ['Engorda', 'Recria + Engorda', 'Cria + Recria + Engorda', 'Boitel'], other: true },
-      { id: 'q10', n: 10, text: 'Qual(is) modelo(s) de reposição de boi magro?', type: 'multi', options: ['Recria a pasto na fazenda', 'Recria confinada na fazenda', 'Compra', 'Parceria'], other: true },
-      { id: 'q11', n: 11, text: 'Número de currais', type: 'int', min: 1 },
-      { id: 'q12', n: 12, text: 'Área média dos currais', unit: 'm²', type: 'num' },
-      { id: 'q13', n: 13, text: 'Área média por boi nas águas', unit: 'm²/boi', type: 'num' },
-      { id: 'q14', n: 14, text: 'Área média por boi nas secas', unit: 'm²/boi', type: 'num' },
+      { id: 'q9', n: 9, text: 'Sistema produtivo', type: 'choice', options: ['Engorda', 'Recria + Engorda', 'Cria + Recria + Engorda', 'Boitel'], other: true, req: true },
+      { id: 'q10', n: 10, text: 'Qual(is) modelo(s) de reposição de boi magro?', type: 'multi', options: ['Recria a pasto na fazenda', 'Recria confinada na fazenda', 'Compra', 'Parceria'], other: true, req: true },
+      { id: 'q11', n: 11, text: 'Número de currais', type: 'int', min: 1, req: true },
+      { id: 'q12', n: 12, text: 'Área média dos currais', unit: 'm²', type: 'num', req: true },
+      { id: 'q13', n: 13, text: 'Área média por boi nas águas', unit: 'm²/boi', type: 'num', req: true },
+      { id: 'q14', n: 14, text: 'Área média por boi nas secas', unit: 'm²/boi', type: 'num', req: true },
     ],
   },
   {
     id: 'cocho',
     title: 'Manejo de cocho',
     questions: [
-      { id: 'q15', n: 15, text: 'Tipo de manejo de cocho', type: 'choice', options: ['Manejo de Cocho Cargill (Manejo de Cocho Limpo)', 'Cocho com sobra', 'Outro manejo de cocho limpo'], other: true },
-      { id: 'q16', n: 16, text: 'Tipo de adaptação', type: 'choice', options: ['Blend de duas dietas', 'Escada (várias dietas)', 'Restrição de consumo', 'Pasto + suplemento'], other: true },
-      { id: 'q17', n: 17, text: 'Tempo de adaptação', unit: 'dias', type: 'int' },
-      { id: 'q18', n: 18, text: 'Número de tratos por dia nas secas', type: 'int' },
-      { id: 'q19', n: 19, text: 'Número de tratos por dia nas águas', type: 'int' },
+      { id: 'q15', n: 15, text: 'Tipo de manejo de cocho', type: 'choice', options: ['Manejo de Cocho Cargill (Manejo de Cocho Limpo)', 'Cocho com sobra', 'Outro manejo de cocho limpo'], other: true, req: true },
+      { id: 'q16', n: 16, text: 'Tipo de adaptação', type: 'choice', options: ['Blend de duas dietas', 'Escada (várias dietas)', 'Restrição de consumo', 'Pasto + suplemento'], other: true, req: true },
+      { id: 'q17', n: 17, text: 'Tempo de adaptação', unit: 'dias', type: 'int', req: true },
+      { id: 'q18', n: 18, text: 'Número de tratos por dia nas secas', type: 'int', req: true },
+      { id: 'q19', n: 19, text: 'Número de tratos por dia nas águas', type: 'int', req: true },
       {
         id: 'q20',
         n: 20,
@@ -413,49 +413,49 @@ export const QUESTIONARIO = [
         options: ['Software de gestão de operação de confinamento', 'Rastreabilidade individual', 'ERP - Software de gestão empresarial', 'Análise de dados e consultoria de gestão', 'Balança de pesagem individual', 'Automação de fábrica de ração', 'Monitoramento de cocho por câmera/sensor'],
         other: true,
       },
-      { id: 'q21', n: 21, text: 'Faz leitura de cocho noturna?', type: 'sn' },
-      { id: 'q22', n: 22, text: 'Se sim, quantas vezes na noite faz a leitura noturna?', type: 'int', showIf: ['q21', 'Sim'] },
-      { id: 'q23', n: 23, text: 'Energia líquida da dieta de terminação', unit: 'Mcal/kg MS', type: 'num', hint: 'Preencher com auxílio do coordenador da conta.', max: 3 },
-      { id: 'q24', n: 24, text: 'Energia líquida da dieta da recria confinada', unit: 'Mcal/kg MS', type: 'num', hint: 'Preencher com auxílio do coordenador da conta.', max: 3 },
-      { id: 'q25', n: 25, text: 'Utiliza dieta sem volumoso?', type: 'sn' },
+      { id: 'q21', n: 21, text: 'Faz leitura de cocho noturna?', type: 'sn', req: true },
+      { id: 'q22', n: 22, text: 'Se sim, quantas vezes na noite faz a leitura noturna?', type: 'int', showIf: ['q21', 'Sim'], req: true },
+      { id: 'q23', n: 23, text: 'Energia líquida da dieta de terminação', unit: 'Mcal/kg MS', type: 'num', hint: 'Preencher com auxílio do coordenador da conta.', min: 0.8, max: 2.2, req: true },
+      { id: 'q24', n: 24, text: 'Energia líquida da dieta da recria confinada', unit: 'Mcal/kg MS', type: 'num', hint: 'Preencher com auxílio do coordenador da conta.', min: 0.8, max: 2.2, req: true },
+      { id: 'q25', n: 25, text: 'Utiliza dieta sem volumoso?', type: 'sn', req: true },
     ],
   },
   {
     id: 'saude',
     title: 'Saúde animal',
     questions: [
-      { id: 'q26', n: 26, text: 'Mortalidade de machos', unit: '%', type: 'pct', hint: 'Porcentagem de machos que morreram em relação aos que entraram ao longo de {anoDados}.' },
-      { id: 'q27', n: 27, text: 'Mortalidade de fêmeas', unit: '%', type: 'pct', hint: 'Porcentagem de fêmeas que morreram em relação às que entraram ao longo de {anoDados}.' },
-      { id: 'q28', n: 28, text: 'Prevenção de doenças respiratórias na entrada do confinamento', type: 'multi', options: ['Vacinação', 'Metafilaxia', 'Nenhuma'], other: true },
+      { id: 'q26', n: 26, text: 'Mortalidade de machos', unit: '%', type: 'pct', hint: 'Porcentagem de machos que morreram em relação aos que entraram ao longo de {anoDados}.', req: true },
+      { id: 'q27', n: 27, text: 'Mortalidade de fêmeas', unit: '%', type: 'pct', hint: 'Porcentagem de fêmeas que morreram em relação às que entraram ao longo de {anoDados}.', req: true },
+      { id: 'q28', n: 28, text: 'Prevenção de doenças respiratórias na entrada do confinamento', type: 'multi', options: ['Vacinação', 'Metafilaxia', 'Nenhuma'], other: true, req: true },
       { id: 'q29', n: 29, text: 'Quais enfermidades estão presentes no confinamento?', type: 'multi', options: ['Doença respiratória', 'Laminite', 'Acidentes', 'Timpanismo', 'Acidose', 'Clostridiose', 'Tristeza parasitária'], other: true },
-      { id: 'q30', n: 30, text: 'Quem determina o diagnóstico da causa da morte?', type: 'multi', options: ['Veterinário do confinamento', 'Veterinário consultor', 'Gerente/encarregado', 'Ninguém'], other: true },
-      { id: 'q31', n: 31, text: 'Faz necrópsia?', type: 'choice', options: ['Total', 'Parcial', 'Não faz'] },
-      { id: 'q32', n: 32, text: 'Realiza acompanhamento de abate?', type: 'sn' },
-      { id: 'q33', n: 33, text: 'Porcentagem de carcaças condenadas', unit: '%', type: 'pct' },
+      { id: 'q30', n: 30, text: 'Quem determina o diagnóstico da causa da morte?', type: 'multi', options: ['Veterinário do confinamento', 'Veterinário consultor', 'Gerente/encarregado', 'Ninguém'], other: true, req: true },
+      { id: 'q31', n: 31, text: 'Faz necrópsia?', type: 'choice', options: ['Total', 'Parcial', 'Não faz'], req: true },
+      { id: 'q32', n: 32, text: 'Realiza acompanhamento de abate?', type: 'sn', req: true },
+      { id: 'q33', n: 33, text: 'Porcentagem de carcaças condenadas', unit: '%', type: 'pct', req: true },
     ],
   },
   {
     id: 'rh',
     title: 'Recursos humanos',
     questions: [
-      { id: 'q34', n: 34, text: 'Funcionários no administrativo', unit: 'pessoas', type: 'int', hint: 'Financeiro, RH, controladoria, almoxarifado.' },
-      { id: 'q35', n: 35, text: 'Funcionários no comercial', unit: 'pessoas', type: 'int', hint: 'Originação, venda de animais e acompanhamento de abate.' },
-      { id: 'q36', n: 36, text: 'Funcionários na operação/campo', unit: 'pessoas', type: 'int', hint: 'Tratador, vaqueiro, pazeiro, serviços gerais, ronda sanitária, rastreabilidade, supervisores de operação, oficina.' },
-      { id: 'q37', n: 37, text: 'Salário médio de vaqueiro', unit: 'R$/mês', type: 'num' },
-      { id: 'q38', n: 38, text: 'Salário médio de tratador', unit: 'R$/mês', type: 'num' },
-      { id: 'q39', n: 39, text: 'Salário médio de pazeiro', unit: 'R$/mês', type: 'num' },
-      { id: 'q40a', n: 40, text: 'Escolaridade do supervisor de trato', type: 'choice', options: ESCOLARIDADE },
-      { id: 'q40b', n: 40, text: 'Escolaridade do administrativo', type: 'choice', options: ESCOLARIDADE },
-      { id: 'q40c', n: 40, text: 'Escolaridade do gerente', type: 'choice', options: ESCOLARIDADE },
+      { id: 'q34', n: 34, text: 'Funcionários no administrativo', unit: 'pessoas', type: 'int', hint: 'Financeiro, RH, controladoria, almoxarifado.', req: true },
+      { id: 'q35', n: 35, text: 'Funcionários no comercial', unit: 'pessoas', type: 'int', hint: 'Originação, venda de animais e acompanhamento de abate.', req: true },
+      { id: 'q36', n: 36, text: 'Funcionários na operação/campo', unit: 'pessoas', type: 'int', hint: 'Tratador, vaqueiro, pazeiro, serviços gerais, ronda sanitária, rastreabilidade, supervisores de operação, oficina.', req: true },
+      { id: 'q37', n: 37, text: 'Salário médio de vaqueiro', unit: 'R$/mês', type: 'num', req: true },
+      { id: 'q38', n: 38, text: 'Salário médio de tratador', unit: 'R$/mês', type: 'num', req: true },
+      { id: 'q39', n: 39, text: 'Salário médio de pazeiro', unit: 'R$/mês', type: 'num', req: true },
+      { id: 'q40a', n: 40, text: 'Escolaridade do supervisor de trato', type: 'choice', options: ESCOLARIDADE, req: true },
+      { id: 'q40b', n: 40, text: 'Escolaridade do administrativo', type: 'choice', options: ESCOLARIDADE, req: true },
+      { id: 'q40c', n: 40, text: 'Escolaridade do gerente', type: 'choice', options: ESCOLARIDADE, req: true },
     ],
   },
   {
     id: 'gestao',
     title: 'Foco gerencial',
     questions: [
-      { id: 'q41', n: 41, text: 'Quais são os CINCO indicadores mais relevantes para a sua OPERAÇÃO?', type: 'multi', options: INDICADORES, max: 5, other: true },
-      { id: 'q42', n: 42, text: 'Quais são os SETE indicadores mais relevantes na TÁTICA do seu negócio?', type: 'multi', options: INDICADORES, max: 7, other: true },
-      { id: 'q43', n: 43, text: 'Qual o indicador ESTRATÉGICO mais relevante para a sua empresa?', type: 'choice', options: INDICADORES, other: true },
+      { id: 'q41', n: 41, text: 'Quais são os CINCO indicadores mais relevantes para a sua OPERAÇÃO?', type: 'multi', options: INDICADORES, min: 5, max: 5, other: true, req: true },
+      { id: 'q42', n: 42, text: 'Quais são os SETE indicadores mais relevantes na TÁTICA do seu negócio?', type: 'multi', options: INDICADORES, min: 7, max: 7, other: true, req: true },
+      { id: 'q43', n: 43, text: 'Qual o indicador ESTRATÉGICO mais relevante para a sua empresa?', type: 'choice', options: INDICADORES, other: true, req: true },
     ],
   },
   {
@@ -463,7 +463,7 @@ export const QUESTIONARIO = [
     title: 'Comercialização e custo de produção',
     note: 'Os valores abaixo, quando preenchidos, são usados no resultado no lugar das médias dos lotes.',
     questions: [
-      { id: 'q44', n: 44, text: 'As informações de comercialização estão presentes na base produtiva?', type: 'sn' },
+      { id: 'q44', n: 44, text: 'As informações de comercialização estão presentes na base produtiva?', type: 'sn', req: true },
       { id: 'q45', n: 45, text: 'Custo médio anual do boi magro na entrada do confinamento', unit: 'R$/@', type: 'num', hint: 'Apenas o custo do boi, sem embutir outros custos.', range: [150, 400] },
       { id: 'q46', n: 46, text: 'Custo médio anual de compra da fêmea de engorda', unit: 'R$/@', type: 'num', hint: 'Apenas o custo da fêmea de engorda. Não considerar vaca de descarte.', range: [150, 400] },
       { id: 'q47', n: 47, text: 'Custo do frete de compra', unit: 'R$/cab', type: 'num' },
@@ -474,67 +474,67 @@ export const QUESTIONARIO = [
       { id: 'q52', n: 52, text: 'Custo da matéria seca da dieta', unit: 'R$/ton', type: 'num' },
       { id: 'q53', n: 53, text: 'Preço médio anual de venda da arroba do boi gordo', unit: 'R$/@', type: 'num', hint: 'Receita bruta total, incluindo bonificação/premiação. Não incluir imposto sobre venda.', range: [180, 450] },
       { id: 'q54', n: 54, text: 'Preço médio anual de venda da arroba da fêmea de engorda', unit: 'R$/@', type: 'num', hint: 'Receita bruta total, incluindo bonificação/premiação. Não incluir imposto sobre venda.', range: [180, 450] },
-      { id: 'q55', n: 55, text: 'Utiliza mecanismo de proteção de preços da B3?', type: 'sn' },
-      { id: 'q56', n: 56, text: 'Para quais mercados realizou venda neste ano?', type: 'multi', options: ['Mercado interno', 'Mercado China', 'Mercado Europeu (Cota Hilton/Lista Trace)', 'Outros mercados de exportação'], other: true },
+      { id: 'q55', n: 55, text: 'Utiliza mecanismo de proteção de preços da B3?', type: 'sn', req: true },
+      { id: 'q56', n: 56, text: 'Para quais mercados realizou venda neste ano?', type: 'multi', options: ['Mercado interno', 'Mercado China', 'Mercado Europeu (Cota Hilton/Lista Trace)', 'Outros mercados de exportação'], other: true, req: true },
     ],
   },
   {
     id: 'sustentabilidade',
     title: 'Sustentabilidade',
     questions: [
-      { id: 'q57', n: 57, text: 'Principal(is) fonte(s) de água utilizada(s) na propriedade', type: 'multi', options: ['Poço artesiano', 'Poço semiartesiano', 'Rio/córrego', 'Represa/açude', 'Nascente'], other: true },
-      { id: 'q58', n: 58, text: 'Medida(s) tomada(s) para evitar a contaminação das fontes de água', type: 'multi', options: ['Manutenção de áreas de preservação permanente (APPs)', 'Controle de erosão do solo', 'Uso adequado de fertilizantes e pesticidas', 'Cercamento das nascentes', 'Tratamento de efluentes'], other: true },
-      { id: 'q59', n: 59, text: 'Medidas tomadas para evitar o desperdício de água', type: 'multi', options: ['Manutenção regular dos bebedouros', 'Controle de erosão do solo', 'Treinamento dos funcionários', 'Uso de hidrômetro', 'Bebedouros com boia'], other: true },
-      { id: 'q60', n: 60, text: 'Frequência da manutenção hidráulica dos bebedouros', type: 'choice', options: ['Diariamente', 'Semanalmente', 'Mensalmente', 'Quando apresenta problema'] },
-      { id: 'q61', n: 61, text: 'Existem práticas de reuso de água na propriedade?', type: 'choice', options: ['Não', 'Sim, para irrigação', 'Sim, para limpeza', 'Sim, outros usos'] },
-      { id: 'q62', n: 62, text: 'Manejo(s) de dejetos realizado(s) na fazenda', type: 'multi', options: ['Lagoa de dejetos', 'Compostagem', 'Biodigestor', 'Esterqueira', 'Nenhum'], other: true },
+      { id: 'q57', n: 57, text: 'Principal(is) fonte(s) de água utilizada(s) na propriedade', type: 'multi', options: ['Poço artesiano', 'Poço semiartesiano', 'Rio/córrego', 'Represa/açude', 'Nascente'], other: true, req: true },
+      { id: 'q58', n: 58, text: 'Medida(s) tomada(s) para evitar a contaminação das fontes de água', type: 'multi', options: ['Manutenção de áreas de preservação permanente (APPs)', 'Controle de erosão do solo', 'Uso adequado de fertilizantes e pesticidas', 'Cercamento das nascentes', 'Tratamento de efluentes'], other: true, req: true },
+      { id: 'q59', n: 59, text: 'Medidas tomadas para evitar o desperdício de água', type: 'multi', options: ['Manutenção regular dos bebedouros', 'Controle de erosão do solo', 'Treinamento dos funcionários', 'Uso de hidrômetro', 'Bebedouros com boia'], other: true, req: true },
+      { id: 'q60', n: 60, text: 'Frequência da manutenção hidráulica dos bebedouros', type: 'choice', options: ['Diariamente', 'Semanalmente', 'Mensalmente', 'Quando apresenta problema'], req: true },
+      { id: 'q61', n: 61, text: 'Existem práticas de reuso de água na propriedade?', type: 'choice', options: ['Não', 'Sim, para irrigação', 'Sim, para limpeza', 'Sim, outros usos'], req: true },
+      { id: 'q62', n: 62, text: 'Manejo(s) de dejetos realizado(s) na fazenda', type: 'multi', options: ['Lagoa de dejetos', 'Compostagem', 'Biodigestor', 'Esterqueira', 'Nenhum'], other: true, req: true },
       { id: 'q62b', n: 62, text: 'É realizado enriquecimento na compostagem?', type: 'sn', showIf: ['q62', 'Compostagem'] },
-      { id: 'q63', n: 63, text: 'Destino dos dejetos', type: 'multi', options: ['Adubo orgânico', 'Fertirrigação', 'Comercialização', 'Descarte'], other: true },
+      { id: 'q63', n: 63, text: 'Destino dos dejetos', type: 'multi', options: ['Adubo orgânico', 'Fertirrigação', 'Comercialização', 'Descarte'], other: true, req: true },
       { id: 'q63b', n: 63, text: 'Valor por tonelada de esterco vendido', unit: 'R$/t', type: 'num', showIf: ['q63', 'Comercialização'] },
       { id: 'q63c', n: 63, text: 'Valor por tonelada de esterco ou composto tratado vendido', unit: 'R$/t', type: 'num', showIf: ['q63', 'Comercialização'] },
-      { id: 'q64', n: 64, text: 'Estratégias nutricionais utilizadas para mitigar a emissão de metano', type: 'multi', options: ['Uso de aditivos', 'Processamento de grão úmido', 'Dietas de alta energia', 'Nenhuma'], other: true },
-      { id: 'q65', n: 65, text: 'Há gerenciamento da quilometragem percorrida para a compra de insumos?', type: 'sn' },
-      { id: 'q66', n: 66, text: 'Quilometragem média na COMPRA dos animais', type: 'choice', options: ['Até 80 km', '81 - 120 km', '121 - 180 km', '181 -210 km', 'Acima de 210 km'] },
-      { id: 'q66b', n: 66, text: 'Quilometragem média na compra de insumos', unit: 'km', type: 'num' },
-      { id: 'q67', n: 67, text: 'Quilometragem média na VENDA dos animais', type: 'choice', options: ['Até 80 km', '81 - 120 km', '121 - 180 km', '181 -210 km', 'Acima de 210 km'] },
-      { id: 'q68', n: 68, text: 'Tipo(s) de energia utilizado(s) na fazenda', type: 'multi', options: ['Energia elétrica - Companhia', 'Motor a diesel', 'Gerador à diesel', 'Biodigestor', 'Hídrica (turbina hidráulica)', 'Solar (placa solar)'], other: true },
-      { id: 'q69a', n: 69, text: 'Participação do biodigestor na energia', unit: '%', type: 'pct' },
-      { id: 'q69b', n: 69, text: 'Participação da energia elétrica', unit: '%', type: 'pct' },
-      { id: 'q69c', n: 69, text: 'Participação do motor a diesel', unit: '%', type: 'pct' },
-      { id: 'q69d', n: 69, text: 'Participação hídrica (turbina hidráulica)', unit: '%', type: 'pct' },
-      { id: 'q69e', n: 69, text: 'Participação solar (placa solar)', unit: '%', type: 'pct' },
-      { id: 'q70', n: 70, text: 'Participa de algum programa de frigoríficos relacionado à sustentabilidade?', type: 'sn' },
+      { id: 'q64', n: 64, text: 'Estratégias nutricionais utilizadas para mitigar a emissão de metano', type: 'multi', options: ['Uso de aditivos', 'Processamento de grão úmido', 'Dietas de alta energia', 'Nenhuma'], other: true, req: true },
+      { id: 'q65', n: 65, text: 'Há gerenciamento da quilometragem percorrida para a compra de insumos?', type: 'sn', req: true },
+      { id: 'q66', n: 66, text: 'Quilometragem média na COMPRA dos animais', type: 'choice', options: ['Até 80 km', '81 - 120 km', '121 - 180 km', '181 -210 km', 'Acima de 210 km'], req: true },
+      { id: 'q66b', n: 66, text: 'Quilometragem média na compra de insumos', unit: 'km', type: 'num', req: true, showIf: ['q65', 'Sim'] },
+      { id: 'q67', n: 67, text: 'Quilometragem média na VENDA dos animais', type: 'choice', options: ['Até 80 km', '81 - 120 km', '121 - 180 km', '181 -210 km', 'Acima de 210 km'], req: true },
+      { id: 'q68', n: 68, text: 'Tipo(s) de energia utilizado(s) na fazenda', type: 'multi', options: ['Energia elétrica - Companhia', 'Motor a diesel', 'Gerador à diesel', 'Biodigestor', 'Hídrica (turbina hidráulica)', 'Solar (placa solar)'], other: true, req: true },
+      { id: 'q69a', n: 69, text: 'Participação do biodigestor na energia', unit: '%', type: 'pct', req: true },
+      { id: 'q69b', n: 69, text: 'Participação da energia elétrica', unit: '%', type: 'pct', req: true },
+      { id: 'q69c', n: 69, text: 'Participação do motor a diesel', unit: '%', type: 'pct', req: true },
+      { id: 'q69d', n: 69, text: 'Participação hídrica (turbina hidráulica)', unit: '%', type: 'pct', req: true },
+      { id: 'q69e', n: 69, text: 'Participação solar (placa solar)', unit: '%', type: 'pct', req: true },
+      { id: 'q70', n: 70, text: 'Participa de algum programa de frigoríficos relacionado à sustentabilidade?', type: 'sn', req: true },
     ],
   },
   {
     id: 'bemestar',
     title: 'Bem-estar animal',
     questions: [
-      { id: 'q71', n: 71, text: 'Há boa estrutura no curral de manejo racional?', type: 'sn' },
-      { id: 'q72', n: 72, text: 'Porcentagem de currais com calçamento', type: 'choice', options: ['Nenhum', 'Até 20%', '21% a 50%', '51% a 80%', 'Maior que 80%'] },
-      { id: 'q73', n: 73, text: 'Presença de irrigação', type: 'sn' },
-      { id: 'q74', n: 74, text: 'Quantos currais são irrigados', type: 'int', showIf: ['q73', 'Sim'] },
-      { id: 'q75', n: 75, text: 'Presença de sombra (3 m²/animal)', type: 'sn' },
-      { id: 'q76', n: 76, text: 'Quantos currais são sombreados', type: 'int', showIf: ['q75', 'Sim'] },
-      { id: 'q77', n: 77, text: 'Número de bebedouros por curral', type: 'num' },
-      { id: 'q78', n: 78, text: 'Metragem linear média dos bebedouros', unit: 'm', type: 'num' },
-      { id: 'q79', n: 79, text: 'Há estação meteorológica na propriedade?', type: 'sn' },
-      { id: 'q80', n: 80, text: 'Há acompanhamento de THI ou onda de calor no confinamento?', type: 'sn' },
-      { id: 'q81', n: 81, text: 'Como é realizada a identificação dos animais?', type: 'multi', options: ['Brinco', 'Brinco eletrônico (RFID)', 'Bolus', 'Marcação a fogo'], other: true },
-      { id: 'q82', n: 82, text: 'Frequência de limpeza dos bebedouros', type: 'choice', options: ['Diariamente', '3 vezes por semana', 'Semanalmente', 'Quinzenalmente', 'Mensalmente'], other: true },
-      { id: 'q83', n: 83, text: 'Como é realizado o gerenciamento do comportamento animal?', type: 'multi', options: ['Avaliação visual', 'Sensores/colares', 'Câmeras', 'Não é realizado'], other: true },
-      { id: 'q84', n: 84, text: 'Há equipe que realiza ronda sanitária no confinamento?', type: 'sn' },
-      { id: 'q85', n: 85, text: 'Horas por ano de treinamento técnico por funcionário', type: 'choice', options: ['Nenhuma', 'Menos de 5 horas', 'Entre 5 e 10 horas', 'Entre 10 e 20 horas', 'Mais de 20 horas'] },
-      { id: 'q86', n: 86, text: 'Há política de remuneração variável baseada no desempenho dos funcionários?', type: 'choice', options: ['Não', 'Sim, e o bônus é pago mensalmente', 'Sim, e o bônus é pago semestralmente', 'Sim, e o bônus é pago anualmente'] },
+      { id: 'q71', n: 71, text: 'Há boa estrutura no curral de manejo racional?', type: 'sn', req: true },
+      { id: 'q72', n: 72, text: 'Porcentagem de currais com calçamento', type: 'choice', options: ['Nenhum', 'Até 20%', '21% a 50%', '51% a 80%', 'Maior que 80%'], req: true },
+      { id: 'q73', n: 73, text: 'Presença de irrigação', type: 'sn', req: true },
+      { id: 'q74', n: 74, text: 'Quantos currais são irrigados', type: 'int', showIf: ['q73', 'Sim'], req: true },
+      { id: 'q75', n: 75, text: 'Presença de sombra (3 m²/animal)', type: 'sn', req: true },
+      { id: 'q76', n: 76, text: 'Quantos currais são sombreados', type: 'int', showIf: ['q75', 'Sim'], req: true },
+      { id: 'q77', n: 77, text: 'Número de bebedouros por curral', type: 'num', req: true },
+      { id: 'q78', n: 78, text: 'Metragem linear média dos bebedouros', unit: 'm', type: 'num', req: true },
+      { id: 'q79', n: 79, text: 'Há estação meteorológica na propriedade?', type: 'sn', req: true },
+      { id: 'q80', n: 80, text: 'Há acompanhamento de THI ou onda de calor no confinamento?', type: 'sn', req: true },
+      { id: 'q81', n: 81, text: 'Como é realizada a identificação dos animais?', type: 'multi', options: ['Brinco', 'Brinco eletrônico (RFID)', 'Bolus', 'Marcação a fogo'], other: true, req: true },
+      { id: 'q82', n: 82, text: 'Frequência de limpeza dos bebedouros', type: 'choice', options: ['Diariamente', '3 vezes por semana', 'Semanalmente', 'Quinzenalmente', 'Mensalmente'], other: true, req: true },
+      { id: 'q83', n: 83, text: 'Como é realizado o gerenciamento do comportamento animal?', type: 'multi', options: ['Avaliação visual', 'Sensores/colares', 'Câmeras', 'Não é realizado'], other: true, req: true },
+      { id: 'q84', n: 84, text: 'Há equipe que realiza ronda sanitária no confinamento?', type: 'sn', req: true },
+      { id: 'q85', n: 85, text: 'Horas por ano de treinamento técnico por funcionário', type: 'choice', options: ['Nenhuma', 'Menos de 5 horas', 'Entre 5 e 10 horas', 'Entre 10 e 20 horas', 'Mais de 20 horas'], req: true },
+      { id: 'q86', n: 86, text: 'Há política de remuneração variável baseada no desempenho dos funcionários?', type: 'choice', options: ['Não', 'Sim, e o bônus é pago mensalmente', 'Sim, e o bônus é pago semestralmente', 'Sim, e o bônus é pago anualmente'], req: true },
     ],
   },
   {
     id: 'expectativas',
     title: 'Expectativas',
     questions: [
-      { id: 'q87', n: 87, text: 'Quais serão os maiores desafios para {ano}?', type: 'multi', options: ['Custo de reposição', 'Mão de obra', 'Custo de capital', 'Custo de insumos', 'Preço do boi gordo', 'Clima', 'Sanidade'], other: true },
-      { id: 'q88', n: 88, text: 'Quais serão as principais oportunidades para {ano}?', type: 'multi', options: ['Oferta de boi magro', 'Custo de insumos', 'Gestão de risco na comercialização de gado', 'Mercado de exportação', 'Tecnologia e gestão'], other: true },
-      { id: 'q89', n: 89, text: 'Expectativas para {ano} em relação a {anoDados}', type: 'choice', options: ['Melhores', 'Iguais', 'Piores'] },
+      { id: 'q87', n: 87, text: 'Quais serão os maiores desafios para {ano}?', type: 'multi', options: ['Custo de reposição', 'Mão de obra', 'Custo de capital', 'Custo de insumos', 'Preço do boi gordo', 'Clima', 'Sanidade'], other: true, req: true },
+      { id: 'q88', n: 88, text: 'Quais serão as principais oportunidades para {ano}?', type: 'multi', options: ['Oferta de boi magro', 'Custo de insumos', 'Gestão de risco na comercialização de gado', 'Mercado de exportação', 'Tecnologia e gestão'], other: true, req: true },
+      { id: 'q89', n: 89, text: 'Expectativas para {ano} em relação a {anoDados}', type: 'choice', options: ['Melhores', 'Iguais', 'Piores'], req: true },
     ],
   },
   {
@@ -580,10 +580,12 @@ export function cleanAnswer(q, raw) {
 
 export const OPTIONS = { SN, UFS };
 
-// Situação do questionário: obrigatórias faltando e respostas que fogem da faixa esperada.
+// Situação do questionário: obrigatórias faltando (ou incompletas, com o motivo) e respostas que
+// fogem da faixa esperada. As obrigatórias e as regras são as dos formulários da planilha.
 export function validateQuestionario(respostas = {}) {
   const faltando = [];
   const alertas = [];
+  const motivos = {}; // id → por que a resposta ainda não vale (ex.: marcou 3 de 5 indicadores)
   let respondidas = 0;
   let visiveis = 0;
   for (const q of QUESTIONS) {
@@ -593,11 +595,20 @@ export function validateQuestionario(respostas = {}) {
     const vazio = v === null || v === undefined || v === '' || (Array.isArray(v) && !v.length);
     if (!vazio) respondidas += 1;
     if (vazio && q.req) faltando.push(q.id);
+    if (!vazio && q.type === 'multi' && q.min && Array.isArray(v) && v.length < q.min) {
+      faltando.push(q.id);
+      motivos[q.id] = `Escolha ${q.min === q.max ? 'exatamente' : 'pelo menos'} ${q.min} (marcou ${v.length}).`;
+    }
     if (!vazio && q.range && typeof v === 'number' && v !== 0 && (v < q.range[0] || v > q.range[1])) alertas.push({ id: q.id, msg: `Valor fora do esperado (${q.range[0]} a ${q.range[1]}).` });
   }
+  // Participações de energia: como no formulário, precisam somar 100%.
   const pctMix = ['q69a', 'q69b', 'q69c', 'q69d', 'q69e'].map((id) => respostas[id]).filter((v) => typeof v === 'number');
-  if (pctMix.length && Math.abs(pctMix.reduce((a, b) => a + b, 0) - 100) > 0.5) alertas.push({ id: 'q69a', msg: 'As participações de energia deveriam somar 100%.' });
-  return { faltando, alertas, respondidas, visiveis };
+  const soma = pctMix.reduce((a, b) => a + b, 0);
+  if (pctMix.length && Math.abs(soma - 100) > 0.5) {
+    if (!faltando.includes('q69a')) faltando.push('q69a');
+    motivos.q69a = `As participações de energia precisam somar 100% (hoje somam ${fmt(soma, 1)}%).`;
+  }
+  return { faltando, alertas, motivos, respondidas, visiveis };
 }
 
 // ---------- Resultado por categoria (abas FINAL e FINAL RECRIA) ----------

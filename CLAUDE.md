@@ -162,6 +162,12 @@ cliente veem o card. Página `/benchmark` (`public/benchmark/`), API `/api/bench
   categoria (Macho de Engorda = machos; Fêmea de Engorda e Vaca de Descarte = fêmeas).
 - As opções das perguntas de múltipla escolha foram montadas a partir das respostas de um
   cliente e precisam de revisão da equipe (sempre há "Outro").
+- **Obrigatórias do questionário** = as que os formulários VBA da planilha exigem (cada seção tem um
+  `ValidarFormulario`; o código foi lido do `vbaProject.bin` com `oletools`, sem abrir o Excel):
+  84 de 100. Opcionais: 20, 29, 45–54 (custos e preços), 62b, 63b, 63c e 90. Regras que vieram
+  junto: 41 e 42 com exatamente 5 e 7 indicadores (`min`=`max`), energias 69a–e somando 100%,
+  energia líquida (23 e 24) de 0,8 a 2,2 e 66b só quando 65 = Sim. Pendências desse tipo entram em
+  `faltando` com o motivo em `motivos` (`validateQuestionario`), então bloqueiam o envio.
 
 ## Painel CCV (relatório nativo, lido do modelo semântico)
 
