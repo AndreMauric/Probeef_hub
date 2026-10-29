@@ -163,6 +163,15 @@ cliente veem o card. Página `/benchmark` (`public/benchmark/`), API `/api/bench
   resultado do Excel consolidado. A base do cliente não muda. Visão "Exclusões" no Resultado (o que
   saiu, por quê e os limites) e coluna "Resultado (critério de exclusão)" no consolidado. Limites
   em `settings.exclusao` (padrão do documento; ainda sem tela no admin).
+- **Relatório do cliente** (botão "Relatório (PDF)" no Resultado, `abrirRelatorio` em `app.js`): página
+  para imprimir/salvar em PDF (`@media print` com `body.print-report`) com resumo, resultado por
+  categoria e lotes excluídos. **O cliente não vê dados de outros clientes.** Quando quem gera é o
+  admin, entra "Comparação com o grupo" (clientes enviados e aprovados).
+- **Comparação entre clientes — só admin** (Admin → Benchmarking → Comparação): `public/benchmark/comparacao.js`
+  (resultado de cada cliente com o critério de exclusão, estatísticas, ranking e quartil; `SENTIDO`
+  diz se maior ou menor é melhor). Dados de `/api/admin/benchmark/export`. Quartil só com 4+ clientes.
+- Pergunta 24 (energia da recria) é obrigatória só com "Recria confinada na fazenda" na pergunta 10
+  (`reqIf`, `isRequired`).
 - Aba Resultado: "Painel" (`public/benchmark/dashboard.js`: filtros por raça, sexo, categoria,
   tipo de entrada e mês de saída; indicadores e comparação entre grupos, sempre médias
   ponderadas pelos animais) e "Tabelas por categoria" (as abas FINAL da planilha). Sexo sai da

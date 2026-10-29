@@ -22,6 +22,7 @@ import {
   OPTIONS,
   QUESTIONARIO,
   QUESTIONS,
+  isRequired,
   questionText,
   questionVisible,
   resultadoEngorda,
@@ -1252,8 +1253,9 @@ function renderQuestions() {
             h(
               'div',
               { class: `bmk-q${v.faltando.includes(q.id) ? ' missing' : ''}` },
-              h('label', { class: 'bmk-q-label' }, h('span', { class: 'bmk-q-n' }, q.n), h('span', {}, questionText(q, settings()), q.req ? h('span', { class: 'bmk-req' }, ' *') : null)),
+              h('label', { class: 'bmk-q-label' }, h('span', { class: 'bmk-q-n' }, q.n), h('span', {}, questionText(q, settings()), isRequired(q, state.data.respostas) ? h('span', { class: 'bmk-req' }, ' *') : null)),
               q.hint ? h('small', { class: 'muted' }, questionText({ text: q.hint }, settings())) : null,
+              q.reqIfText ? h('small', { class: 'muted' }, q.reqIfText) : null,
               questionInput(q, editable),
               v.motivos[q.id] ? h('small', { class: 'bmk-q-err' }, `✕ ${v.motivos[q.id]}`) : null,
               v.alertas.filter((a) => a.id === q.id).map((a) => h('small', { class: 'bmk-q-warn' }, `⚠ ${a.msg}`)),
@@ -1322,10 +1324,11 @@ function renderResult() {
       ['exclusoes', `Exclusões${nExcluidos ? ` (${nExcluidos})` : ''}`],
     ].map(([k, t]) => h('button', { type: 'button', role: 'radio', 'aria-checked': String(view === k), class: view === k ? 'on' : '', onclick: () => ((state.resultView = k), renderResult()) }, t)),
   );
+  const relatorio = h('button', { class: 'btn btn-sm', type: 'button', onclick: () => abrirRelatorio().catch((err) => toast(err.message, 'error')) }, 'Relatório (PDF)');
   const dashBox = h('div', { class: 'bmk-dash' });
   fill(
     panel,
-    switcher,
+    h('div', { class: 'bmk-result-bar' }, switcher, relatorio),
     sum.erros ? h('div', { class: 'bmk-callout warn' }, `Há ${sum.erros} erro(s) nos lotes: o resultado abaixo pode mudar depois das correções.`) : null,
     nExcluidos && view !== 'exclusoes'
       ? h('div', { class: 'bmk-callout' }, `${nExcluidos} lote(s) ficaram fora do resultado pelo critério de exclusão de dados (continuam na base). `, h('button', { class: 'btn btn-sm', type: 'button', onclick: () => ((state.resultView = 'exclusoes'), renderResult()) }, 'Ver exclusões'))
@@ -1411,6 +1414,155 @@ function exclusoesView(exc) {
       ? h('div', { class: 'bmk-grid-wrap' }, h('table', { class: 'bmk-grid bmk-excl-table' }, h('thead', {}, h('tr', {}, ['Tipo', 'Lote', 'Categoria', 'Animais', 'Por quê'].map((t) => h('th', {}, t)))), h('tbody', {}, linhas)))
       : h('p', { class: 'muted' }, 'Nenhum lote excluído: todos estão dentro dos limites.'),
   ];
+}
+
+// ---------- Relatório do cliente (imprimir / salvar em PDF) ----------
+// O resultado do cliente pronto para entregar: resumo, resultado por categoria (com o critério de
+// exclusão) e os lotes excluídos. Quando quem gera é o admin, entra também a comparação com o grupo
+// (comparacao.js) — o cliente não vê dados de outros clientes.
+
+async function abrirRelatorio() {
+  const s = settings();
+  const client = state.view.client.name;
+  const sub = state.view.submission;
+  const exc = { engorda: separarExclusao(state.data.engorda, 'engorda', s), recria: separarExclusao(state.data.recria, 'recria', s) };
+  const cats = s.listas.categorias;
+  const eng = cats.map((c) => resultadoEngorda(exc.engorda.incluidos, state.data.respostas, c)).filter(Boolean);
+  const rec = cats.map((c) => resultadoRecria(exc.recria.incluidos, c)).filter(Boolean);
+
+  // Comparação (só admin): clientes enviados e aprovados, mais este cliente com os dados da tela.
+  let comp = null;
+  if (state.isAdmin) {
+    try {
+      const [data, c] = await Promise.all([api('/api/admin/benchmark/export'), import('./comparacao.js')]);
+      const subs = data.submissions.filter((x) => x.clientId !== state.clientId && (x.status === 'aprovado' || x.status === 'enviado'));
+      subs.push({ clientId: state.clientId, client, status: sub.status, engorda: state.data.engorda, recria: state.data.recria, respostas: state.data.respostas });
+      comp = { c, grupo: c.resultadosDoGrupo(subs, s) };
+    } catch (err) {
+      toast(`Comparação indisponível: ${err.message}`, 'error');
+    }
+  }
+
+  const fmtN = (v, d = 2) => nf(v, d);
+  const animais = (ls) => ls.reduce((t, l) => t + (Number(l.qtAnm) || 0), 0);
+  const saidas = [...exc.engorda.incluidos, ...exc.recria.incluidos].map((l) => l.saida).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d || '')).sort();
+  const dataBr = (iso) => new Date(`${iso}T12:00:00`).toLocaleDateString('pt-BR');
+  const tabela = (rows, obj, fonte = {}) =>
+    h(
+      'table',
+      { class: 'rel-table' },
+      h(
+        'tbody',
+        {},
+        rows.map(([key, label, d, src]) => h('tr', {}, h('th', {}, label, src && fonte[src] === 'questionário' ? h('small', {}, ' (questionário)') : null), h('td', {}, fmtN(obj[key], d)))),
+      ),
+    );
+  const hero = (items) => h('div', { class: 'rel-hero' }, items.map(([label, v, unit, d]) => h('div', {}, h('span', {}, label), h('strong', {}, fmtN(v, d)), h('small', {}, unit))));
+
+  const compTable = (kind, cat) => {
+    if (!comp) return null;
+    const { c, grupo } = comp;
+    const meu = grupo.find((g) => g.clientId === state.clientId)?.[kind]?.[cat];
+    if (!meu) return null;
+    const outros = grupo.map((g) => g[kind]?.[cat]).filter(Boolean);
+    const linhas = c.INDICADORES[kind].filter(([k]) => c.PRINCIPAIS.includes(k));
+    return h(
+      'div',
+      { class: 'rel-comp' },
+      h('h4', {}, `Comparação com o grupo (${outros.length} cliente(s) com esta categoria, enviados ou aprovados)`),
+      h(
+        'table',
+        { class: 'rel-table rel-table-comp' },
+        h('thead', {}, h('tr', {}, ['Indicador', 'Cliente', 'Média do grupo', 'Mediana', 'Posição'].map((t) => h('th', {}, t)))),
+        h(
+          'tbody',
+          {},
+          linhas.map(([k, label, d]) => {
+            const valores = outros.map((o) => o[k]);
+            const st = c.estatisticas(valores);
+            const p = c.posicao(meu[k], valores, c.SENTIDO[k] || 0);
+            return h('tr', {}, h('th', {}, label), h('td', {}, fmtN(meu[k], d)), h('td', {}, fmtN(st.media, d)), h('td', {}, fmtN(st.mediana, d)), h('td', {}, p ? `${p.rank}º de ${p.n}${p.sentido && p.quartil ? ` · Q${p.quartil}` : ''}` : '—'));
+          }),
+        ),
+      ),
+    );
+  };
+
+  const excluidos = [...exc.engorda.excluidos.map((x) => ['Engorda', x]), ...exc.recria.excluidos.map((x) => ['Recria', x])];
+  const report = document.getElementById('bmk-report') || document.body.appendChild(h('div', { id: 'bmk-report', role: 'dialog', 'aria-label': 'Relatório do benchmarking' }));
+  const fechar = () => {
+    report.hidden = true;
+    document.body.classList.remove('print-report');
+  };
+  fill(
+    report,
+    h(
+      'div',
+      { class: 'rel-toolbar' },
+      h('strong', {}, 'Relatório do benchmarking'),
+      state.isAdmin ? h('span', { class: 'muted' }, 'Versão da equipe: inclui a comparação com o grupo. O relatório que o cliente gera não tem essa seção.') : null,
+      h('span', { class: 'spacer' }),
+      h('button', { class: 'btn btn-primary', type: 'button', onclick: () => window.print() }, 'Imprimir / salvar em PDF'),
+      h('button', { class: 'btn', type: 'button', onclick: fechar }, 'Fechar'),
+    ),
+    h(
+      'article',
+      { class: 'rel-page' },
+      h(
+        'header',
+        { class: 'rel-head' },
+        h('img', { src: '/img/probeef-horizontal.png', alt: 'Probeef', width: 150, height: 33 }),
+        h('div', {}, h('h1', {}, `Benchmarking Confinamento ${state.ano}`), h('p', {}, h('strong', {}, client), ` · ${STATUS[sub.status]?.label || 'Em preenchimento'}${sub.status === 'aprovado' && sub.decidedAt ? ` em ${new Date(sub.decidedAt).toLocaleDateString('pt-BR')}` : ''}`), h('p', { class: 'rel-muted' }, `Gerado em ${new Date().toLocaleDateString('pt-BR')} pelo portal BI Probeef`)),
+      ),
+      h('h2', {}, 'Resumo'),
+      h(
+        'div',
+        { class: 'rel-tiles' },
+        [
+          ['Lotes de engorda no resultado', `${exc.engorda.incluidos.length} de ${state.data.engorda.length}`],
+          ['Lotes de recria no resultado', `${exc.recria.incluidos.length} de ${state.data.recria.length}`],
+          ['Animais no resultado', nf(animais([...exc.engorda.incluidos, ...exc.recria.incluidos]), 0)],
+          ['Saídas', saidas.length ? `${dataBr(saidas[0])} a ${dataBr(saidas.at(-1))}` : '—'],
+        ].map(([label, v]) => h('div', {}, h('span', {}, label), h('strong', {}, v))),
+      ),
+      eng.length ? h('h2', {}, 'Engorda') : null,
+      eng.map((r) =>
+        h(
+          'section',
+          { class: 'rel-section' },
+          h('h3', {}, r.categoria, h('small', {}, ` · ${nf(r.zootecnico.animais, 0)} animais em ${r.zootecnico.lotes} lote(s)`)),
+          hero([
+            ['Lucro', r.economico.lucro, 'R$/cab', 2],
+            ['Rentabilidade', r.economico.rentabilidadeMensal, '% ao mês', 2],
+            ['Custo total da @', r.economico.custoTotalArroba, 'R$/@', 2],
+            ['GDC', r.zootecnico.gdc, 'kg/dia', 3],
+          ]),
+          h('div', { class: 'rel-cols' }, h('div', {}, h('h4', {}, 'Zootécnico'), tabela(ZOO_RESULT_ROWS, r.zootecnico)), h('div', {}, h('h4', {}, 'Econômico'), tabela(ECO_RESULT_ROWS, r.economico, r.fonte))),
+          compTable('engorda', r.categoria),
+        ),
+      ),
+      rec.length ? h('h2', {}, 'Recria confinada') : null,
+      rec.map((r) => h('section', { class: 'rel-section' }, h('h3', {}, r.categoria, h('small', {}, ` · ${nf(r.zootecnico.animais, 0)} animais em ${r.zootecnico.lotes} lote(s)`)), tabela(ZOO_RESULT_ROWS, r.zootecnico), compTable('recria', r.categoria))),
+      !eng.length && !rec.length ? h('p', {}, 'Ainda não há lotes suficientes para o resultado.') : null,
+      h('h2', {}, 'Lotes fora do resultado'),
+      excluidos.length
+        ? h(
+            'table',
+            { class: 'rel-table rel-table-excl' },
+            h('thead', {}, h('tr', {}, ['Tipo', 'Lote', 'Categoria', 'Animais', 'Motivo'].map((t) => h('th', {}, t)))),
+            h('tbody', {}, excluidos.map(([tipo, { lote: l, motivos }]) => h('tr', {}, h('td', {}, tipo), h('td', {}, l.lote ?? '—'), h('td', {}, l.categoria || '—'), h('td', {}, nf(Number(l.qtAnm) || 0, 0)), h('td', {}, motivos.map((m) => m.msg).join(' '))))),
+          )
+        : h('p', {}, 'Todos os lotes estão dentro do critério de exclusão de dados.'),
+      h(
+        'p',
+        { class: 'rel-muted rel-note' },
+        'Médias ponderadas pelo número de animais de cada lote, por categoria. Os custos marcados "questionário" vêm das respostas da seção Comercialização; os demais, dos lotes. Lotes de enfermaria/refugo e com consumo, dias de cocho, rendimento, arrobas produzidas ou ganho diário fora dos limites do critério de exclusão de dados não entram no resultado.',
+      ),
+    ),
+  );
+  report.hidden = false;
+  report.scrollTop = 0;
+  document.body.classList.add('print-report');
 }
 
 // ---------- Histórico ----------

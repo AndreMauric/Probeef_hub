@@ -1151,3 +1151,244 @@
   margin: 0;
   padding-left: 16px;
 }
+
+/* Resultado: botões acima */
+.bmk-result-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* ---------- Relatório do cliente (tela de visualização + impressão) ---------- */
+/* Sempre claro, como papel, mesmo no tema escuro. */
+#bmk-report {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  overflow: auto;
+  background: #e9eeed;
+  color: #1e2b2a;
+}
+
+#bmk-report[hidden] {
+  display: none;
+}
+
+.rel-toolbar {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 16px;
+  background: #fff;
+  border-bottom: 1px solid #d5e2df;
+}
+
+.rel-toolbar .spacer {
+  flex: 1;
+}
+
+.rel-toolbar .muted {
+  color: #5e7472;
+  font-size: 13px;
+}
+
+.rel-page {
+  max-width: 900px;
+  margin: 20px auto;
+  padding: 36px 44px;
+  background: #fff;
+  box-shadow: 0 2px 10px rgb(0 0 0 / 0.08);
+  font: 14px/1.45 var(--font-ui, Arial, sans-serif);
+}
+
+.rel-head {
+  display: flex;
+  gap: 24px;
+  align-items: center;
+  padding-bottom: 16px;
+  border-bottom: 2px solid #094140;
+}
+
+.rel-head h1 {
+  margin: 0;
+  color: #094140;
+  font-size: 24px;
+}
+
+.rel-head p {
+  margin: 2px 0 0;
+}
+
+.rel-muted {
+  color: #5e7472;
+  font-size: 12px;
+}
+
+.rel-page h2 {
+  margin: 26px 0 10px;
+  color: #094140;
+  font-size: 18px;
+}
+
+.rel-page h3 {
+  margin: 0 0 10px;
+  font-size: 16px;
+}
+
+.rel-page h3 small {
+  color: #5e7472;
+  font-weight: 400;
+}
+
+.rel-page h4 {
+  margin: 12px 0 6px;
+  color: #5e7472;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.rel-tiles,
+.rel-hero {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+.rel-tiles > div,
+.rel-hero > div {
+  display: grid;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #eef4f3;
+}
+
+.rel-tiles span,
+.rel-hero span,
+.rel-hero small {
+  color: #5e7472;
+  font-size: 12px;
+}
+
+.rel-tiles strong,
+.rel-hero strong {
+  font-size: 18px;
+}
+
+.rel-section {
+  margin-bottom: 18px;
+  padding: 14px 0;
+  border-top: 1px solid #d5e2df;
+}
+
+.rel-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+
+.rel-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+
+.rel-table th,
+.rel-table td {
+  padding: 4px 6px;
+  border-bottom: 1px solid #e3ebe9;
+  background: none;
+  color: #1e2b2a;
+  font: 400 12.5px/1.4 var(--font-ui, Arial, sans-serif);
+  letter-spacing: normal;
+  text-align: left;
+  text-transform: none;
+}
+
+.rel-table td {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.rel-table thead th {
+  color: #5e7472;
+  font-weight: 600;
+}
+
+.rel-table-excl td {
+  text-align: left;
+}
+
+.rel-comp {
+  margin-top: 8px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #fbf6e8;
+}
+
+.rel-note {
+  margin-top: 24px;
+}
+
+@media (max-width: 700px) {
+  .rel-page {
+    padding: 20px;
+  }
+
+  .rel-tiles,
+  .rel-hero,
+  .rel-cols {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media print {
+  @page {
+    size: A4;
+    margin: 12mm;
+  }
+
+  body.print-report > *:not(#bmk-report) {
+    display: none !important;
+  }
+
+  body.print-report #bmk-report {
+    position: static;
+    overflow: visible;
+    background: #fff;
+  }
+
+  body.print-report .rel-toolbar {
+    display: none;
+  }
+
+  body.print-report .rel-page {
+    max-width: none;
+    margin: 0;
+    padding: 0;
+    box-shadow: none;
+  }
+
+  .rel-section,
+  .rel-tiles,
+  .rel-table tr {
+    break-inside: avoid;
+  }
+
+  .rel-page h2,
+  .rel-page h3 {
+    break-after: avoid;
+  }
+
+  .rel-tiles > div,
+  .rel-hero > div,
+  .rel-comp {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}

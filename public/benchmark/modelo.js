@@ -194,6 +194,7 @@ export async function baixarModelo(tipo, settings, cliente) {
         q.other && opts ? 'Pode escrever outra resposta' : null,
         q.showIf ? `Só se a pergunta ${QUESTIONS.find((x) => x.id === q.showIf[0])?.n} for "${q.showIf[1]}"` : null,
         q.hint ? questionText({ text: q.hint }, settings) : null,
+        q.reqIfText || null,
       ].filter(Boolean);
       const row = qs.addRow({ id: q.id, n: q.n, text: `${questionText(q, settings)}${q.req ? ' *' : ''}`, how: how.join(' · ') });
       row.alignment = { wrapText: true, vertical: 'top' };

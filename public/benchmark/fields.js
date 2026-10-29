@@ -417,7 +417,7 @@ export const QUESTIONARIO = [
       { id: 'q21', n: 21, text: 'Faz leitura de cocho noturna?', type: 'sn', req: true },
       { id: 'q22', n: 22, text: 'Se sim, quantas vezes na noite faz a leitura noturna?', type: 'int', showIf: ['q21', 'Sim'], req: true },
       { id: 'q23', n: 23, text: 'Energia líquida da dieta de terminação', unit: 'Mcal/kg MS', type: 'num', hint: 'Preencher com auxílio do coordenador da conta.', min: 0.8, max: 2.2, req: true },
-      { id: 'q24', n: 24, text: 'Energia líquida da dieta da recria confinada', unit: 'Mcal/kg MS', type: 'num', hint: 'Preencher com auxílio do coordenador da conta.', min: 0.8, max: 2.2, req: true },
+      { id: 'q24', n: 24, text: 'Energia líquida da dieta da recria confinada', unit: 'Mcal/kg MS', type: 'num', hint: 'Preencher com auxílio do coordenador da conta.', min: 0.8, max: 2.2, req: true, reqIf: ['q10', 'Recria confinada na fazenda'], reqIfText: 'Obrigatória quando a fazenda faz recria confinada (pergunta 10).' },
       { id: 'q25', n: 25, text: 'Utiliza dieta sem volumoso?', type: 'sn', req: true },
     ],
   },
@@ -548,12 +548,18 @@ export const QUESTIONARIO = [
 export const QUESTIONS = QUESTIONARIO.flatMap((s) => s.questions);
 export const questionText = (q, settings) => q.text.replaceAll('{ano}', settings.ano).replaceAll('{anoDados}', settings.ano - 1);
 
-export function questionVisible(q, respostas) {
-  if (!q.showIf) return true;
-  const [dep, val] = q.showIf;
+// [pergunta, valor]: a resposta da pergunta é o valor (ou, na múltipla escolha, inclui o valor).
+const answerIs = ([dep, val], respostas) => {
   const a = respostas[dep];
   return Array.isArray(a) ? a.includes(val) : a === val;
+};
+
+export function questionVisible(q, respostas) {
+  return !q.showIf || answerIs(q.showIf, respostas);
 }
+
+// Obrigatória: req, e quando tem reqIf, só se a condição vale (ex.: 24 só com recria confinada).
+export const isRequired = (q, respostas) => Boolean(q.req) && (!q.reqIf || answerIs(q.reqIf, respostas));
 
 // Uma resposta: valida o tipo e devolve o valor limpo (ou um erro).
 export function cleanAnswer(q, raw) {
@@ -595,7 +601,7 @@ export function validateQuestionario(respostas = {}) {
     const v = respostas[q.id];
     const vazio = v === null || v === undefined || v === '' || (Array.isArray(v) && !v.length);
     if (!vazio) respondidas += 1;
-    if (vazio && q.req) faltando.push(q.id);
+    if (vazio && isRequired(q, respostas)) faltando.push(q.id);
     if (!vazio && q.type === 'multi' && q.min && Array.isArray(v) && v.length < q.min) {
       faltando.push(q.id);
       motivos[q.id] = `Escolha ${q.min === q.max ? 'exatamente' : 'pelo menos'} ${q.min} (marcou ${v.length}).`;

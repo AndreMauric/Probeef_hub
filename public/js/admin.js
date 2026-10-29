@@ -1271,9 +1271,11 @@ function selectBmkView(view) {
   });
   document.getElementById('benchmark').hidden = view !== 'andamento';
   document.getElementById('benchmark-metrics').hidden = view !== 'metricas';
+  document.getElementById('benchmark-compare').hidden = view !== 'comparacao';
   document.getElementById('bmk-metrics-export').hidden = view !== 'metricas';
   document.getElementById('bmk-export').hidden = view === 'metricas';
   if (view === 'metricas') loadBmkMetrics();
+  if (view === 'comparacao') loadBmkCompare();
 }
 
 async function loadBmkMetrics() {
@@ -1476,6 +1478,137 @@ async function exportBmkMetrics() {
     toast(err.message, 'error');
   }
 }
+
+// ---------- Benchmarking → Comparação entre clientes (só admin) ----------
+// Resultado de cada cliente por categoria (com o critério de exclusão) e a posição no grupo.
+// Cálculo em public/benchmark/comparacao.js, o mesmo da seção de comparação do relatório.
+
+const bmkCompare = { data: null, m: null, c: null, situacao: 'aprovado', grupo: null, ind: 'gpd', loading: false };
+const SITUACOES = [
+  ['aprovado', 'Só aprovados'],
+  ['enviado', 'Enviados e aprovados'],
+  ['todos', 'Todos com lotes'],
+];
+
+async function loadBmkCompare() {
+  if (bmkCompare.loading) return;
+  bmkCompare.loading = true;
+  const box = document.getElementById('benchmark-compare');
+  if (!bmkCompare.data) box.replaceChildren(h('p', { class: 'muted' }, 'Calculando o resultado de cada cliente…'));
+  try {
+    const [data, m, c] = await Promise.all([api('/api/admin/benchmark/export'), import('/benchmark/fields.js'), import('/benchmark/comparacao.js')]);
+    Object.assign(bmkCompare, { data, m, c });
+    renderBmkCompare();
+  } catch (err) {
+    box.replaceChildren(h('p', { class: 'alert' }, err.message));
+  } finally {
+    bmkCompare.loading = false;
+  }
+}
+
+function renderBmkCompare() {
+  const { data, m, c } = bmkCompare;
+  const box = document.getElementById('benchmark-compare');
+  const settings = m.mergeSettings(data.settings);
+  const subs = data.submissions.filter((s) =>
+    bmkCompare.situacao === 'aprovado' ? s.status === 'aprovado' : bmkCompare.situacao === 'enviado' ? s.status === 'aprovado' || s.status === 'enviado' : s.engorda.length + s.recria.length > 0,
+  );
+  const grupo = c.resultadosDoGrupo(subs, settings);
+  // Grupos com dados: "engorda|Macho de Engorda", "recria|…".
+  const grupos = [];
+  for (const kind of ['engorda', 'recria']) for (const cat of settings.listas.categorias) if (grupo.some((g) => g[kind][cat])) grupos.push([`${kind}|${cat}`, `${kind === 'engorda' ? 'Engorda' : 'Recria'} · ${cat}`]);
+  if (!grupos.some(([k]) => k === bmkCompare.grupo)) bmkCompare.grupo = grupos[0]?.[0] || null;
+  const [kind, cat] = (bmkCompare.grupo || 'engorda|').split('|');
+  const inds = c.INDICADORES[kind];
+  if (!inds.some(([k]) => k === bmkCompare.ind)) bmkCompare.ind = 'gpd';
+  const ind = inds.find(([k]) => k === bmkCompare.ind);
+  const [key, label, d] = ind;
+  const sentido = c.SENTIDO[key] || 0;
+  const linhas = grupo.map((g) => ({ g, v: g[kind]?.[cat]?.[key] })).filter((x) => Number.isFinite(x.v));
+  const valores = linhas.map((x) => x.v);
+  const st = c.estatisticas(valores);
+  const fmt = (v, dd = d) => (Number.isFinite(v) ? v.toLocaleString('pt-BR', { minimumFractionDigits: dd, maximumFractionDigits: dd }) : '—');
+
+  const sel = (value, opts, onchange, aria) =>
+    h('select', { 'aria-label': aria, onchange: (e) => onchange(e.target.value) }, opts.map(([v, t]) => h('option', { value: v, selected: v === value }, t)));
+  const indSelect = h(
+    'select',
+    { 'aria-label': 'Indicador', onchange: (e) => ((bmkCompare.ind = e.target.value), renderBmkCompare()) },
+    ['Zootécnico', 'Econômico'].map((gr) => {
+      const list = inds.filter((x) => x[3] === gr);
+      return list.length ? h('optgroup', { label: gr }, list.map(([k, t]) => h('option', { value: k, selected: k === bmkCompare.ind }, t))) : null;
+    }),
+  );
+
+  const ordenadas = [...linhas].sort((a, b) => (sentido === -1 ? a.v - b.v : b.v - a.v));
+  const maxAbs = Math.max(1e-9, ...valores.map((v) => Math.abs(v)));
+  const ranking = ordenadas.map(({ g, v }) => {
+    const p = c.posicao(v, valores, sentido);
+    return h(
+      'div',
+      { class: 'bmk-rank-row', title: `${g.client}: ${fmt(v)}${p ? ` · ${p.rank}º de ${p.n}` : ''}` },
+      h('span', { class: 'mono muted' }, p ? `${p.rank}º` : ''),
+      h('span', { class: 'bmk-rank-name' }, g.client, g.status !== 'aprovado' ? h('small', { class: 'muted' }, ` · ${(BMK_STATUS[g.status] || BMK_STATUS.nao_iniciado)[0]}`) : null),
+      h('span', { class: 'bmk-pareto-track' }, h('span', { class: `bmk-pareto-bar${v < 0 ? ' neg' : ''}`, style: `width: ${(Math.abs(v) / maxAbs) * 100}%` })),
+      h('span', { class: 'mono' }, fmt(v)),
+      sentido && p?.quartil ? h('span', { class: `pill ${p.quartil === 1 ? 'pill-ok' : p.quartil === 4 ? 'pill-danger' : ''}` }, `Q${p.quartil}`) : h('span'),
+    );
+  });
+
+  const resumoTable = h('table');
+  table(
+    resumoTable,
+    ['Indicador', 'Clientes', 'Média', 'Mediana', '1º quartil', '3º quartil', 'Mínimo', 'Máximo', 'Melhor'],
+    inds.map(([k, t, dd]) => {
+      const s = c.estatisticas(grupo.map((g) => g[kind]?.[cat]?.[k]));
+      const f = (v) => (Number.isFinite(v) ? v.toLocaleString('pt-BR', { minimumFractionDigits: dd, maximumFractionDigits: dd }) : '—');
+      return h(
+        'tr',
+        { class: k === key ? 'row-on' : 'row-link', tabindex: '0', onclick: () => ((bmkCompare.ind = k), renderBmkCompare()) },
+        h('td', {}, t),
+        h('td', { class: 'mono' }, s.n || 0),
+        h('td', { class: 'mono' }, f(s.media)),
+        h('td', { class: 'mono' }, f(s.mediana)),
+        h('td', { class: 'mono' }, f(s.q1)),
+        h('td', { class: 'mono' }, f(s.q3)),
+        h('td', { class: 'mono' }, f(s.min)),
+        h('td', { class: 'mono' }, f(s.max)),
+        h('td', { class: 'muted' }, c.SENTIDO[k] === 1 ? 'maior' : c.SENTIDO[k] === -1 ? 'menor' : '—'),
+      );
+    }),
+    'Nenhum indicador.',
+  );
+
+  box.replaceChildren(
+    h('p', { class: 'muted bmk-metrics-note' }, 'Só para a equipe: o resultado de cada cliente por categoria, com o critério de exclusão de dados aplicado (como no resultado de cada um), e a posição no grupo. Q1 = os 25% melhores no indicador; Q4 = os 25% piores.'),
+    h(
+      'div',
+      { class: 'bmk-compare-controls' },
+      h('label', { class: 'field' }, h('span', {}, 'Clientes'), sel(bmkCompare.situacao, SITUACOES, (v) => ((bmkCompare.situacao = v), renderBmkCompare()), 'Clientes')),
+      h('label', { class: 'field' }, h('span', {}, 'Grupo'), grupos.length ? sel(bmkCompare.grupo, grupos, (v) => ((bmkCompare.grupo = v), renderBmkCompare()), 'Grupo') : h('span', { class: 'muted' }, 'sem dados')),
+      h('label', { class: 'field' }, h('span', {}, 'Indicador'), indSelect),
+    ),
+    ...(grupos.length
+      ? [
+          h(
+            'div',
+            { class: 'stats' },
+            statTile('Clientes no grupo', num(st.n || 0)),
+            statTile('Média', fmt(st.media)),
+            statTile('Mediana', fmt(st.mediana)),
+            statTile('Entre o 1º e o 3º quartil', st.n ? `${fmt(st.q1)} a ${fmt(st.q3)}` : '—'),
+            statTile('Mínimo e máximo', st.n ? `${fmt(st.min)} a ${fmt(st.max)}` : '—'),
+          ),
+          h('h3', { class: 'bmk-metrics-h' }, `${label}: do ${sentido === -1 ? 'menor' : 'maior'} para o ${sentido === -1 ? 'maior' : 'menor'}${sentido ? ` (${sentido === 1 ? 'maior é melhor' : 'menor é melhor'})` : ''}`),
+          ranking.length ? h('div', { class: 'bmk-rank' }, ranking) : h('p', { class: 'muted' }, 'Nenhum cliente com este indicador.'),
+          h('h3', { class: 'bmk-metrics-h' }, 'Todos os indicadores do grupo'),
+          h('p', { class: 'muted' }, 'Clique num indicador para ver o ranking dele.'),
+          h('div', { class: 'table-wrap' }, resumoTable),
+        ]
+      : [h('p', { class: 'muted' }, 'Nenhum cliente com resultado nesta seleção.')]),
+  );
+}
+
 
 // ---------- Cotações ----------
 

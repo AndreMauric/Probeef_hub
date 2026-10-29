@@ -4259,13 +4259,20 @@ pre.digest {
 /* ---------- Admin: Benchmarking → métricas do processo ---------- */
 
 #benchmark,
-#benchmark-metrics {
+#benchmark-metrics,
+#benchmark-compare {
   margin-top: 16px;
 }
 
-#benchmark-metrics {
+#benchmark-metrics,
+#benchmark-compare {
   display: grid;
   gap: 14px;
+}
+
+#benchmark-compare[hidden],
+#benchmark-metrics[hidden] {
+  display: none;
 }
 
 .bmk-metrics-note {
@@ -4344,4 +4351,43 @@ pre.digest {
   padding-left: 18px;
   font-size: 13.5px;
   line-height: 1.7;
+}
+
+/* Benchmarking → Comparação */
+.bmk-compare-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.bmk-compare-controls .field {
+  min-width: 220px;
+}
+
+.bmk-rank {
+  display: grid;
+  gap: 6px;
+}
+
+.bmk-rank-row {
+  display: grid;
+  grid-template-columns: 36px minmax(140px, 240px) 1fr 90px 44px;
+  gap: 10px;
+  align-items: center;
+  font-size: 13.5px;
+}
+
+.bmk-rank-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bmk-pareto-bar.neg {
+  background: var(--danger);
+}
+
+tr.row-on td {
+  background: var(--surface-2);
+  font-weight: 600;
 }
