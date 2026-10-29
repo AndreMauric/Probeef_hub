@@ -1121,3 +1121,33 @@
 .bmk-overview td {
   vertical-align: top;
 }
+
+/* Resultado → Exclusões (critério de exclusão de dados) */
+.bmk-excl-tiles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.bmk-excl-tile {
+  display: grid;
+  gap: 2px;
+  min-width: 220px;
+  padding: 12px 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.bmk-excl-tile strong {
+  font-size: 18px;
+}
+
+.bmk-excl-table td {
+  vertical-align: top;
+}
+
+.bmk-excl-motivos {
+  margin: 0;
+  padding-left: 16px;
+}

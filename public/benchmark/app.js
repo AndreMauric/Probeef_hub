@@ -16,6 +16,8 @@ import {
   ECO_FIELDS,
   ECO_RESULT_ROWS,
   editableStatus,
+  EXCLUSAO_LABELS,
+  separarExclusao,
   lotesFromTgc,
   OPTIONS,
   QUESTIONARIO,
@@ -1275,8 +1277,11 @@ function renderQuestions() {
 function renderResult() {
   const panel = document.querySelector('[data-panel="resultado"]');
   const cats = settings().listas.categorias;
-  const eng = cats.map((c) => resultadoEngorda(state.data.engorda, state.data.respostas, c)).filter(Boolean);
-  const rec = cats.map((c) => resultadoRecria(state.data.recria, c)).filter(Boolean);
+  // Critério de exclusão: os lotes fora dos limites saem do resultado (continuam na base).
+  const exc = { engorda: separarExclusao(state.data.engorda, 'engorda', settings()), recria: separarExclusao(state.data.recria, 'recria', settings()) };
+  const nExcluidos = exc.engorda.excluidos.length + exc.recria.excluidos.length;
+  const eng = cats.map((c) => resultadoEngorda(exc.engorda.incluidos, state.data.respostas, c)).filter(Boolean);
+  const rec = cats.map((c) => resultadoRecria(exc.recria.incluidos, c)).filter(Boolean);
   const table = (rows, obj, fonte = {}) =>
     h(
       'table',
@@ -1314,6 +1319,7 @@ function renderResult() {
     [
       ['painel', 'Painel'],
       ['tabelas', 'Tabelas por categoria'],
+      ['exclusoes', `Exclusões${nExcluidos ? ` (${nExcluidos})` : ''}`],
     ].map(([k, t]) => h('button', { type: 'button', role: 'radio', 'aria-checked': String(view === k), class: view === k ? 'on' : '', onclick: () => ((state.resultView = k), renderResult()) }, t)),
   );
   const dashBox = h('div', { class: 'bmk-dash' });
@@ -1321,14 +1327,90 @@ function renderResult() {
     panel,
     switcher,
     sum.erros ? h('div', { class: 'bmk-callout warn' }, `Há ${sum.erros} erro(s) nos lotes: o resultado abaixo pode mudar depois das correções.`) : null,
-    view === 'painel'
+    nExcluidos && view !== 'exclusoes'
+      ? h('div', { class: 'bmk-callout' }, `${nExcluidos} lote(s) ficaram fora do resultado pelo critério de exclusão de dados (continuam na base). `, h('button', { class: 'btn btn-sm', type: 'button', onclick: () => ((state.resultView = 'exclusoes'), renderResult()) }, 'Ver exclusões'))
+      : null,
+    view === 'exclusoes'
+      ? exclusoesView(exc)
+      : view === 'painel'
       ? dashBox
       : [
           h('p', { class: 'muted' }, 'Médias ponderadas pelo número de animais de cada lote, por categoria (como a aba FINAL da planilha). Os custos marcados "questionário" vêm das respostas da seção Comercialização; os demais, dos lotes.'),
           eng.length || rec.length ? [eng.map(engCard), rec.map(recCard)] : h('div', { class: 'bmk-blank' }, h('h3', {}, 'Ainda sem resultado'), h('p', { class: 'muted' }, 'Inclua lotes com categoria e número de animais para ver o resultado.')),
         ],
   );
-  if (view === 'painel') renderDashboard(dashBox, { engorda: state.data.engorda, recria: state.data.recria });
+  if (view === 'painel') renderDashboard(dashBox, { engorda: exc.engorda.incluidos, recria: exc.recria.incluidos });
+}
+
+// Aba Exclusões: o que saiu do resultado, por quê (valor × limite) e os limites usados.
+function exclusoesView(exc) {
+  const kinds = [
+    ['engorda', 'Engorda'],
+    ['recria', 'Recria confinada'],
+  ];
+  const animais = (ls) => ls.reduce((t, l) => t + (Number(l.qtAnm) || 0), 0);
+  const tiles = kinds.map(([k, label]) => {
+    const e = exc[k];
+    const total = e.incluidos.length + e.excluidos.length;
+    if (!total) return null;
+    return h(
+      'div',
+      { class: 'bmk-excl-tile' },
+      h('span', {}, label),
+      h('strong', {}, `${e.excluidos.length} de ${total} lotes excluídos`),
+      h('small', { class: 'muted' }, `${nf(animais(e.excluidos.map((x) => x.lote)), 0)} de ${nf(animais([...e.incluidos, ...e.excluidos.map((x) => x.lote)]), 0)} animais · ${total ? nf((e.excluidos.length / total) * 100, 1) : '0'}% dos lotes`),
+    );
+  });
+  // Quantos lotes cada critério tirou (um lote pode cair em mais de um).
+  const porCriterio = h(
+    'table',
+    { class: 'bmk-result-table' },
+    h('thead', {}, h('tr', {}, h('th', {}, 'Critério'), ...kinds.map(([, label]) => h('th', { class: 'num' }, label)))),
+    h(
+      'tbody',
+      {},
+      Object.entries(EXCLUSAO_LABELS).map(([key, [label]]) =>
+        h('tr', {}, h('th', {}, label), ...kinds.map(([k]) => h('td', { class: 'num' }, exc[k].excluidos.filter((x) => x.motivos.some((m) => m.criterio === key)).length || '—'))),
+      ),
+    ),
+  );
+  const limites = settings().exclusao;
+  const faixa = (r) => (!r ? '—' : r[1] === null ? `mín. ${nf(r[0], r[0] % 1 ? 1 : 0)}` : `${nf(r[0], 1)} a ${nf(r[1], 1)}`);
+  const regras = h(
+    'table',
+    { class: 'bmk-result-table' },
+    h('thead', {}, h('tr', {}, h('th', {}, 'Limites usados'), h('th', { class: 'num' }, 'Engorda machos'), h('th', { class: 'num' }, 'Engorda fêmeas'), h('th', { class: 'num' }, 'Recria machos'), h('th', { class: 'num' }, 'Recria fêmeas'))),
+    h(
+      'tbody',
+      {},
+      h('tr', {}, h('th', {}, 'Enfermaria ou refugo'), ...[1, 2, 3, 4].map(() => h('td', { class: 'num' }, 'exclui'))),
+      Object.entries(EXCLUSAO_LABELS)
+        .filter(([key]) => key !== 'enfermaria')
+        .map(([key, [label, unit]]) => h('tr', {}, h('th', {}, label, unit ? h('small', { class: 'muted' }, ` (${unit})`) : null), ...[limites.engorda.macho, limites.engorda.femea, limites.recria.macho, limites.recria.femea].map((r) => h('td', { class: 'num' }, faixa(r[key]))))),
+    ),
+  );
+  const linhas = kinds.flatMap(([k, label]) =>
+    exc[k].excluidos.map(({ lote: l, motivos }) =>
+      h(
+        'tr',
+        {},
+        h('td', {}, label),
+        h('td', {}, h('strong', {}, l.lote ?? '—'), l.curral ? h('small', { class: 'muted bmk-sub' }, `curral ${l.curral}`) : null),
+        h('td', {}, l.categoria || '—'),
+        h('td', { class: 'num' }, nf(Number(l.qtAnm) || 0, 0)),
+        h('td', {}, h('ul', { class: 'bmk-excl-motivos' }, motivos.map((m) => h('li', {}, m.msg)))),
+      ),
+    ),
+  );
+  return [
+    h('p', { class: 'muted' }, 'Critério de exclusão de dados: lotes de enfermaria ou refugo e lotes com consumo de MS, dias de cocho, rendimento de carcaça, arrobas produzidas ou ganho médio diário fora dos limites não entram no resultado (tabelas por categoria, Painel e consolidado). Eles continuam na base, sem alteração. O sexo vem da categoria; vale o valor informado no lote e, sem ele, o recalculado.'),
+    h('div', { class: 'bmk-excl-tiles' }, tiles),
+    h('div', { class: 'bmk-result-cols' }, h('div', {}, h('h3', {}, 'Lotes por critério'), porCriterio), h('div', {}, h('h3', {}, 'Como: os limites'), regras)),
+    h('h3', {}, 'Lotes excluídos'),
+    linhas.length
+      ? h('div', { class: 'bmk-grid-wrap' }, h('table', { class: 'bmk-grid bmk-excl-table' }, h('thead', {}, h('tr', {}, ['Tipo', 'Lote', 'Categoria', 'Animais', 'Por quê'].map((t) => h('th', {}, t)))), h('tbody', {}, linhas)))
+      : h('p', { class: 'muted' }, 'Nenhum lote excluído: todos estão dentro dos limites.'),
+  ];
 }
 
 // ---------- Histórico ----------

@@ -1183,6 +1183,7 @@ async function exportBenchmark() {
       for (const s of data.submissions) {
         const v = m.validateLotes(s[kind], data.settings, { recria });
         s[kind].forEach((l, i) => {
+          const motivos = m.motivosExclusao(l, kind, data.settings);
           const c = m.calcLote(l);
           rows.push({
             cliente: s.client,
@@ -1193,13 +1194,14 @@ async function exportBenchmark() {
             p_aguas: c.pctAguas === null ? null : Number(c.pctAguas.toFixed(1)),
             p_periodo: c.periodo,
             ...Object.fromEntries(calcCols.map(([k]) => [`c_${k}`, Number.isFinite(c[k]) ? Number(c[k].toFixed(3)) : null])),
+            exclusao: motivos.length ? `Excluído: ${motivos.map((x) => x.msg).join(' | ')}` : 'Entra',
             erros: v.porLote[i].filter((x) => x.level === 'erro').map((x) => x.msg).join(' | '),
             alertas: v.porLote[i].filter((x) => x.level === 'alerta').map((x) => x.msg).join(' | '),
           });
         });
       }
       const periodoCols = [['p_entrada', 'Entrada estimada', 14], ['p_aguas', 'Dias nas águas (%)', 12], ['p_periodo', 'Período', 10]];
-      sheet(name, [['cliente', 'Cliente', 28], ['status', 'Situação', 14], ...fields.map((f) => [f.key, `${f.label}${f.unit ? ` (${f.unit})` : ''}`]), ...periodoCols, ...(recria ? [] : calcCols.map(([k, label]) => [`c_${k}`, label])), ['erros', 'Erros', 50], ['alertas', 'Alertas', 60]], rows);
+      sheet(name, [['cliente', 'Cliente', 28], ['status', 'Situação', 14], ...fields.map((f) => [f.key, `${f.label}${f.unit ? ` (${f.unit})` : ''}`]), ...periodoCols, ...(recria ? [] : calcCols.map(([k, label]) => [`c_${k}`, label])), ['exclusao', 'Resultado (critério de exclusão)', 50], ['erros', 'Erros', 50], ['alertas', 'Alertas', 60]], rows);
     };
     sheet(
       'Andamento',
@@ -1218,9 +1220,10 @@ async function exportBenchmark() {
     const recriaRows = [];
     for (const s of data.submissions) {
       for (const cat of data.settings.listas.categorias) {
-        const r = m.resultadoEngorda(s.engorda, s.respostas, cat);
+        // Resultado só com os lotes dentro do critério de exclusão de dados.
+        const r = m.resultadoEngorda(m.separarExclusao(s.engorda, 'engorda', data.settings).incluidos, s.respostas, cat);
         if (r) resultRows.push({ cliente: s.client, status: s.status, categoria: cat, ...r.zootecnico, ...r.economico });
-        const rr = m.resultadoRecria(s.recria, cat);
+        const rr = m.resultadoRecria(m.separarExclusao(s.recria, 'recria', data.settings).incluidos, cat);
         if (rr) recriaRows.push({ cliente: s.client, status: s.status, categoria: cat, ...rr.zootecnico });
       }
     }

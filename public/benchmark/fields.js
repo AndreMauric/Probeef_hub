@@ -59,6 +59,7 @@ export function mergeSettings(saved = {}) {
     tolerancias: { ...DEFAULT_SETTINGS.tolerancias, ...(saved.tolerancias || {}) },
     faixas: { ...DEFAULT_SETTINGS.faixas, ...(saved.faixas || {}) },
     listas: { ...DEFAULT_SETTINGS.listas, ...(saved.listas || {}) },
+    exclusao: saved.exclusao || EXCLUSAO_PADRAO,
   };
 }
 
@@ -629,6 +630,75 @@ function weighted(lotes, f) {
 
 // Resposta do questionário usada no lugar da média dos lotes (0 ou vazio = não informado).
 const informed = (v) => (typeof v === 'number' && v > 0 ? v : null);
+
+// ---------- Critério de exclusão de dados (só no resultado) ----------
+// Lotes fora destes limites continuam na base do cliente, mas não entram no resultado (tabelas por
+// categoria, Painel e Excel consolidado). Limites do documento "Critério de exclusão de dados" da
+// equipe: por engorda/recria e por sexo (o sexo sai da categoria). [mín, máx]: exclui abaixo do
+// mínimo ou acima do máximo; o valor no limite fica.
+export const EXCLUSAO_PADRAO = {
+  engorda: {
+    macho: { consMS: [4, 16], dias: [40, null], rc: [50, 65], ganhoArroba: [2, null], gpd: [0.6, 2.5] },
+    femea: { consMS: [4, 16], dias: [40, null], rc: [45, 60], ganhoArroba: [2, null], gpd: [0.6, 2.5] },
+  },
+  recria: {
+    macho: { consMS: [3, 11], dias: [21, null], gpd: [0.3, 1.6] },
+    femea: { consMS: [3, 11], dias: [21, null], gpd: [0.3, 1.6] },
+  },
+};
+export const EXCLUSAO_LABELS = {
+  enfermaria: ['Enfermaria ou refugo', ''],
+  consMS: ['Consumo de MS', 'kg/cab/dia'],
+  dias: ['Dias de cocho', 'dias'],
+  rc: ['Rendimento de carcaça', '%'],
+  ganhoArroba: ['Arrobas produzidas', '@/cab'],
+  gpd: ['Ganho médio diário', 'kg'],
+};
+// Lote de enfermaria ou refugo: identificado pelo nome do lote ou do curral.
+const ENFERMARIA = /enferm|refug/i;
+
+export const sexoDaCategoria = (categoria) => (/macho/i.test(categoria || '') ? 'macho' : /f[eê]mea|vaca/i.test(categoria || '') ? 'femea' : null);
+
+// Valor do lote usado em cada critério: o informado; sem ele, o recalculado dos dados brutos.
+function valorExclusao(l, key) {
+  const c = calcLote(l);
+  if (key === 'dias') return num(l.diasTrato);
+  if (key === 'rc') return num(l.rc) ?? c.rc;
+  if (key === 'gpd') return num(l.gpd) ?? c.gpd;
+  if (key === 'ganhoArroba') return num(l.ganhoArroba) ?? c.ganhoArroba;
+  return num(l[key]);
+}
+
+// Por que um lote sai do resultado: [{ criterio, valor, limite, msg }]; vazio = entra.
+export function motivosExclusao(l, kind, settings) {
+  const motivos = [];
+  if (ENFERMARIA.test(`${l.lote ?? ''} ${l.curral ?? ''}`)) motivos.push({ criterio: 'enfermaria', valor: null, limite: null, msg: 'Lote identificado como enfermaria ou refugo (no nome do lote ou do curral).' });
+  const sexo = sexoDaCategoria(l.categoria);
+  const regras = (mergeSettings(settings).exclusao || EXCLUSAO_PADRAO)[kind]?.[sexo || 'macho'] || {};
+  for (const [key, [min, max]] of Object.entries(regras)) {
+    // Rendimento depende do sexo: sem categoria reconhecida, não dá para julgar.
+    if (key === 'rc' && !sexo) continue;
+    const v = valorExclusao(l, key);
+    if (v === null || !Number.isFinite(v)) continue;
+    const [label, unit] = EXCLUSAO_LABELS[key];
+    const u = unit === '%' ? '%' : unit ? ` ${unit}` : '';
+    if (min !== null && v < min) motivos.push({ criterio: key, valor: v, limite: min, msg: `${label} de ${fmt(v, key === 'dias' ? 0 : 2)}${u}, abaixo do mínimo de ${fmt(min, key === 'dias' ? 0 : 1)}${u}.` });
+    else if (max !== null && v > max) motivos.push({ criterio: key, valor: v, limite: max, msg: `${label} de ${fmt(v, key === 'dias' ? 0 : 2)}${u}, acima do máximo de ${fmt(max, key === 'dias' ? 0 : 1)}${u}.` });
+  }
+  return motivos;
+}
+
+// Separa os lotes que entram no resultado dos excluídos (com os motivos).
+export function separarExclusao(lotes, kind, settings) {
+  const incluidos = [];
+  const excluidos = [];
+  for (const l of lotes) {
+    const motivos = motivosExclusao(l, kind, settings);
+    if (motivos.length) excluidos.push({ lote: l, motivos });
+    else incluidos.push(l);
+  }
+  return { incluidos, excluidos };
+}
 
 export function resultadoEngorda(lotes, respostas = {}, categoria) {
   const ls = lotes.filter((l) => l.categoria === categoria);

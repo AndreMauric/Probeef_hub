@@ -156,6 +156,13 @@ cliente veem o card. Página `/benchmark` (`public/benchmark/`), API `/api/bench
 - Origem do lote é opcional (não existia por lote na planilha). "Preencher origem" (`originDialog`)
   aplica uma origem aos lotes sem origem, aos que a tabela mostra (filtro/busca) ou a todos; sugere
   a origem quando a pergunta 10 do questionário tem um só modelo de reposição (`Q10_ORIGEM`).
+- **Critério de exclusão de dados** (`EXCLUSAO_PADRAO` / `separarExclusao` em `fields.js`, documento
+  da equipe): lotes de enfermaria/refugo (pelo nome do lote ou do curral) e lotes com consumo de MS,
+  dias de cocho, rendimento, @ produzidas ou GMD fora dos limites (por engorda/recria e sexo, que
+  sai da categoria; limite incluído) **saem só do resultado** — tabelas por categoria, Painel e o
+  resultado do Excel consolidado. A base do cliente não muda. Visão "Exclusões" no Resultado (o que
+  saiu, por quê e os limites) e coluna "Resultado (critério de exclusão)" no consolidado. Limites
+  em `settings.exclusao` (padrão do documento; ainda sem tela no admin).
 - Aba Resultado: "Painel" (`public/benchmark/dashboard.js`: filtros por raça, sexo, categoria,
   tipo de entrada e mês de saída; indicadores e comparação entre grupos, sempre médias
   ponderadas pelos animais) e "Tabelas por categoria" (as abas FINAL da planilha). Sexo sai da
