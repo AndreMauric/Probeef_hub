@@ -1695,6 +1695,48 @@ function reviewDialog(action) {
 
 // ---------- Clientes (para quem valida) ----------
 
+function fillClientSelect(clients) {
+  const select = document.getElementById('client-select');
+  const current = select.value;
+  fill(select, clients.map((c) => h('option', { value: c.id }, c.name)));
+  if (clients.some((c) => c.id === current)) select.value = current;
+  document.getElementById('client-field').hidden = clients.length < 2;
+}
+
+// Quem valida cadastra um cliente só para o benchmarking; ele já entra vinculado a quem cadastrou.
+function newClientDialog() {
+  const name = h('input', { type: 'text', required: true, minlength: 3, maxlength: 120, placeholder: 'Ex.: Fazenda Boa Vista — Confinamento Uberaba' });
+  fill(
+    dialog,
+    h(
+      'form',
+      {
+        class: 'bmk-dialog',
+        onsubmit: async (e) => {
+          e.preventDefault();
+          try {
+            const { client } = await api('/api/benchmark/clients', { method: 'POST', body: { name: name.value } });
+            const info = await api('/api/benchmark/clients');
+            state.clients = info.clients;
+            fillClientSelect(info.clients);
+            dialog.close();
+            toast(`Cliente "${client.name}" cadastrado no benchmarking.`);
+            renderOverview();
+          } catch (err) {
+            toast(err.message, 'error');
+          }
+        },
+      },
+      h('h2', {}, 'Cadastrar cliente no benchmarking'),
+      h('label', { class: 'bmk-field' }, h('span', {}, 'Nome do cliente (empresa + unidade do confinamento)'), name),
+      h('p', { class: 'muted' }, 'O cliente entra só no Benchmarking (sem relatórios do portal) e já fica vinculado a você, para acompanhar e validar. O login de quem vai preencher na fazenda é criado pelo admin.'),
+      h('div', { class: 'dialog-actions' }, h('button', { class: 'btn', type: 'button', onclick: () => dialog.close() }, 'Cancelar'), h('button', { class: 'btn btn-primary', type: 'submit' }, 'Cadastrar')),
+    ),
+  );
+  dialog.showModal();
+  name.focus();
+}
+
 let overviewSeq = 0;
 async function renderOverview() {
   const panel = document.querySelector('[data-panel="clientes"]');
@@ -1737,6 +1779,7 @@ async function renderOverview() {
     h(
       'div',
       { class: 'bmk-toolbar' },
+      state.me.impersonatedBy ? null : h('button', { class: 'btn btn-sm btn-primary', type: 'button', onclick: newClientDialog }, '+ Cadastrar cliente'),
       h(
         'div',
         { class: 'bmk-seg', role: 'radiogroup', 'aria-label': 'Situação' },
@@ -1863,13 +1906,23 @@ async function init() {
   document.getElementById('bmk-title').textContent = `Benchmarking Confinamento ${info.ano}`;
   document.title = `Benchmarking ${info.ano}`;
   if (!info.clients.length) {
-    fill(document.getElementById('status'), h('div', { class: 'bmk-blank' }, h('h3', {}, 'Nenhum cliente no benchmarking'), h('p', { class: 'muted' }, info.isAdmin ? 'Marque "Participa do Benchmarking" no cadastro dos clientes (Admin → Clientes).' : 'A sua empresa ainda não está no benchmarking. Fale com o seu coordenador Cargill.')));
+    fill(
+      document.getElementById('status'),
+      h(
+        'div',
+        { class: 'bmk-blank' },
+        h('h3', {}, 'Nenhum cliente no benchmarking'),
+        h('p', { class: 'muted' }, info.isAdmin ? 'Marque "Participa do Benchmarking" no cadastro dos clientes (Admin → Clientes).' : info.isValidator ? 'Cadastre os clientes que você vai acompanhar.' : 'A sua empresa ainda não está no benchmarking. Fale com o seu coordenador Cargill.'),
+        info.isValidator && !user.impersonatedBy
+          ? h('button', { class: 'btn btn-primary', type: 'button', onclick: async () => { newClientDialog(); dialog.addEventListener('close', () => state.clients.length && location.reload(), { once: true }); } }, '+ Cadastrar cliente')
+          : null,
+      ),
+    );
     document.querySelectorAll('.tabs, [data-panel]').forEach((el) => (el.hidden = true));
     return;
   }
   const select = document.getElementById('client-select');
-  fill(select, info.clients.map((c) => h('option', { value: c.id }, c.name)));
-  document.getElementById('client-field').hidden = info.clients.length < 2;
+  fillClientSelect(info.clients);
   const params = new URLSearchParams(location.search);
   let saved = null;
   try {

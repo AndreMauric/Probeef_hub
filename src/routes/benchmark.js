@@ -4,7 +4,7 @@
 import { Router } from 'express';
 import { recordToolAccess, startToolView } from '../accessLog.js';
 import { requireAuth } from '../auth.js';
-import { adminList, clearDraft, getForUser, isValidator, participantClients, review, saveDraft, settings, submit } from '../benchmark.js';
+import { adminList, clearDraft, createClientFor, getForUser, isValidator, participantClients, review, saveDraft, settings, submit } from '../benchmark.js';
 
 export const benchmarkRouter = Router();
 
@@ -27,6 +27,12 @@ benchmarkRouter.post('/open', (req, res) => {
   recordToolAccess({ userId: req.user.id, clientId, toolId: 'benchmark' });
   res.json({ viewId: startToolView({ userId: req.user.id, clientId, toolId: 'benchmark' }) });
 });
+
+// Quem valida cadastra um cliente só para o benchmarking (ver createClientFor).
+benchmarkRouter.post('/clients', route(async (req, res) => {
+  if (req.impersonator) return res.status(403).json({ error: 'Você está vendo como outra pessoa: não é possível cadastrar clientes.' });
+  res.status(201).json({ client: await createClientFor(req.user, req.body || {}) });
+}));
 
 // Andamento dos clientes para quem valida (a mesma lista da aba Benchmarking do admin, só com os
 // clientes da pessoa).

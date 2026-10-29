@@ -142,7 +142,7 @@ function renderClients() {
       h(
         'tr',
         {},
-        h('td', {}, h('strong', {}, c.name)),
+        h('td', {}, h('strong', {}, c.name), c.createdVia === 'benchmark' ? h('span', { class: 'sub' }, `cadastrado no Benchmarking por ${state.users.find((u) => u.id === c.createdBy)?.name || 'usuário removido'}`) : null),
         h('td', {}, tagChips(c.tagIds)),
         h('td', { class: 'mono' }, c.reportIds.length),
         h('td', { class: 'mono' }, userCount(c.id)),

@@ -216,7 +216,7 @@ function toolsSection() {
 // Benchmarking Confinamento: aparece para quem é de um cliente participante (sem pedido de acesso).
 let benchmarkInfo = null;
 function benchmarkCard() {
-  if (!benchmarkInfo?.clients.length) return null;
+  if (!benchmarkInfo?.clients.length && !benchmarkInfo?.isValidator) return null;
   return h(
     'div',
     { class: 'card-wrap' },

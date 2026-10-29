@@ -105,6 +105,10 @@ cliente veem o card. Página `/benchmark` (`public/benchmark/`), API `/api/bench
   (`clientIds`) — só o admin vê todos. Tem a aba "Clientes" na própria página `/benchmark`
   (`GET /api/benchmark/overview`, a lista do admin filtrada pelos clientes dele). A tela usa
   `view.access` ({edit, review}) vindo do servidor para mostrar os botões.
+  Quem valida também **cadastra clientes só para o benchmarking** ("+ Cadastrar cliente" na aba
+  Clientes; `POST /api/benchmark/clients`, `createClientFor`): o cliente nasce com `benchmark: true`,
+  sem relatórios, `createdVia: 'benchmark'` e `createdBy`, e já vinculado a quem cadastrou. Nome
+  repetido (sem acento/maiúsculas) é recusado. Os logins da fazenda continuam com o admin.
 - **Métricas do processo** (Admin → Benchmarking → Métricas do processo; projeto DMAIC):
   `src/benchmarkMetrics.js` junta o histórico do envio (`sub.messages`: enviado/devolver/aprovar,
   o envio guarda um `snapshot` da validação), as sessões de trabalho (`sub.metrics.sessions`,

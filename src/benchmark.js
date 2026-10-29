@@ -32,7 +32,8 @@ export function participantClients(user) {
   return list.filter((c) => user.clientIds?.includes(c.id));
 }
 
-export const canUseBenchmark = (user) => user.role === 'admin' || participantClients(user).length > 0;
+// Quem valida entra mesmo sem cliente ainda (para cadastrar o primeiro).
+export const canUseBenchmark = (user) => isValidator(user) || participantClients(user).length > 0;
 
 function clientOr404(user, clientId) {
   const client = participantClients(user).find((c) => c.id === clientId);
@@ -258,6 +259,25 @@ export async function review(admin, clientId, { action, text }) {
   for (const u of people) await adminSend(admin, u.id, { text: aviso, origin: { type: 'benchmark', action } }, { persist: false });
   await save();
   return view(admin, client, sub);
+}
+
+// Quem valida pode cadastrar um cliente só para o benchmarking: entra participando, sem relatórios,
+// e já vinculado a quem cadastrou (que passa a vê-lo e validá-lo). Os logins da fazenda continuam
+// com o admin. Nome repetido é recusado para não duplicar um cliente que já existe.
+const foldName = (t) => String(t || '').normalize('NFD').replace(/\p{M}/gu, '').replace(/\s+/g, ' ').trim().toLowerCase();
+export async function createClientFor(user, { name } = {}) {
+  if (!isValidator(user)) throw new BenchmarkError('Só quem valida o benchmarking pode cadastrar clientes.', 403);
+  const nome = String(name || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+  if (nome.length < 3) throw new BenchmarkError('Informe o nome do cliente (empresa + unidade do confinamento).');
+  const data = db();
+  if (data.clients.some((c) => foldName(c.name) === foldName(nome))) throw new BenchmarkError('Já existe um cliente com esse nome no portal. Se é o mesmo, peça ao admin para vincular você a ele.', 409);
+  const client = { id: newId(), name: nome, rlsUsername: '', rlsRoles: [], reportIds: [], active: true, tagIds: [], ccvFarms: [], benchmark: true, createdBy: user.id, createdVia: 'benchmark', createdAt: new Date().toISOString() };
+  data.clients.push(client);
+  // Admin já vê todos os participantes; quem valida passa a ter o cliente na lista dele.
+  const owner = data.users.find((u) => u.id === user.id);
+  if (owner && owner.role !== 'admin') owner.clientIds = [...new Set([...(owner.clientIds || []), client.id])];
+  await save();
+  return { id: client.id, name: client.name };
 }
 
 // Andamento dos clientes participantes: todos para o admin; para quem valida, os clientes dele
