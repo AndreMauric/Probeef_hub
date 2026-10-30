@@ -527,6 +527,21 @@
     }
     html += `</tbody>`;
     tableEl.innerHTML = html;
+    freezeColumns(tableEl);
+  }
+
+  // A coluna Unidade gruda logo depois de Variável: mede a largura da 1ª coluna.
+  // Tabela em aba escondida mede 0, então o ResizeObserver remede quando ela aparece.
+  function freezeColumns(tableEl) {
+    const measure = () => {
+      const th = tableEl.querySelector("thead th");
+      if (th && th.offsetWidth) tableEl.style.setProperty("--freeze-1", `${th.offsetWidth}px`);
+    };
+    measure();
+    if (!tableEl._freezeObserver && "ResizeObserver" in window) {
+      tableEl._freezeObserver = new ResizeObserver(measure);
+      tableEl._freezeObserver.observe(tableEl);
+    }
   }
 
   const ZOOT_ROWS = [
