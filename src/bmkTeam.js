@@ -71,15 +71,27 @@ const userById = (id) => db().users.find((u) => u.id === id);
 // (user.gerenciaId → db().gerencias). Canais e Cliente
 // herdam a da pessoa do Time que criou o login (sem ela, a do gestor do "responde a"); calculada na
 // hora, então mudar a gerência de alguém do Time reflete em todos que ele cadastrou.
+const cargillById = (id) => {
+  const u = id && userById(id);
+  return u && kindOf(u) === 'cargill' ? u : null;
+};
+// A pessoa do Time Cargill de quem um login de Canais/Cliente depende: quem o criou (sem ela, o
+// gestor do "responde a").
+const cargillOf = (user) => cargillById(user.createdBy) || cargillById(user.reportsTo);
+
 export function gerenciaOf(user) {
   if (!user || user.role === 'admin') return null;
   const nameOf = (u) => db().gerencias.find((g) => g.id === u?.gerenciaId)?.name || null;
   if (kindOf(user) === 'cargill') return nameOf(user);
-  const cargill = (id) => {
-    const u = id && userById(id);
-    return u && kindOf(u) === 'cargill' ? u : null;
-  };
-  return nameOf(cargill(user.createdBy) || cargill(user.reportsTo));
+  return nameOf(cargillOf(user));
+}
+
+// Responsável por um usuário (coluna da lista de usuários): Time = o gestor do "responde a";
+// Canais e Cliente = a pessoa do Time de quem dependem (mesma regra da fazenda).
+export function responsavelOf(user) {
+  if (!user || user.role === 'admin') return null;
+  if (kindOf(user) === 'cargill') return user.reportsTo || null;
+  return cargillOf(user)?.id || null;
 }
 
 // Quem pode ser responsável por uma fazenda cadastrada por "user": ele e a equipe (Time ou Canais).

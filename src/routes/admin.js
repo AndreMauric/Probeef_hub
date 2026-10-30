@@ -11,7 +11,7 @@ import { ccvUsage, computeCcvAlerts, listFarms, messageFor, oneLine, RULES } fro
 import { ccvPages, ccvPdfJob, publicJob, startCcvPdf } from '../ccvPdf.js';
 import { adminQuotes, deleteManual, saveManual, setManualValue, setQuoteOptions } from '../quotes.js';
 import { processMetrics } from '../benchmarkMetrics.js';
-import { checkReportsTo, gerenciaOf, KINDS } from '../bmkTeam.js';
+import { checkReportsTo, gerenciaOf, KINDS, responsavelOf } from '../bmkTeam.js';
 import { adminList as bmkList, exportAll as bmkExport, saveSettings as saveBmkSettings, settings as bmkSettings } from '../benchmark.js';
 import { adminConversation, adminInbox, adminMarkRead, adminSend, chatFile, forgetChat, saveChatFile, setThreadStatus } from '../chat.js';
 import { exportData, listSnapshots, snapshotPath, validateBackup } from '../backup.js';
@@ -929,7 +929,7 @@ adminRouter.delete('/clients/:id', route(async (req, res) => {
 
 // Nunca devolve senha nem a chave da Anthropic; só diz se o usuário tem assistente ativo.
 // gerenciaEfetiva: a gerência do Time Cargill ou a herdada de quem cadastrou (ver gerenciaOf).
-const safeUser = ({ passwordHash, sessionVersion, anthropicKey, savedViews, ...rest }) => ({ ...rest, hasAssistant: Boolean(anthropicKey), savedViewCount: savedViews?.length || 0, gerenciaEfetiva: gerenciaOf(rest) });
+const safeUser = ({ passwordHash, sessionVersion, anthropicKey, savedViews, ...rest }) => ({ ...rest, hasAssistant: Boolean(anthropicKey), savedViewCount: savedViews?.length || 0, gerenciaEfetiva: gerenciaOf(rest), responsavelId: responsavelOf(rest) });
 
 function readUser(body, existing) {
   const user = {

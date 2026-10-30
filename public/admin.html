@@ -194,7 +194,13 @@
                 <button class="btn btn-primary" id="new-user" type="button">Novo usuário</button>
               </div>
             </div>
-            <input class="table-search" id="search-users" type="search" placeholder="Buscar por nome, e-mail ou cliente" aria-label="Buscar usuário" />
+            <div class="toolbar table-tools users-filters">
+              <input class="table-search" id="search-users" type="search" placeholder="Buscar por nome, e-mail ou cliente" aria-label="Buscar usuário" />
+              <select id="users-filter-kind" aria-label="Filtrar por perfil"></select>
+              <select id="users-filter-gerencia" aria-label="Filtrar por gerência"></select>
+              <select id="users-filter-resp" aria-label="Filtrar por responsável"></select>
+              <select id="users-filter-status" aria-label="Filtrar por situação"></select>
+            </div>
             <div class="table-wrap"><table id="users-table"></table></div>
           </section>
 

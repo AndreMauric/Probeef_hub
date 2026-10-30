@@ -169,36 +169,59 @@ function renderClients() {
   );
 }
 
+// Filtros da lista de usuários (perfil, gerência, responsável, situação): as opções saem dos dados
+// e a escolha continua ao recarregar a lista.
+function userFilterSelect(id, allLabel, options) {
+  const select = document.getElementById(id);
+  const current = select.value;
+  select.replaceChildren(h('option', { value: '' }, allLabel), ...options.map(([v, t]) => h('option', { value: v }, t)));
+  select.value = options.some(([v]) => v === current) ? current : '';
+  return select.value;
+}
+
 function renderUsers() {
   const clientNames = (u) => u.clientIds.map((id) => state.clients.find((c) => c.id === id)?.name).filter(Boolean).sort();
+  const userName = (id) => state.users.find((x) => x.id === id)?.name || null;
+  const kindOfUser = (u) => (u.role === 'admin' ? 'admin' : u.kind || 'cliente');
+  const pt = (a, b) => a[1].localeCompare(b[1], 'pt-BR');
+  const fKind = userFilterSelect('users-filter-kind', 'Todos os perfis', [['admin', 'Administrador'], ...Object.entries(KIND_LABEL)]);
+  const gers = [...new Set(state.users.map((u) => u.gerenciaEfetiva).filter(Boolean))].map((g) => [g, g]).sort(pt);
+  const fGer = userFilterSelect('users-filter-gerencia', 'Todas as gerências', [...gers, ['-', 'Sem gerência']]);
+  const resps = [...new Set(state.users.map((u) => u.responsavelId).filter(Boolean))].map((id) => [id, userName(id) || '(removido)']).sort(pt);
+  const fResp = userFilterSelect('users-filter-resp', 'Todos os responsáveis', [...resps, ['-', 'Sem responsável']]);
+  const fStatus = userFilterSelect('users-filter-status', 'Ativos e desativados', [['on', 'Ativos'], ['off', 'Desativados']]);
+  const passes = (u) =>
+    (!fKind || kindOfUser(u) === fKind) &&
+    (!fGer || (fGer === '-' ? !u.gerenciaEfetiva : u.gerenciaEfetiva === fGer)) &&
+    (!fResp || (fResp === '-' ? !u.responsavelId : u.responsavelId === fResp)) &&
+    (!fStatus || (fStatus === 'on') === Boolean(u.active));
   const access = (u) => {
     if (u.role === 'admin') return h('span', { class: 'pill pill-accent' }, 'Administrador');
     const names = clientNames(u);
-    // Perfil e poderes no Benchmarking (ver src/bmkTeam.js).
-    const boss = u.reportsTo ? state.users.find((x) => x.id === u.reportsTo)?.name : null;
-    const bmk = h(
-      'span',
-      { class: 'sub' },
-      KIND_LABEL[u.kind || 'cliente'],
-      u.gerenciaEfetiva ? ` · ${u.gerenciaEfetiva}` : '',
-      u.bmkGestor ? ' · Gestor' : '',
-      u.bmkCreateTeam ? ' (cria equipe)' : '',
-      u.bmkValidator ? ' · Valida BMK' : '',
-      u.bmkOnly ? ' · só Benchmarking' : '',
-      boss ? ` · responde a ${boss}` : '',
-    );
-    if (!names.length) return [h('span', { class: 'pill', title: 'Sem cliente vinculado: usa as ferramentas liberadas e, se for do Time ou de Canais, o Benchmarking pela equipe' }, u.kind === 'cliente' || !u.kind ? 'Só ferramentas' : 'Sem cliente vinculado'), bmk];
+    if (u.bmkOnly) return h('span', { class: 'pill', title: 'Não acessa relatórios, CCV nem ferramentas' }, 'Só Benchmarking');
+    if (!names.length) return h('span', { class: 'pill', title: 'Sem cliente vinculado: usa as ferramentas liberadas e, se for do Time ou de Canais, o Benchmarking pela equipe' }, u.kind === 'cliente' || !u.kind ? 'Só ferramentas' : 'Sem cliente vinculado');
     const shown = names.slice(0, 2).join(', ');
-    return [h('span', { title: names.join(', ') }, names.length > 2 ? `${shown} +${names.length - 2}` : shown), bmk];
+    return h('span', { title: names.join(', ') }, names.length > 2 ? `${shown} +${names.length - 2}` : shown);
   };
+  // Perfil e poderes no Benchmarking (ver src/bmkTeam.js).
+  const perfil = (u) =>
+    u.role === 'admin'
+      ? h('span', { class: 'muted' }, '—')
+      : [
+          h('span', {}, KIND_LABEL[u.kind || 'cliente']),
+          u.bmkGestor || u.bmkValidator ? h('span', { class: 'sub' }, [u.bmkGestor ? `Gestor${u.bmkCreateTeam ? ' (cria equipe)' : ''}` : '', u.bmkValidator ? 'Valida BMK' : ''].filter(Boolean).join(' · ')) : null,
+        ];
   table(
     document.getElementById('users-table'),
-    ['Usuário', 'Acesso', '4M Confinamento', '3P Pasto', 'Último login', 'Situação', ''],
-    [...state.users].filter((u) => matches('search-users', u.name, u.email, ...clientNames(u))).sort(byName).map((u) =>
+    ['Usuário', 'Perfil', 'Gerência', 'Responsável', 'Acesso', '4M Confinamento', '3P Pasto', 'Último login', 'Situação', ''],
+    [...state.users].filter((u) => passes(u) && matches('search-users', u.name, u.email, ...clientNames(u))).sort(byName).map((u) =>
       h(
         'tr',
         {},
         h('td', {}, h('strong', {}, u.name), h('span', { class: 'sub' }, u.email), u.phone ? h('span', { class: 'sub mono' }, `WhatsApp +${u.phone}`) : null, u.hasAssistant ? h('span', { class: 'sub' }, '✦ assistente ativo') : null),
+        h('td', {}, perfil(u)),
+        h('td', {}, u.gerenciaEfetiva || h('span', { class: 'muted' }, '—')),
+        h('td', {}, userName(u.responsavelId) || h('span', { class: 'muted' }, '—')),
         h('td', {}, access(u)),
         h('td', {}, toolCell(u, 'confinamento')),
         h('td', {}, toolCell(u, 'pasto')),
@@ -4101,6 +4124,7 @@ async function init() {
   document.getElementById('search-reports').addEventListener('input', renderReports);
   document.getElementById('search-clients').addEventListener('input', renderClients);
   document.getElementById('search-users').addEventListener('input', renderUsers);
+  for (const id of ['users-filter-kind', 'users-filter-gerencia', 'users-filter-resp', 'users-filter-status']) document.getElementById(id).addEventListener('change', renderUsers);
   document.getElementById('usage-days').addEventListener('change', loadUsage);
   document.querySelectorAll('[data-usage-view]').forEach((b) => b.addEventListener('click', () => selectUsageView(b.dataset.usageView)));
   setupImageUpload();

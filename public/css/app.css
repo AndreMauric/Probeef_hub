@@ -4392,6 +4392,21 @@ tr.row-on td {
   font-weight: 600;
 }
 
+/* Usuários: busca e filtros por coluna na mesma linha */
+.users-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.users-filters .table-search {
+  flex: 1 1 260px;
+}
+
+.users-filters select {
+  min-width: 170px;
+}
+
 /* Andamento do Benchmarking: filtro por gerência */
 .bmk-gerencia-filter {
   max-width: 280px;
