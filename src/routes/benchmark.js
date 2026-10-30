@@ -4,8 +4,8 @@
 import { Router } from 'express';
 import { recordToolAccess, startToolView } from '../accessLog.js';
 import { requireAuth } from '../auth.js';
-import { adminList, clearDraft, coletaAberta, createClientFor, getForUser, isValidator, participantClients, review, saveDraft, setOwner, settings, submit } from '../benchmark.js';
-import { canCreateFarm, canCreateTeam, createMember, isGestor, isInternal, kindOf, ownerCandidates, resetMemberPassword, teamView, updateMember } from '../bmkTeam.js';
+import { adminList, canUseBenchmark, clearDraft, coletaAberta, createClientFor, getForUser, isValidator, participantClients, review, saveDraft, setOwner, settings, submit } from '../benchmark.js';
+import { canCreateFarm, canCreateTeam, canSetOwner, createMember, isGestor, isInternal, kindOf, ownerCandidates, resetMemberPassword, teamView, updateMember } from '../bmkTeam.js';
 
 export const benchmarkRouter = Router();
 
@@ -26,7 +26,8 @@ benchmarkRouter.get('/clients', (req, res) => {
     isValidator: isValidator(u),
     // Aba Clientes (andamento das fazendas da equipe): admin, Time e Canais.
     seesOverview: u.role === 'admin' || isInternal(u),
-    canCreateFarm: canCreateFarm(u),
+    canUse: canUseBenchmark(u),
+    canCreateFarm: canCreateFarm(u) && canUseBenchmark(u),
     isGestor: isGestor(u),
     canCreateTeam: canCreateTeam(u),
     clients: participantClients(u).map((c) => ({ id: c.id, name: c.name })),
@@ -70,7 +71,7 @@ benchmarkRouter.get('/overview', (req, res) => {
     ano: settings().ano,
     prazo: settings().prazo,
     clients: adminList({ clientIds: ids }),
-    owners: canCreateFarm(u) ? ownerCandidates(u).map((o) => ({ id: o.id, name: o.name, kind: kindOf(o) })) : [],
+    owners: canSetOwner(u) ? ownerCandidates(u).map((o) => ({ id: o.id, name: o.name, kind: kindOf(o) })) : [],
   });
 });
 

@@ -11,7 +11,7 @@
 // do admin cadastra fazenda nem altera ou envia dados.
 import { adminSend, userSend } from './chat.js';
 import { cleanAnswer, cleanLote, editableStatus, mergeSettings, QUESTIONS, validateLotes, validateQuestionario } from '../public/benchmark/fields.js';
-import { canCreateFarm, isInternal, kindOf, ownerCandidates, ownerScope } from './bmkTeam.js';
+import { bmkMember, canCreateFarm, canSetOwner, isInternal, kindOf, ownerCandidates, ownerScope } from './bmkTeam.js';
 import { db, newId, save } from './store.js';
 
 const MAX_LOTES = 2000;
@@ -37,8 +37,8 @@ export function participantClients(user) {
   return list.filter((c) => user.clientIds?.includes(c.id) || (scope && c.bmkOwner && scope.has(c.bmkOwner)));
 }
 
-// O Time Cargill entra mesmo sem fazenda ainda (para cadastrar a primeira).
-export const canUseBenchmark = (user) => canCreateFarm(user) || participantClients(user).length > 0;
+// Time, Canais e logins "só Benchmarking" entram mesmo sem fazenda ainda (para cadastrar a primeira).
+export const canUseBenchmark = (user) => bmkMember(user) || participantClients(user).length > 0;
 
 export const coletaAberta = () => settings().aberta !== false;
 function assertAberta(user) {
@@ -274,12 +274,17 @@ export async function review(admin, clientId, { action, text }) {
   return view(admin, client, sub);
 }
 
-// O Time Cargill (e o admin) cadastra fazendas só para o benchmarking: entram participando, sem
-// relatórios. O responsável é quem cadastrou ou alguém da equipe dele (pode ser de Canais).
-// Canais e clientes não cadastram. Os logins da fazenda são criados pelos gestores (aba Equipe).
+// Qualquer pessoa do Benchmarking cadastra fazenda (só para o benchmarking: entra participando,
+// sem relatórios). Time: o responsável é quem cadastrou ou alguém da equipe (pode ser de Canais).
+// Canais: ele mesmo. Cliente: a fazenda entra nas dele, e o responsável é quem criou o login dele
+// (se for do Time ou de Canais). Os logins são criados pelos gestores (aba Equipe).
 // Nome repetido é recusado para não duplicar um cliente que já existe.
 const foldName = (t) => String(t || '').normalize('NFD').replace(/\p{M}/gu, '').replace(/\s+/g, ' ').trim().toLowerCase();
 function ownerFor(user, ownerId) {
+  if (user.role !== 'admin' && !isInternal(user)) {
+    const creator = db().users.find((u) => u.id === user.createdBy && u.active && isInternal(u));
+    return creator ? creator.id : null;
+  }
   const id = ownerId || (user.role === 'admin' ? null : user.id);
   if (!id) return null;
   if (!ownerCandidates(user).some((u) => u.id === id)) throw new BenchmarkError('O responsável precisa ser você ou alguém da sua equipe (Time ou Canais Cargill).', 403);
@@ -287,7 +292,7 @@ function ownerFor(user, ownerId) {
 }
 
 export async function createClientFor(user, { name, ownerId } = {}) {
-  if (!canCreateFarm(user)) throw new BenchmarkError('Só o Time Cargill cadastra fazendas no benchmarking.', 403);
+  if (!canCreateFarm(user) || !canUseBenchmark(user)) throw new BenchmarkError('Você não participa do benchmarking.', 403);
   assertAberta(user);
   const nome = String(name || '').replace(/\s+/g, ' ').trim().slice(0, 120);
   if (nome.length < 3) throw new BenchmarkError('Informe o nome do cliente (empresa + unidade do confinamento).');
@@ -295,13 +300,18 @@ export async function createClientFor(user, { name, ownerId } = {}) {
   if (data.clients.some((c) => foldName(c.name) === foldName(nome))) throw new BenchmarkError('Já existe um cliente com esse nome no portal. Se é o mesmo, peça ao admin para incluí-lo na sua equipe.', 409);
   const client = { id: newId(), name: nome, rlsUsername: '', rlsRoles: [], reportIds: [], active: true, tagIds: [], ccvFarms: [], benchmark: true, bmkOwner: ownerFor(user, ownerId), createdBy: user.id, createdVia: 'benchmark', createdAt: new Date().toISOString() };
   data.clients.push(client);
+  // Cliente vê as fazendas pelo vínculo (clientIds); Time e Canais, pelo responsável.
+  if (!isInternal(user) && user.role !== 'admin') {
+    const me = data.users.find((u) => u.id === user.id);
+    me.clientIds = [...new Set([...(me.clientIds || []), client.id])];
+  }
   await save();
   return { id: client.id, name: client.name };
 }
 
 // Troca o responsável de uma fazenda que a pessoa enxerga (Time Cargill e admin).
 export async function setOwner(user, clientId, { ownerId } = {}) {
-  if (!canCreateFarm(user)) throw new BenchmarkError('Só o Time Cargill define o responsável pela fazenda.', 403);
+  if (!canSetOwner(user)) throw new BenchmarkError('Só o Time Cargill define o responsável pela fazenda.', 403);
   const client = clientOr404(user, clientId);
   client.bmkOwner = ownerFor(user, ownerId);
   await save();

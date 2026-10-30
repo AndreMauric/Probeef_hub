@@ -220,11 +220,15 @@ function toolsSection() {
 let benchmarkInfo = null;
 function benchmarkSection() {
   const b = benchmarkInfo;
-  if (!b || (!b.clients.length && !b.canCreateFarm)) return null;
+  if (!b) return null;
+  // Login só do Benchmarking ainda sem fazenda: avisa em vez de deixar a tela vazia.
+  if (!b.canUse) return null;
   const n = b.clients.length;
   const desc =
     b.kind === 'cliente'
-      ? 'Envie os dados dos lotes e o questionário, com validação na hora, e veja o seu resultado.'
+      ? n
+        ? 'Envie os dados dos lotes e o questionário, com validação na hora, e veja o seu resultado.'
+        : 'Cadastre a sua fazenda e envie os dados dos lotes e o questionário, com validação na hora.'
       : b.isValidator
         ? `Acompanhe e valide a coleta de ${n} fazenda(s) da sua equipe.`
         : `Acompanhe a coleta de ${n} fazenda(s) da sua equipe${b.canCreateFarm ? ' e cadastre novas' : ''}.`;

@@ -1741,7 +1741,7 @@ function newClientDialog(owners = []) {
       h('h2', {}, 'Cadastrar fazenda no benchmarking'),
       h('label', { class: 'bmk-field' }, h('span', {}, 'Nome do cliente (empresa + unidade do confinamento)'), name),
       owners.length ? h('label', { class: 'bmk-field' }, h('span', {}, 'Responsável'), owner) : null,
-      h('p', { class: 'muted' }, 'A fazenda entra só no Benchmarking (sem relatórios do portal) e aparece para o responsável e para os gestores acima dele. O login de quem vai preencher na fazenda é criado por um gestor, na aba Equipe.'),
+      h('p', { class: 'muted' }, state.kind === 'cliente' ? 'A fazenda entra só no Benchmarking e fica com você para preencher; a equipe Cargill que acompanha você também passa a vê-la.' : 'A fazenda entra só no Benchmarking (sem relatórios do portal) e aparece para o responsável e para os gestores acima dele. O login de quem vai preencher na fazenda é criado por um gestor, na aba Equipe.'),
       h('div', { class: 'dialog-actions' }, h('button', { class: 'btn', type: 'button', onclick: () => dialog.close() }, 'Cancelar'), h('button', { class: 'btn btn-primary', type: 'submit' }, 'Cadastrar')),
     ),
   );
@@ -1897,8 +1897,9 @@ function memberDialog(team, member) {
   const farmsField = h(
     'div',
     { class: 'bmk-field' },
-    h('span', {}, 'Fazendas que este cliente vê'),
-    team.farms.length ? h('div', { class: 'bmk-checklist' }, farmBoxes.map(({ f, box }) => h('label', { class: 'check' }, box, h('span', {}, f.name)))) : h('p', { class: 'muted' }, 'Nenhuma fazenda na sua equipe ainda. Cadastre a fazenda na aba Clientes primeiro.'),
+    h('span', {}, 'Fazendas que este cliente vê (opcional)'),
+    team.farms.length ? h('div', { class: 'bmk-checklist' }, farmBoxes.map(({ f, box }) => h('label', { class: 'check' }, box, h('span', {}, f.name)))) : null,
+    h('small', { class: 'muted' }, 'Nenhuma marcada: o login fica sem fazenda. Cadastre a fazenda na aba Clientes quando precisar e depois marque aqui (Editar).'),
   );
   const sync = () => {
     const k = kind.value;
@@ -1998,7 +1999,7 @@ async function renderTeam() {
       { class: m.active ? '' : 'bmk-row-off' },
       h('td', {}, h('span', { style: `padding-left: ${depth * 18}px` }, depth ? '└ ' : '', h('strong', {}, m.name)), h('small', { class: 'muted bmk-sub' }, m.email)),
       h('td', {}, KIND_LABEL[m.kind], m.bmkGestor ? ' · Gestor' : '', m.bmkValidator ? ' · Valida' : ''),
-      h('td', {}, m.kind === 'cliente' ? m.clientIds.map((id) => farmNames.get(id)).filter(Boolean).join(', ') || '—' : names.get(m.reportsTo) || '—'),
+      h('td', {}, m.kind === 'cliente' ? m.clientIds.map((id) => farmNames.get(id)).filter(Boolean).join(', ') || h('span', { class: 'muted' }, 'sem fazenda ainda') : names.get(m.reportsTo) || '—'),
       h('td', {}, m.active ? 'Ativo' : 'Desativado', m.bmkOnly ? null : h('small', { class: 'muted bmk-sub' }, 'também usa a plataforma'), h('small', { class: 'muted bmk-sub' }, m.lastLoginAt ? `último acesso ${fmtDateTime(m.lastLoginAt)}` : 'nunca entrou')),
       h('td', { class: 'bmk-actions' }, readOnly ? null : [h('button', { class: 'btn btn-sm', type: 'button', onclick: () => memberDialog(team, m) }, 'Editar'), ' ', m.bmkOnly ? h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => resetPassword(m) }, 'Nova senha') : null]),
     );
@@ -2135,6 +2136,10 @@ async function init() {
   document.getElementById('bmk-title').textContent = `Benchmarking · ciclo ${info.ano}${info.aberta ? '' : ' · coleta fechada'}`;
   document.title = `Benchmarking ${info.ano}`;
   document.querySelectorAll('[data-tab]').forEach((t) => (t.onclick = () => selectTab(t.dataset.tab)));
+  // Quem não tem a aba Clientes (o cliente) cadastra fazenda por este botão no topo.
+  const newFarm = document.getElementById('new-farm');
+  newFarm.hidden = !(info.canCreateFarm && info.aberta && !info.seesOverview && !user.impersonatedBy);
+  newFarm.onclick = () => newClientDialog([]);
   if (!info.clients.length) {
     // Sem fazenda ainda: o Time e os gestores usam só as abas Clientes e Equipe.
     if (extraTabs.length) {
@@ -2148,7 +2153,8 @@ async function init() {
         'div',
         { class: 'bmk-blank' },
         h('h3', {}, 'Nenhuma fazenda no benchmarking'),
-        h('p', { class: 'muted' }, info.isAdmin ? 'Marque "Participa do Benchmarking" no cadastro dos clientes (Admin → Clientes).' : info.kind === 'cliente' ? 'A sua empresa ainda não está no benchmarking. Fale com o seu contato Cargill.' : 'Ainda não há fazendas suas no benchmarking. Fale com o seu gestor.'),
+        h('p', { class: 'muted' }, info.isAdmin ? 'Marque "Participa do Benchmarking" no cadastro dos clientes (Admin → Clientes).' : info.canCreateFarm && info.aberta ? 'Cadastre a sua fazenda para começar a preencher.' : 'Ainda não há fazendas suas no benchmarking. Fale com o seu contato Cargill.'),
+        info.canCreateFarm && info.aberta && !user.impersonatedBy ? h('button', { class: 'btn btn-primary', type: 'button', onclick: () => newClientDialog([]) }, '+ Cadastrar fazenda') : null,
       ),
     );
     document.querySelectorAll('.tabs, [data-panel]').forEach((el) => (el.hidden = true));

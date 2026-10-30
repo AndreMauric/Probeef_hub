@@ -7,8 +7,8 @@
 //   bmkCreateTeam  — pode tornar outra pessoa gestor (montar uma equipe nova).
 // Hierarquia: user.reportsTo aponta para um gestor; a equipe de alguém é todo mundo abaixo dele,
 // em qualquer nível. Cada fazenda do benchmarking tem um responsável (client.bmkOwner: alguém do
-// Time ou de Canais) e é vista por ele e por quem está acima dele. Canais não cria nada: usa o
-// Benchmarking nas fazendas em que é responsável. O cliente nunca cria usuário nem fazenda.
+// Time ou de Canais) e é vista por ele e por quem está acima dele. Todos cadastram fazenda (Time,
+// Canais e Cliente); só gestores (e o admin) criam usuários — Canais e Cliente nunca.
 // Quem o gestor cria (Canais e Cliente) é "só Benchmarking" (user.bmkOnly): não acessa relatórios,
 // CCV nem ferramentas, mesmo que a fazenda também seja cliente da plataforma (ver userClients).
 // Por enquanto tudo isso vale só para o Benchmarking; relatórios e ferramentas seguem como antes.
@@ -29,7 +29,12 @@ export const kindOf = (user) => (user.role === 'admin' ? 'admin' : KINDS[user.ki
 export const isInternal = (user) => ['cargill', 'canal'].includes(kindOf(user));
 export const isGestor = (user) => user.role === 'admin' || (kindOf(user) === 'cargill' && Boolean(user.bmkGestor));
 export const canCreateTeam = (user) => user.role === 'admin' || (isGestor(user) && Boolean(user.bmkCreateTeam));
-export const canCreateFarm = (user) => user.role === 'admin' || kindOf(user) === 'cargill';
+export const canCreateFarm = (user) => user.role === 'admin' || user.role === 'client';
+// Definir/trocar o responsável por uma fazenda: Time Cargill e admin.
+export const canSetOwner = (user) => user.role === 'admin' || kindOf(user) === 'cargill';
+// Quem entra no Benchmarking mesmo sem fazenda ainda (para cadastrar a primeira): admin, Time,
+// Canais e os logins "só Benchmarking". Cliente da plataforma só entra com fazenda participante.
+export const bmkMember = (user) => user.role === 'admin' || isInternal(user) || Boolean(user.bmkOnly);
 
 // Todo mundo abaixo de userId, em qualquer nível (protegido contra ciclos).
 export function teamIds(userId) {
@@ -86,14 +91,16 @@ export function checkReportsTo(userId, reportsTo) {
 }
 
 // Pessoas que o gestor administra: a equipe (Time e Canais) e os logins de cliente cujas fazendas
-// estão todas no alcance dele.
+// estão todas no alcance dele. Login de cliente ainda sem fazenda fica com quem o criou (e acima).
 function managedBy(user, farmIds) {
   const team = teamIds(user.id);
   return db().users.filter((u) => {
     if (u.role === 'admin' || u.id === user.id) return false;
     if (isInternal(u)) return user.role === 'admin' || team.has(u.id);
     // Logins de cliente da plataforma (com relatórios) são do admin; o gestor cuida dos do Benchmarking.
-    return Boolean(u.bmkOnly) && u.clientIds.length > 0 && u.clientIds.every((id) => farmIds.has(id));
+    if (!u.bmkOnly) return false;
+    if (!u.clientIds.length) return user.role === 'admin' || u.createdBy === user.id || team.has(u.createdBy);
+    return u.clientIds.every((id) => farmIds.has(id));
   });
 }
 
@@ -140,7 +147,6 @@ function readMember(user, body, farmIds, existing) {
   const out = { name, kind };
   if (kind === 'cliente') {
     const ids = [...new Set(Array.isArray(body.clientIds) ? body.clientIds : [])];
-    if (!ids.length) throw new TeamError('Escolha a fazenda (ou as fazendas) deste cliente.');
     if (ids.some((id) => !farmIds.has(id))) throw new TeamError('Só dá para dar acesso às fazendas da sua equipe.', 403);
     // Fazendas que a pessoa já tinha fora do alcance do gestor ficam como estão.
     const others = (existing?.clientIds || []).filter((id) => !farmIds.has(id));
