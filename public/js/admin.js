@@ -3476,7 +3476,7 @@ function gerenciasManager() {
           h(
             'div',
             { class: 'tag-manager-row' },
-            h('span', {}, h('strong', {}, g.name), g.gerente ? h('span', { class: 'muted' }, ` · ${g.gerente}`) : null),
+            h('span', {}, h('strong', {}, g.name), h('span', { class: 'muted' }, g.gerenteName ? ` · gerente: ${g.gerenteName}` : ' · sem gerente')),
             h('span', { class: 'muted' }, `${g.pessoas} ${g.pessoas === 1 ? 'pessoa' : 'pessoas'} do Time`),
             h(
               'span',
@@ -3496,12 +3496,23 @@ function gerenciasManager() {
 }
 
 function gerenciaDialog(g) {
+  // Gerente: um dos gestores do Time Cargill (marque "Gestor" no cadastro da pessoa para ela aparecer aqui).
+  const gestores = state.users.filter((u) => u.role !== 'admin' && u.kind === 'cargill' && u.bmkGestor && (u.active || u.id === g?.gerenteId)).sort(byName);
+  const gerente = h(
+    'select',
+    { 'aria-label': 'Gerente' },
+    h('option', { value: '' }, gestores.length ? '— Sem gerente —' : '— Nenhum gestor do Time Cargill cadastrado —'),
+    gestores.map((u) => h('option', { value: u.id, selected: u.id === g?.gerenteId }, u.name)),
+  );
   formDialog(
     g ? 'Editar gerência' : 'Nova gerência',
-    [field('Nome da gerência', input('ger-name', { value: g?.name || '', required: true, placeholder: 'Ex.: Gerência Centro-Oeste' })), field('Gerente (opcional)', input('ger-gerente', { value: g?.gerente || '' }))],
+    [
+      field('Nome da gerência', input('ger-name', { value: g?.name || '', required: true, placeholder: 'Ex.: Gerência Centro-Oeste' })),
+      field('Gerente', gerente, 'Gestores do Time Cargill (Usuários → Editar → Perfil Time Cargill, marcar "Gestor").'),
+    ],
     {
       onSubmit: async (form) => {
-        const body = { name: form.elements['ger-name'].value, gerente: form.elements['ger-gerente'].value };
+        const body = { name: form.elements['ger-name'].value, gerenteId: gerente.value || null };
         if (g) await api(`/api/admin/gerencias/${g.id}`, { method: 'PUT', body });
         else await api('/api/admin/gerencias', { method: 'POST', body });
         await refresh();
@@ -3925,7 +3936,7 @@ function userDialog(user) {
     'select',
     { 'aria-label': 'Gerência' },
     h('option', { value: '' }, state.gerencias.length ? '— Sem gerência —' : '— Nenhuma gerência cadastrada —'),
-    state.gerencias.map((g) => h('option', { value: g.id, selected: g.id === user?.gerenciaId }, g.gerente ? `${g.name} · ${g.gerente}` : g.name)),
+    state.gerencias.map((g) => h('option', { value: g.id, selected: g.id === user?.gerenciaId }, g.gerenteName ? `${g.name} · ${g.gerenteName}` : g.name)),
   );
   const gerenciaField = field('Gerência', gerencia, 'Vale para todos os usuários (Canais e Cliente) que esta pessoa cadastrar. Cadastre as gerências em Usuários → Gerências.');
   const bmkField = h(

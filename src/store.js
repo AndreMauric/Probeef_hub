@@ -25,11 +25,18 @@ function normalize(raw) {
     const name = u.gerencia.trim();
     let g = next.gerencias.find((x) => x.name.toLowerCase() === name.toLowerCase());
     if (!g) {
-      g = { id: crypto.randomUUID(), name, gerente: '', createdAt: new Date().toISOString() };
+      g = { id: crypto.randomUUID(), name, gerenteId: null, createdAt: new Date().toISOString() };
       next.gerencias.push(g);
     }
     u.gerenciaId ??= g.id;
     delete u.gerencia;
+  }
+  // O gerente era um texto: vira gerenteId quando o nome bate com um usuário (senão fica sem gerente).
+  for (const g of next.gerencias) {
+    if (typeof g.gerente !== 'string') continue;
+    const name = g.gerente.trim().toLowerCase();
+    g.gerenteId ??= (name && next.users.find((u) => u.role !== 'admin' && u.name?.trim().toLowerCase() === name)?.id) || null;
+    delete g.gerente;
   }
   const viaBmkTeam = new Set((next.audit || []).filter((a) => a.action === 'bmk-team.create').map((a) => a.userId));
   next.users = next.users.map(({ clientId, isManager, ...user }) => ({

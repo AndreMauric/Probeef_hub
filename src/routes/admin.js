@@ -819,9 +819,12 @@ function applyTagClients(tagId, clientIds) {
 
 // ---------- Gerências (Time Cargill; ver gerenciaOf em src/bmkTeam.js) ----------
 
+// Gerente: um gestor do Time Cargill (opcional).
+const isGestorCargill = (u) => u && u.role !== 'admin' && u.kind === 'cargill' && u.bmkGestor;
 function readGerencia(body, existing) {
-  const g = { name: text(body.name, 80), gerente: text(body.gerente, 120) };
+  const g = { name: text(body.name, 80), gerenteId: body.gerenteId ? text(body.gerenteId, 36) : null };
   if (!g.name) fail('Informe o nome da gerência.');
+  if (g.gerenteId && !isGestorCargill(db().users.find((u) => u.id === g.gerenteId))) fail('O gerente precisa ser um gestor do Time Cargill.');
   if (db().gerencias.some((x) => x.id !== existing?.id && x.name.toLowerCase() === g.name.toLowerCase())) fail('Já existe uma gerência com esse nome.');
   return g;
 }
@@ -829,7 +832,9 @@ function readGerencia(body, existing) {
 adminRouter.get('/gerencias', (_req, res) => {
   const { gerencias, users } = db();
   res.json({
-    gerencias: [...gerencias].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')).map((g) => ({ ...g, pessoas: users.filter((u) => u.gerenciaId === g.id).length })),
+    gerencias: [...gerencias]
+      .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
+      .map((g) => ({ ...g, gerenteName: users.find((u) => u.id === g.gerenteId)?.name || null, pessoas: users.filter((u) => u.gerenciaId === g.id).length })),
   });
 });
 
