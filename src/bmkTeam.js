@@ -67,17 +67,19 @@ export function ownerScope(user) {
 
 const userById = (id) => db().users.find((u) => u.id === id);
 
-// Gerência: o admin informa no cadastro de quem é do Time Cargill (user.gerencia). Canais e Cliente
+// Gerência: o admin escolhe, no cadastro de quem é do Time Cargill, uma das gerências cadastradas
+// (user.gerenciaId → db().gerencias). Canais e Cliente
 // herdam a da pessoa do Time que criou o login (sem ela, a do gestor do "responde a"); calculada na
 // hora, então mudar a gerência de alguém do Time reflete em todos que ele cadastrou.
 export function gerenciaOf(user) {
   if (!user || user.role === 'admin') return null;
-  if (kindOf(user) === 'cargill') return user.gerencia || null;
+  const nameOf = (u) => db().gerencias.find((g) => g.id === u?.gerenciaId)?.name || null;
+  if (kindOf(user) === 'cargill') return nameOf(user);
   const cargill = (id) => {
     const u = id && userById(id);
     return u && kindOf(u) === 'cargill' ? u : null;
   };
-  return (cargill(user.createdBy) || cargill(user.reportsTo))?.gerencia || null;
+  return nameOf(cargill(user.createdBy) || cargill(user.reportsTo));
 }
 
 // Quem pode ser responsável por uma fazenda cadastrada por "user": ele e a equipe (Time ou Canais).

@@ -817,6 +817,46 @@ function applyTagClients(tagId, clientIds) {
   }
 }
 
+// ---------- Gerências (Time Cargill; ver gerenciaOf em src/bmkTeam.js) ----------
+
+function readGerencia(body, existing) {
+  const g = { name: text(body.name, 80), gerente: text(body.gerente, 120) };
+  if (!g.name) fail('Informe o nome da gerência.');
+  if (db().gerencias.some((x) => x.id !== existing?.id && x.name.toLowerCase() === g.name.toLowerCase())) fail('Já existe uma gerência com esse nome.');
+  return g;
+}
+
+adminRouter.get('/gerencias', (_req, res) => {
+  const { gerencias, users } = db();
+  res.json({
+    gerencias: [...gerencias].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')).map((g) => ({ ...g, pessoas: users.filter((u) => u.gerenciaId === g.id).length })),
+  });
+});
+
+adminRouter.post('/gerencias', route(async (req, res) => {
+  const g = { id: newId(), ...readGerencia(req.body || {}), createdAt: new Date().toISOString() };
+  db().gerencias.push(g);
+  await save();
+  res.status(201).json({ gerencia: g });
+}));
+
+adminRouter.put('/gerencias/:id', route(async (req, res) => {
+  const g = findOr404(db().gerencias, req.params.id, 'Gerência');
+  Object.assign(g, readGerencia(req.body || {}, g));
+  await save();
+  res.json({ gerencia: g });
+}));
+
+// Excluir tira a gerência de quem estava nela (essas pessoas ficam sem gerência).
+adminRouter.delete('/gerencias/:id', route(async (req, res) => {
+  const data = db();
+  const g = findOr404(data.gerencias, req.params.id, 'Gerência');
+  data.gerencias = data.gerencias.filter((x) => x.id !== g.id);
+  for (const u of data.users) if (u.gerenciaId === g.id) u.gerenciaId = null;
+  await save();
+  res.json({ ok: true });
+}));
+
 adminRouter.get('/tags', (_req, res) => {
   const { tags, clients } = db();
   res.json({
@@ -909,12 +949,12 @@ function readUser(body, existing) {
       bmkValidator: cargill && Boolean(body.bmkValidator),
       bmkCreateTeam: cargill && Boolean(body.bmkGestor) && Boolean(body.bmkCreateTeam),
       // Gerência (só do Time Cargill; Canais e Cliente herdam de quem os cadastrou).
-      gerencia: cargill ? text(body.gerencia, 80) || null : null,
+      gerenciaId: cargill && db().gerencias.some((g) => g.id === body.gerenciaId) ? body.gerenciaId : null,
       // Só Benchmarking: sem relatórios, CCV nem ferramentas (ver userClients em src/auth.js).
       bmkOnly: Boolean(body.bmkOnly),
     });
   } else {
-    Object.assign(user, { kind: undefined, reportsTo: null, bmkGestor: false, bmkValidator: false, bmkCreateTeam: false, bmkOnly: false, gerencia: null });
+    Object.assign(user, { kind: undefined, reportsTo: null, bmkGestor: false, bmkValidator: false, bmkCreateTeam: false, bmkOnly: false, gerenciaId: null });
   }
   if (user.phone && (user.phone.length < 12 || user.phone.length > 15)) fail('Telefone inválido. Use DDD + número, ex.: (61) 99999-8888.');
   const phoneOwner = user.phone && db().users.find((u) => u.id !== existing?.id && samePhone(u.phone, user.phone));

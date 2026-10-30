@@ -1,7 +1,7 @@
 import { composer, renderMessage } from './chat.js';
 import { api, copyText, h, loadConfig, logout, openPasswordDialog, setupMenu, toast } from './common.js';
 
-const state = { reports: [], clients: [], users: [], status: null, me: null, backups: [], images: [], categories: [], tags: [] };
+const state = { reports: [], clients: [], users: [], status: null, me: null, backups: [], images: [], categories: [], tags: [], gerencias: [] };
 const dialog = document.getElementById('dialog');
 
 const fmtDate = (iso) =>
@@ -732,7 +732,7 @@ function renderAll() {
 }
 
 async function refresh() {
-  const [r, c, u, s, b, img, cat, tg] = await Promise.all([
+  const [r, c, u, s, b, img, cat, tg, ger] = await Promise.all([
     api('/api/admin/reports'),
     api('/api/admin/clients'),
     api('/api/admin/users'),
@@ -741,6 +741,7 @@ async function refresh() {
     api('/api/admin/images'),
     api('/api/admin/categories'),
     api('/api/admin/tags'),
+    api('/api/admin/gerencias'),
   ]);
   Object.assign(state, {
     reports: r.reports,
@@ -751,6 +752,7 @@ async function refresh() {
     images: img.images,
     categories: cat.categories,
     tags: tg.tags,
+    gerencias: ger.gerencias,
   });
   renderAll();
 }
@@ -3463,6 +3465,64 @@ function renderTagFilters() {
   select.hidden = !state.tags.length;
 }
 
+// ---------- Gerências (Time Cargill) ----------
+
+function gerenciasManager() {
+  const list = h(
+    'div',
+    { class: 'tag-manager' },
+    state.gerencias.length
+      ? state.gerencias.map((g) =>
+          h(
+            'div',
+            { class: 'tag-manager-row' },
+            h('span', {}, h('strong', {}, g.name), g.gerente ? h('span', { class: 'muted' }, ` · ${g.gerente}`) : null),
+            h('span', { class: 'muted' }, `${g.pessoas} ${g.pessoas === 1 ? 'pessoa' : 'pessoas'} do Time`),
+            h(
+              'span',
+              { class: 'actions' },
+              h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => gerenciaDialog(g) }, 'Editar'),
+              h('button', { class: 'btn btn-sm btn-ghost btn-danger', type: 'button', onclick: () => deleteGerencia(g) }, 'Excluir'),
+            ),
+          ),
+        )
+      : h('p', { class: 'muted', style: 'margin: 0' }, 'Nenhuma gerência ainda.'),
+  );
+  formDialog('Gerências', [
+    h('p', { style: 'margin: 0' }, 'As gerências aparecem na lista do cadastro de quem é do Time Cargill. Canais e Clientes que essa pessoa cadastrar ficam na mesma gerência, e a fazenda fica com a gerência do responsável.'),
+    list,
+    h('div', {}, h('button', { class: 'btn btn-primary btn-sm', type: 'button', onclick: () => gerenciaDialog() }, 'Nova gerência')),
+  ]);
+}
+
+function gerenciaDialog(g) {
+  formDialog(
+    g ? 'Editar gerência' : 'Nova gerência',
+    [field('Nome da gerência', input('ger-name', { value: g?.name || '', required: true, placeholder: 'Ex.: Gerência Centro-Oeste' })), field('Gerente (opcional)', input('ger-gerente', { value: g?.gerente || '' }))],
+    {
+      onSubmit: async (form) => {
+        const body = { name: form.elements['ger-name'].value, gerente: form.elements['ger-gerente'].value };
+        if (g) await api(`/api/admin/gerencias/${g.id}`, { method: 'PUT', body });
+        else await api('/api/admin/gerencias', { method: 'POST', body });
+        await refresh();
+        toast(g ? 'Gerência atualizada.' : 'Gerência cadastrada.');
+        gerenciasManager();
+        return false;
+      },
+    },
+  );
+}
+
+function deleteGerencia(g) {
+  confirmDialog('Excluir gerência', `A gerência "${g.name}" será excluída${g.pessoas ? ` e ${g.pessoas} pessoa(s) do Time ficarão sem gerência` : ''}.`, async () => {
+    await api(`/api/admin/gerencias/${g.id}`, { method: 'DELETE', body: {} });
+    await refresh();
+    toast('Gerência excluída.');
+    gerenciasManager();
+    return false;
+  });
+}
+
 function tagsManager() {
   const list = h(
     'div',
@@ -3860,15 +3920,14 @@ function userDialog(user) {
   const validator = check(user?.bmkValidator, 'Valida o Benchmarking', 'Aprova ou devolve para correção as fazendas da equipe do gestor a quem responde (e da própria equipe, se for gestor).');
   const bmkOnly = check(user?.bmkOnly, 'Só Benchmarking', 'Não acessa a plataforma (relatórios, CCV, 4M, 3P): só o Benchmarking das fazendas dele. Quem o gestor cria na aba Equipe já nasce assim.');
   const reportsField = field('Responde a', reportsTo, 'Gestor do Time Cargill. A pessoa e as fazendas dela entram na equipe desse gestor.');
-  // Gerência (Time Cargill): sugestões com as já usadas, para não escrever a mesma de dois jeitos.
-  const gerencias = [...new Set(state.users.map((u) => u.gerencia).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
-  const gerencia = h('input', { type: 'text', maxlength: 80, value: user?.gerencia || '', list: 'gerencias-list', placeholder: 'Ex.: Gerência Centro-Oeste' });
-  const gerenciaField = h(
-    'div',
-    {},
-    field('Gerência', gerencia, 'Vale para todos os usuários (Canais e Cliente) que esta pessoa cadastrar.'),
-    h('datalist', { id: 'gerencias-list' }, gerencias.map((g) => h('option', { value: g }))),
+  // Gerência (Time Cargill): uma das cadastradas em Usuários → Gerências.
+  const gerencia = h(
+    'select',
+    { 'aria-label': 'Gerência' },
+    h('option', { value: '' }, state.gerencias.length ? '— Sem gerência —' : '— Nenhuma gerência cadastrada —'),
+    state.gerencias.map((g) => h('option', { value: g.id, selected: g.id === user?.gerenciaId }, g.gerente ? `${g.name} · ${g.gerente}` : g.name)),
   );
+  const gerenciaField = field('Gerência', gerencia, 'Vale para todos os usuários (Canais e Cliente) que esta pessoa cadastrar. Cadastre as gerências em Usuários → Gerências.');
   const bmkField = h(
     'fieldset',
     { class: 'field bmk-access' },
@@ -3939,7 +3998,7 @@ function userDialog(user) {
           whatsappNotify: notify.checked,
           kind: kind.value,
           reportsTo: reportsTo.value || null,
-          gerencia: gerencia.value,
+          gerenciaId: gerencia.value || null,
           bmkGestor: gestor.box.checked,
           bmkCreateTeam: createTeam.box.checked,
           bmkValidator: validator.box.checked,
@@ -4077,6 +4136,7 @@ async function init() {
     .catch(() => {});
   document.getElementById('new-client').onclick = () => clientDialog();
   document.getElementById('manage-tags').onclick = () => tagsManager();
+  document.getElementById('manage-gerencias').onclick = () => gerenciasManager();
   document.getElementById('clients-tag-filter').addEventListener('change', renderClients);
   document.getElementById('new-category').onclick = () => categoryDialog();
   document.getElementById('new-user').onclick = () => userDialog();

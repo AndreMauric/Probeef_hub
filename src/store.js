@@ -5,7 +5,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { config } from './config.js';
 
-const empty = () => ({ users: [], clients: [], reports: [], images: [], categories: [], tags: [], confinamentoSimulations: [], ccvAlertLog: [], chatThreads: [], chatMessages: [], pastoSimulations: [], bmkSubmissions: [] });
+const empty = () => ({ users: [], clients: [], reports: [], images: [], categories: [], tags: [], confinamentoSimulations: [], ccvAlertLog: [], chatThreads: [], chatMessages: [], pastoSimulations: [], bmkSubmissions: [], gerencias: [] });
 
 // Usuários antigos tinham um único "clientId"; hoje cada usuário tem uma lista "clientIds".
 function normalize(raw) {
@@ -15,6 +15,22 @@ function normalize(raw) {
   // benchmarking, senão Cliente Cargill.
   // Quem foi criado na aba Equipe do Benchmarking antes de existir "só Benchmarking" (bmkOnly) é
   // marcado pelo registro de auditoria: esses logins nunca deveriam ver relatórios, CCV ou ferramentas.
+  // Gerências: cadastro próprio (db().gerencias, Admin → Usuários → Gerências); o usuário do Time
+  // aponta para uma por gerenciaId. A gerência era um texto livre no usuário: vira item do cadastro.
+  for (const u of next.users) {
+    if (typeof u.gerencia !== 'string' || !u.gerencia.trim()) {
+      delete u.gerencia;
+      continue;
+    }
+    const name = u.gerencia.trim();
+    let g = next.gerencias.find((x) => x.name.toLowerCase() === name.toLowerCase());
+    if (!g) {
+      g = { id: crypto.randomUUID(), name, gerente: '', createdAt: new Date().toISOString() };
+      next.gerencias.push(g);
+    }
+    u.gerenciaId ??= g.id;
+    delete u.gerencia;
+  }
   const viaBmkTeam = new Set((next.audit || []).filter((a) => a.action === 'bmk-team.create').map((a) => a.userId));
   next.users = next.users.map(({ clientId, isManager, ...user }) => ({
     ...user,
