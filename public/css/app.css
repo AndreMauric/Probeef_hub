@@ -4392,6 +4392,12 @@ tr.row-on td {
   font-weight: 600;
 }
 
+/* Andamento do Benchmarking: filtro por gerência */
+.bmk-gerencia-filter {
+  max-width: 280px;
+  margin-bottom: 12px;
+}
+
 /* Cadastro de usuário: bloco do Benchmarking (perfil, responde a, poderes) */
 .bmk-access {
   display: grid;

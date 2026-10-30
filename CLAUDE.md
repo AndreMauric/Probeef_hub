@@ -122,6 +122,10 @@ configurações (Admin → Benchmarking → "Ciclo, limites e listas"), com a ch
 - Aba **Clientes** do `/benchmark` (admin, Time e Canais): andamento das fazendas e o responsável
   (o Time troca entre as pessoas da equipe, `PUT /api/benchmark/clients/:id/owner`).
 - Admin: perfil, "responde a" e poderes no cadastro do usuário; responsável no cadastro do cliente.
+- **Gerência**: o admin informa no cadastro de quem é do Time (`user.gerencia`, com sugestões das já
+  usadas). Canais e Cliente herdam a de quem do Time os cadastrou (`createdBy`; sem ela, a do
+  `reportsTo`) — `gerenciaOf` calcula na hora, então mudar a gerência reflete em todos. A gerência da
+  fazenda é a do responsável: coluna e filtro no andamento do admin, coluna na aba Clientes.
 - Usuários antigos sem perfil: Time Cargill se já validavam, senão Cliente Cargill (`normalize`).
 - Teste das regras: script com 32 verificações (gestor, validador, Canais, cliente, coleta fechada) —
   se mexer em `bmkTeam.js`/`participantClients`, refaça algo equivalente contra o servidor local.

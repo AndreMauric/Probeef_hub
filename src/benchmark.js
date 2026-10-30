@@ -11,7 +11,7 @@
 // do admin cadastra fazenda nem altera ou envia dados.
 import { adminSend, userSend } from './chat.js';
 import { cleanAnswer, cleanLote, editableStatus, mergeSettings, QUESTIONS, validateLotes, validateQuestionario } from '../public/benchmark/fields.js';
-import { bmkMember, canCreateFarm, canSetOwner, isInternal, kindOf, ownerCandidates, ownerScope } from './bmkTeam.js';
+import { bmkMember, canCreateFarm, canSetOwner, gerenciaOf, isInternal, kindOf, ownerCandidates, ownerScope } from './bmkTeam.js';
 import { db, newId, save } from './store.js';
 
 const MAX_LOTES = 2000;
@@ -333,6 +333,8 @@ export function adminList({ clientIds = null } = {}) {
         active: c.active !== false,
         ownerId: c.bmkOwner || null,
         owner: userName(c.bmkOwner),
+        // Gerência da fazenda = a do responsável (ver gerenciaOf).
+        gerencia: gerenciaOf(db().users.find((u) => u.id === c.bmkOwner)),
         status: sub?.status || 'nao_iniciado',
         updatedAt: sub?.updatedAt || null,
         updatedBy: userName(sub?.updatedBy),

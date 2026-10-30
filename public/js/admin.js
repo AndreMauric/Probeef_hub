@@ -180,6 +180,7 @@ function renderUsers() {
       'span',
       { class: 'sub' },
       KIND_LABEL[u.kind || 'cliente'],
+      u.gerenciaEfetiva ? ` · ${u.gerenciaEfetiva}` : '',
       u.bmkGestor ? ' · Gestor' : '',
       u.bmkCreateTeam ? ' (cria equipe)' : '',
       u.bmkValidator ? ' · Valida BMK' : '',
@@ -1087,17 +1088,23 @@ async function loadBenchmark() {
 }
 
 function renderBenchmark() {
-  const { clients, settings } = bmkState.data;
+  const { settings } = bmkState.data;
+  // Filtro por gerência (a do responsável pela fazenda).
+  const gerencias = [...new Set(bmkState.data.clients.map((c) => c.gerencia || ''))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  if (bmkState.gerencia !== undefined && !gerencias.includes(bmkState.gerencia)) bmkState.gerencia = undefined;
+  const clients = bmkState.gerencia === undefined ? bmkState.data.clients : bmkState.data.clients.filter((c) => (c.gerencia || '') === bmkState.gerencia);
   const box = document.getElementById('benchmark');
   const waiting = clients.filter((c) => c.status === 'enviado').length;
+  // O contador da aba conta todas as gerências; os números abaixo seguem o filtro.
+  const waitingAll = bmkState.data.clients.filter((c) => c.status === 'enviado').length;
   const counter = document.getElementById('count-benchmark');
-  counter.textContent = waiting || '';
-  counter.classList.toggle('has-high', waiting > 0);
+  counter.textContent = waitingAll || '';
+  counter.classList.toggle('has-high', waitingAll > 0);
   const count = (s) => clients.filter((c) => c.status === s).length;
   const tableEl = h('table');
   table(
     tableEl,
-    ['Cliente', 'Responsável', 'Situação', 'Lotes', 'Erros / alertas', 'Questionário', 'Última alteração', ''],
+    ['Cliente', 'Responsável', 'Gerência', 'Situação', 'Lotes', 'Erros / alertas', 'Questionário', 'Última alteração', ''],
     clients.map((c) => {
       const [label, cls] = BMK_STATUS[c.status] || BMK_STATUS.nao_iniciado;
       return h(
@@ -1105,6 +1112,7 @@ function renderBenchmark() {
         {},
         h('td', {}, h('strong', {}, c.client), c.active ? null : h('span', { class: 'sub' }, 'cliente desativado')),
         h('td', {}, c.owner || h('span', { class: 'muted' }, '—')),
+        h('td', {}, c.gerencia || h('span', { class: 'muted' }, '—')),
         h('td', {}, h('span', { class: cls }, label), c.submittedAt ? h('span', { class: 'sub' }, `enviado ${fmtDate(c.submittedAt)}`) : null),
         h('td', { class: 'mono' }, `${c.lotesEngorda} eng. · ${c.lotesRecria} rec.`),
         h('td', {}, c.erros ? h('span', { class: 'pill pill-danger' }, `${c.erros} erros`) : h('span', { class: 'muted' }, '0 erros'), ' ', c.alertas ? h('span', { class: 'pill pill-warn' }, `${c.alertas} alertas`) : null),
@@ -1125,6 +1133,19 @@ function renderBenchmark() {
       statTile('Aprovados', num(count('aprovado'))),
       statTile('Em preenchimento / não iniciados', `${num(count('rascunho'))} / ${num(count('nao_iniciado'))}`),
     ),
+    gerencias.length > 1
+      ? h(
+          'label',
+          { class: 'field bmk-gerencia-filter' },
+          h('span', {}, 'Gerência'),
+          h(
+            'select',
+            { onchange: (e) => ((bmkState.gerencia = e.target.value === '*' ? undefined : e.target.value), renderBenchmark()) },
+            h('option', { value: '*' }, 'Todas'),
+            gerencias.map((g) => h('option', { value: g, selected: bmkState.gerencia === g }, g || 'Sem gerência')),
+          ),
+        )
+      : null,
     h('div', { class: 'table-wrap' }, tableEl),
   );
 }
@@ -3839,11 +3860,21 @@ function userDialog(user) {
   const validator = check(user?.bmkValidator, 'Valida o Benchmarking', 'Aprova ou devolve para correção as fazendas da equipe do gestor a quem responde (e da própria equipe, se for gestor).');
   const bmkOnly = check(user?.bmkOnly, 'Só Benchmarking', 'Não acessa a plataforma (relatórios, CCV, 4M, 3P): só o Benchmarking das fazendas dele. Quem o gestor cria na aba Equipe já nasce assim.');
   const reportsField = field('Responde a', reportsTo, 'Gestor do Time Cargill. A pessoa e as fazendas dela entram na equipe desse gestor.');
+  // Gerência (Time Cargill): sugestões com as já usadas, para não escrever a mesma de dois jeitos.
+  const gerencias = [...new Set(state.users.map((u) => u.gerencia).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  const gerencia = h('input', { type: 'text', maxlength: 80, value: user?.gerencia || '', list: 'gerencias-list', placeholder: 'Ex.: Gerência Centro-Oeste' });
+  const gerenciaField = h(
+    'div',
+    {},
+    field('Gerência', gerencia, 'Vale para todos os usuários (Canais e Cliente) que esta pessoa cadastrar.'),
+    h('datalist', { id: 'gerencias-list' }, gerencias.map((g) => h('option', { value: g }))),
+  );
   const bmkField = h(
     'fieldset',
     { class: 'field bmk-access' },
     h('legend', {}, 'Benchmarking'),
     field('Perfil', kind, 'Cliente Cargill: a fazenda. Time e Canais Cargill veem as fazendas em que são responsáveis (Clientes → Responsável) e as da equipe.'),
+    gerenciaField,
     reportsField,
     gestor.el,
     createTeam.el,
@@ -3853,6 +3884,7 @@ function userDialog(user) {
   const syncKind = () => {
     const k = kind.value;
     reportsField.hidden = k === 'cliente';
+    gerenciaField.hidden = k !== 'cargill';
     gestor.el.hidden = k !== 'cargill';
     validator.el.hidden = k !== 'cargill';
     createTeam.el.hidden = k !== 'cargill' || !gestor.box.checked;
@@ -3907,6 +3939,7 @@ function userDialog(user) {
           whatsappNotify: notify.checked,
           kind: kind.value,
           reportsTo: reportsTo.value || null,
+          gerencia: gerencia.value,
           bmkGestor: gestor.box.checked,
           bmkCreateTeam: createTeam.box.checked,
           bmkValidator: validator.box.checked,

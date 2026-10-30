@@ -1829,7 +1829,7 @@ async function renderOverview() {
       h(
         'table',
         { class: 'bmk-grid bmk-overview' },
-        h('thead', {}, h('tr', {}, ['Cliente', 'Responsável', 'Situação', 'Lotes', 'Erros / alertas', 'Questionário', 'Última alteração', ''].map((t) => h('th', {}, t)))),
+        h('thead', {}, h('tr', {}, ['Cliente', 'Responsável', 'Gerência', 'Situação', 'Lotes', 'Erros / alertas', 'Questionário', 'Última alteração', ''].map((t) => h('th', {}, t)))),
         h(
           'tbody',
           {},
@@ -1840,6 +1840,7 @@ async function renderOverview() {
                   {},
                   h('td', {}, h('strong', {}, c.client)),
                   h('td', {}, ownerCell(c)),
+                  h('td', {}, c.gerencia || h('span', { class: 'muted' }, '—')),
                   h('td', {}, pill(c.status), c.submittedAt ? h('small', { class: 'muted bmk-sub' }, `enviado ${fmtDateTime(c.submittedAt)}`) : null),
                   h('td', {}, `${c.lotesEngorda} eng. · ${c.lotesRecria} rec.`),
                   h('td', {}, c.erros ? h('span', { class: 'bmk-chip crit' }, `✕ ${c.erros}`) : h('span', { class: 'muted' }, '0 erros'), ' ', c.alertas ? h('span', { class: 'bmk-chip warn' }, `⚠ ${c.alertas}`) : null),
@@ -1848,7 +1849,7 @@ async function renderOverview() {
                   h('td', {}, h('button', { class: `btn btn-sm${c.status === 'enviado' && state.isValidator ? ' btn-primary' : ''}`, type: 'button', onclick: () => open(c.clientId) }, c.status === 'enviado' && state.isValidator ? 'Validar' : 'Abrir')),
                 ),
               )
-            : h('tr', {}, h('td', { colspan: 8, class: 'muted bmk-empty' }, data.clients.length ? 'Nenhuma fazenda nesta situação.' : state.canCreateFarm ? 'Nenhuma fazenda na sua equipe ainda. Use "+ Cadastrar fazenda".' : 'Nenhuma fazenda na sua equipe ainda.')),
+            : h('tr', {}, h('td', { colspan: 9, class: 'muted bmk-empty' }, data.clients.length ? 'Nenhuma fazenda nesta situação.' : state.canCreateFarm ? 'Nenhuma fazenda na sua equipe ainda. Use "+ Cadastrar fazenda".' : 'Nenhuma fazenda na sua equipe ainda.')),
         ),
       ),
     ),
@@ -1998,7 +1999,7 @@ async function renderTeam() {
       'tr',
       { class: m.active ? '' : 'bmk-row-off' },
       h('td', {}, h('span', { style: `padding-left: ${depth * 18}px` }, depth ? '└ ' : '', h('strong', {}, m.name)), h('small', { class: 'muted bmk-sub' }, m.email)),
-      h('td', {}, KIND_LABEL[m.kind], m.bmkGestor ? ' · Gestor' : '', m.bmkValidator ? ' · Valida' : ''),
+      h('td', {}, KIND_LABEL[m.kind], m.bmkGestor ? ' · Gestor' : '', m.bmkValidator ? ' · Valida' : '', m.gerencia ? h('small', { class: 'muted bmk-sub' }, m.gerencia) : null),
       h('td', {}, m.kind === 'cliente' ? m.clientIds.map((id) => farmNames.get(id)).filter(Boolean).join(', ') || h('span', { class: 'muted' }, 'sem fazenda ainda') : names.get(m.reportsTo) || '—'),
       h('td', {}, m.active ? 'Ativo' : 'Desativado', m.bmkOnly ? null : h('small', { class: 'muted bmk-sub' }, 'também usa a plataforma'), h('small', { class: 'muted bmk-sub' }, m.lastLoginAt ? `último acesso ${fmtDateTime(m.lastLoginAt)}` : 'nunca entrou')),
       h('td', { class: 'bmk-actions' }, readOnly ? null : [h('button', { class: 'btn btn-sm', type: 'button', onclick: () => memberDialog(team, m) }, 'Editar'), ' ', m.bmkOnly ? h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => resetPassword(m) }, 'Nova senha') : null]),

@@ -11,7 +11,7 @@ import { ccvUsage, computeCcvAlerts, listFarms, messageFor, oneLine, RULES } fro
 import { ccvPages, ccvPdfJob, publicJob, startCcvPdf } from '../ccvPdf.js';
 import { adminQuotes, deleteManual, saveManual, setManualValue, setQuoteOptions } from '../quotes.js';
 import { processMetrics } from '../benchmarkMetrics.js';
-import { checkReportsTo, KINDS } from '../bmkTeam.js';
+import { checkReportsTo, gerenciaOf, KINDS } from '../bmkTeam.js';
 import { adminList as bmkList, exportAll as bmkExport, saveSettings as saveBmkSettings, settings as bmkSettings } from '../benchmark.js';
 import { adminConversation, adminInbox, adminMarkRead, adminSend, chatFile, forgetChat, saveChatFile, setThreadStatus } from '../chat.js';
 import { exportData, listSnapshots, snapshotPath, validateBackup } from '../backup.js';
@@ -883,7 +883,8 @@ adminRouter.delete('/clients/:id', route(async (req, res) => {
 // ---------- Usuários ----------
 
 // Nunca devolve senha nem a chave da Anthropic; só diz se o usuário tem assistente ativo.
-const safeUser = ({ passwordHash, sessionVersion, anthropicKey, savedViews, ...rest }) => ({ ...rest, hasAssistant: Boolean(anthropicKey), savedViewCount: savedViews?.length || 0 });
+// gerenciaEfetiva: a gerência do Time Cargill ou a herdada de quem cadastrou (ver gerenciaOf).
+const safeUser = ({ passwordHash, sessionVersion, anthropicKey, savedViews, ...rest }) => ({ ...rest, hasAssistant: Boolean(anthropicKey), savedViewCount: savedViews?.length || 0, gerenciaEfetiva: gerenciaOf(rest) });
 
 function readUser(body, existing) {
   const user = {
@@ -907,11 +908,13 @@ function readUser(body, existing) {
       bmkGestor: cargill && Boolean(body.bmkGestor),
       bmkValidator: cargill && Boolean(body.bmkValidator),
       bmkCreateTeam: cargill && Boolean(body.bmkGestor) && Boolean(body.bmkCreateTeam),
+      // Gerência (só do Time Cargill; Canais e Cliente herdam de quem os cadastrou).
+      gerencia: cargill ? text(body.gerencia, 80) || null : null,
       // Só Benchmarking: sem relatórios, CCV nem ferramentas (ver userClients em src/auth.js).
       bmkOnly: Boolean(body.bmkOnly),
     });
   } else {
-    Object.assign(user, { kind: undefined, reportsTo: null, bmkGestor: false, bmkValidator: false, bmkCreateTeam: false, bmkOnly: false });
+    Object.assign(user, { kind: undefined, reportsTo: null, bmkGestor: false, bmkValidator: false, bmkCreateTeam: false, bmkOnly: false, gerencia: null });
   }
   if (user.phone && (user.phone.length < 12 || user.phone.length > 15)) fail('Telefone inválido. Use DDD + número, ex.: (61) 99999-8888.');
   const phoneOwner = user.phone && db().users.find((u) => u.id !== existing?.id && samePhone(u.phone, user.phone));
