@@ -105,9 +105,9 @@ configurações (Admin → Benchmarking → "Ciclo, limites e listas"), com a ch
   cujo responsável está no alcance deles (`ownerScope`: a própria pessoa e a equipe; **quem valida
   soma a equipe do gestor direto**), mais as vinculadas por `clientIds` (legado). Cliente vê só as
   dele (`clientIds`). Admin vê todas.
-- Cadastrar fazenda: **todos** (admin, Time, Canais e Cliente; `canCreateFarm`). Responsável: Time escolhe
-  entre a equipe; Canais = ele mesmo; Cliente = quem criou o login dele (a fazenda também entra no
-  `clientIds` do cliente). Trocar responsável: Time e admin (`canSetOwner`). O cliente cadastra pelo
+- Cadastrar fazenda: **todos** (admin, Time, Canais e Cliente; `canCreateFarm`). Responsável padrão: Time = quem
+  cadastrou (ou alguém da equipe que ele escolher); Canais e Cliente = a pessoa do Time que criou o login
+  dele (sem ela, o gestor do "responde a"), e a fazenda entra no `clientIds` de quem cadastrou. Trocar responsável: Time e admin (`canSetOwner`). O cliente cadastra pelo
   botão "+ Fazenda" no topo. Criar login: só gestor e admin — **Canais e Cliente nunca criam usuário**
   (o antigo "gestor da empresa", `isManager`/`/api/team`/"Minha equipe", foi removido). Quem entra no
   Benchmarking sem fazenda: admin, Time, Canais e "só Benchmarking" (`bmkMember`).

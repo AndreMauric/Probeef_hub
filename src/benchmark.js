@@ -275,15 +275,16 @@ export async function review(admin, clientId, { action, text }) {
 }
 
 // Qualquer pessoa do Benchmarking cadastra fazenda (só para o benchmarking: entra participando,
-// sem relatórios). Time: o responsável é quem cadastrou ou alguém da equipe (pode ser de Canais).
-// Canais: ele mesmo. Cliente: a fazenda entra nas dele, e o responsável é quem criou o login dele
-// (se for do Time ou de Canais). Os logins são criados pelos gestores (aba Equipe).
+// sem relatórios). Responsável padrão: Time = quem cadastrou (ou alguém da equipe que ele escolher);
+// Canais e Cliente = a pessoa do Time Cargill que criou o login dele (sem ela, o gestor a quem
+// responde) — e a fazenda entra nas dele (clientIds) para ele continuar vendo. O Time e o admin
+// trocam o responsável depois (setOwner). Os logins são criados pelos gestores (aba Equipe).
 // Nome repetido é recusado para não duplicar um cliente que já existe.
 const foldName = (t) => String(t || '').normalize('NFD').replace(/\p{M}/gu, '').replace(/\s+/g, ' ').trim().toLowerCase();
 function ownerFor(user, ownerId) {
-  if (user.role !== 'admin' && !isInternal(user)) {
-    const creator = db().users.find((u) => u.id === user.createdBy && u.active && isInternal(u));
-    return creator ? creator.id : null;
+  if (user.role !== 'admin' && kindOf(user) !== 'cargill') {
+    const cargill = (id) => db().users.find((u) => u.id === id && u.active && kindOf(u) === 'cargill');
+    return (cargill(user.createdBy) || cargill(user.reportsTo))?.id || null;
   }
   const id = ownerId || (user.role === 'admin' ? null : user.id);
   if (!id) return null;
@@ -300,8 +301,8 @@ export async function createClientFor(user, { name, ownerId } = {}) {
   if (data.clients.some((c) => foldName(c.name) === foldName(nome))) throw new BenchmarkError('Já existe um cliente com esse nome no portal. Se é o mesmo, peça ao admin para incluí-lo na sua equipe.', 409);
   const client = { id: newId(), name: nome, rlsUsername: '', rlsRoles: [], reportIds: [], active: true, tagIds: [], ccvFarms: [], benchmark: true, bmkOwner: ownerFor(user, ownerId), createdBy: user.id, createdVia: 'benchmark', createdAt: new Date().toISOString() };
   data.clients.push(client);
-  // Cliente vê as fazendas pelo vínculo (clientIds); Time e Canais, pelo responsável.
-  if (!isInternal(user) && user.role !== 'admin') {
+  // Cliente e Canais ficam com a fazenda que cadastraram pelo vínculo (clientIds); o Time, pelo responsável.
+  if (user.role !== 'admin' && kindOf(user) !== 'cargill') {
     const me = data.users.find((u) => u.id === user.id);
     me.clientIds = [...new Set([...(me.clientIds || []), client.id])];
   }
