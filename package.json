@@ -11,7 +11,8 @@
   "scripts": {
     "start": "node --env-file-if-exists=.env server.js",
     "dev": "node --watch --env-file-if-exists=.env server.js",
-    "create-admin": "node --env-file-if-exists=.env scripts/create-admin.js"
+    "create-admin": "node --env-file-if-exists=.env scripts/create-admin.js",
+    "decrypt-backup": "node --env-file-if-exists=.env scripts/decrypt-backup.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.135.0",

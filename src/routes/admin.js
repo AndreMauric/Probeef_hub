@@ -14,7 +14,7 @@ import { processMetrics } from '../benchmarkMetrics.js';
 import { checkReportsTo, gerenciaOf, KINDS, responsavelOf } from '../bmkTeam.js';
 import { adminList as bmkList, exportAll as bmkExport, saveSettings as saveBmkSettings, settings as bmkSettings } from '../benchmark.js';
 import { adminConversation, adminInbox, adminMarkRead, adminSend, chatFile, forgetChat, saveChatFile, setThreadStatus } from '../chat.js';
-import { exportData, listSnapshots, snapshotPath, validateBackup } from '../backup.js';
+import { exportData, listSnapshots, offsiteStatus, sendOffsite, snapshotPath, validateBackup } from '../backup.js';
 import { generatePassword, hashPassword, requireAdmin, validatePassword } from '../auth.js';
 import { config } from '../config.js';
 import { resetMfa } from '../mfa.js';
@@ -528,7 +528,7 @@ adminRouter.get('/backup', (_req, res) => {
 });
 
 adminRouter.get('/backups', route(async (_req, res) => {
-  res.json({ backups: await listSnapshots() });
+  res.json({ backups: await listSnapshots(), offsite: offsiteStatus() });
 }));
 
 adminRouter.get('/backups/:name', (req, res) => {
@@ -538,6 +538,11 @@ adminRouter.get('/backups/:name', (req, res) => {
     if (err && !res.headersSent) res.status(404).json({ error: 'Backup não encontrado.' });
   });
 });
+
+// Envia a cópia externa agora (para conferir a configuração sem esperar o dia seguinte).
+adminRouter.post('/backups/offsite', route(async (_req, res) => {
+  res.json({ ...(await sendOffsite()), offsite: offsiteStatus() });
+}));
 
 adminRouter.post('/restore', route(async (req, res) => {
   const backup = req.body?.backup;

@@ -1,9 +1,11 @@
 // Backups dos cadastros: exportação/restauração manual e uma cópia automática por dia,
-// guardada ao lado do arquivo de dados (pasta "backups"), mantendo os últimos 14 dias.
+// guardada ao lado do arquivo de dados (pasta "backups"), mantendo os últimos 14 dias, e uma cópia
+// criptografada fora da Railway quando configurada (src/offsiteBackup.js).
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { config } from './config.js';
-import { db } from './store.js';
+import { offsiteConfigured, uploadOffsite } from './offsiteBackup.js';
+import { db, save } from './store.js';
 
 const DIR = path.join(path.dirname(config.dataFile), 'backups');
 const KEEP = 14;
@@ -11,15 +13,33 @@ const CHECK_EVERY_MS = 6 * 60 * 60 * 1000;
 const NAME = /^db-\d{4}-\d{2}-\d{2}\.json$/;
 const today = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
 
-// Toda coleção nova do store precisa entrar aqui, senão some numa restauração de backup.
+// Tudo o que está no store, menos os caches que se refazem sozinhos. (Antes era uma lista fixa de
+// coleções, e as gerências e a auditoria ficavam de fora.)
+const CACHES = new Set(['dataHealth', 'dataHealthCheckedAt']);
 export function exportData() {
-  const { users, clients, reports, images, categories, tags, settings, nps, confinamentoSimulations, pastoSimulations, ccvAlertLog, chatThreads, chatMessages, quotes, bmkSubmissions, bmkSettings } = db();
-  return {
-    app: 'bi-probeef',
-    version: 1,
-    exportedAt: new Date().toISOString(),
-    data: { users, clients, reports, images, categories, tags, settings, nps, confinamentoSimulations, pastoSimulations, ccvAlertLog, chatThreads, chatMessages, quotes, bmkSubmissions, bmkSettings },
-  };
+  const data = Object.fromEntries(Object.entries(db()).filter(([key]) => !CACHES.has(key)));
+  return { app: 'bi-probeef', version: 1, exportedAt: new Date().toISOString(), data };
+}
+
+// Situação da cópia externa, guardada em db().offsite (aparece no card de backups do admin).
+export function offsiteStatus() {
+  return { configured: offsiteConfigured(), ...(db().offsite || {}) };
+}
+
+export async function sendOffsite() {
+  const day = today();
+  const status = (db().offsite ||= {});
+  try {
+    const result = await uploadOffsite(JSON.stringify(exportData()), day, path.join(path.dirname(config.dataFile), 'access-log.jsonl'));
+    Object.assign(status, { lastOkAt: new Date().toISOString(), lastOkDay: day, files: result.files, lastError: null, lastErrorAt: null });
+    await save();
+    return result;
+  } catch (err) {
+    Object.assign(status, { lastError: err.message, lastErrorAt: new Date().toISOString() });
+    await save();
+    console.error('Falha na cópia externa do backup:', err.message);
+    throw err;
+  }
 }
 
 // Confere se o arquivo enviado é um backup válido antes de substituir os cadastros.
@@ -51,6 +71,8 @@ async function dailySnapshot() {
   } catch (err) {
     console.error('Falha no backup automático:', err.message);
   }
+  // Uma cópia externa por dia; se falhar, tenta de novo na próxima verificação (6 h).
+  if (offsiteConfigured() && db().offsite?.lastOkDay !== today()) await sendOffsite().catch(() => {});
 }
 
 export function startDailyBackups() {

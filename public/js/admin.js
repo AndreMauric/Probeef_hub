@@ -1,7 +1,7 @@
 import { composer, renderMessage } from './chat.js';
 import { api, copyText, h, loadConfig, logout, openPasswordDialog, setupMenu, toast } from './common.js';
 
-const state = { reports: [], clients: [], users: [], status: null, me: null, backups: [], images: [], categories: [], tags: [], gerencias: [] };
+const state = { reports: [], clients: [], users: [], status: null, me: null, backups: [], offsite: null, images: [], categories: [], tags: [], gerencias: [] };
 const dialog = document.getElementById('dialog');
 
 const fmtDate = (iso) =>
@@ -694,7 +694,7 @@ function backupCard() {
     'div',
     { class: 'status-card backup-card', style: 'grid-column: 1 / -1' },
     h('p', { class: 'label' }, 'Backup dos cadastros'),
-    h('p', {}, 'Usuários, clientes e relatórios. O arquivo inclui as senhas criptografadas: guarde-o em local seguro e não compartilhe.'),
+    h('p', {}, 'Todos os cadastros do portal. O arquivo inclui as senhas criptografadas: guarde-o em local seguro e não compartilhe.'),
     h(
       'div',
       { class: 'viewer-actions' },
@@ -712,6 +712,40 @@ function backupCard() {
           ),
         )
       : h('p', {}, 'A primeira cópia é feita automaticamente assim que houver cadastros.'),
+    offsiteBlock(),
+  );
+}
+
+// Cópia externa criptografada (src/offsiteBackup.js): situação e botão para enviar agora.
+function offsiteBlock() {
+  const o = state.offsite || {};
+  const when = (iso) => new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+  const failedLast = o.lastErrorAt && (!o.lastOkAt || o.lastErrorAt > o.lastOkAt);
+  const send = async (btn) => {
+    btn.disabled = true;
+    try {
+      const r = await api('/api/admin/backups/offsite', { method: 'POST', body: {} });
+      state.offsite = r.offsite;
+      toast(`Cópia externa enviada (${r.files.length} arquivo${r.files.length > 1 ? 's' : ''}).`);
+    } catch (err) {
+      toast(err.message, 'error');
+      state.offsite = (await api('/api/admin/backups')).offsite;
+    }
+    renderStatus();
+  };
+  return h(
+    'div',
+    {},
+    h('p', { class: 'label', style: 'margin-top: 8px' }, 'Cópia externa (fora da Railway, criptografada)'),
+    !o.configured
+      ? h('p', {}, 'Não configurada. Defina as variáveis BACKUP_S3_* e BACKUP_ENCRYPTION_KEY no servidor.')
+      : h(
+          'p',
+          {},
+          o.lastOkAt ? `Última cópia: ${when(o.lastOkAt)}. ` : 'Ainda não enviada. ',
+          failedLast ? h('strong', { style: 'color: var(--danger)' }, `Falhou em ${when(o.lastErrorAt)}: ${o.lastError}`) : null,
+        ),
+    o.configured ? h('button', { class: 'btn btn-sm', type: 'button', onclick: (e) => send(e.currentTarget) }, 'Enviar cópia agora') : null,
   );
 }
 
@@ -773,6 +807,7 @@ async function refresh() {
     users: u.users,
     status: s,
     backups: b.backups,
+    offsite: b.offsite,
     images: img.images,
     categories: cat.categories,
     tags: tg.tags,

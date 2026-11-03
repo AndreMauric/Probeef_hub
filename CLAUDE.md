@@ -317,3 +317,12 @@ autorizada. O servidor faz as chamadas externas (a CSP só permite `connectSrc: 
   `DATA_FILE` descartável (`DATA_FILE=/tmp/algo/db.json BOOTSTRAP_ADMIN_EMAIL=... PORT=3918
   NODE_ENV=development node server.js`) e valide com `curl` — não teste contra o `data/db.json`
   real nem contra a produção diretamente.
+- **Backups** (`src/backup.js`): `exportData` leva **tudo** do store menos os caches (`CACHES`), então
+  coleção nova entra sozinha. Uma cópia por dia no volume (14 dias) e, com as variáveis `BACKUP_S3_*` +
+  `BACKUP_ENCRYPTION_KEY`, uma **cópia externa** (`src/offsiteBackup.js`): cadastros + `access-log.jsonl`,
+  gzip + AES-256-GCM antes de sair, num armazenamento S3 (Cloudflare R2, Backblaze B2, AWS), assinatura
+  SigV4 sem SDK (conferida contra o exemplo da documentação da AWS). Situação em `db().offsite`, no card
+  de backups do admin ("Enviar cópia agora"). Quanto tempo as cópias ficam é regra de ciclo de vida do
+  bucket. Abrir uma cópia: `BACKUP_ENCRYPTION_KEY=... npm run decrypt-backup -- arquivo.gz.enc` e
+  restaurar o .json pelo admin. **A chave precisa estar guardada fora da Railway** (sem ela, as cópias
+  não abrem).
