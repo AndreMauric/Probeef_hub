@@ -1,5 +1,6 @@
 // Cria (ou redefine a senha de) um administrador.
 // Uso: npm run create-admin -- email@empresa.com "Nome Completo"
+// Também zera a verificação em duas etapas (admin que perdeu o celular e os códigos de recuperação).
 import { generatePassword, hashPassword } from '../src/auth.js';
 import { db, load, newId, save } from '../src/store.js';
 
@@ -25,6 +26,8 @@ if (existing) {
     mustChangePassword: true,
     sessionVersion: existing.sessionVersion + 1,
   });
+  delete existing.mfa;
+  delete existing.mfaPending;
   console.log(`Usuário ${email} agora é administrador e teve a senha redefinida.`);
 } else {
   db().users.push({
@@ -45,4 +48,4 @@ if (existing) {
 
 await save();
 console.log(`Senha temporária: ${password}`);
-console.log('Você vai trocar essa senha no primeiro login.');
+console.log('Você vai trocar essa senha no primeiro login e configurar a verificação em duas etapas.');

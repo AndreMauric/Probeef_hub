@@ -17,6 +17,7 @@ import { adminConversation, adminInbox, adminMarkRead, adminSend, chatFile, forg
 import { exportData, listSnapshots, snapshotPath, validateBackup } from '../backup.js';
 import { generatePassword, hashPassword, requireAdmin, validatePassword } from '../auth.js';
 import { config } from '../config.js';
+import { resetMfa } from '../mfa.js';
 import { alertsDigest, clearSnoozes, computeAlerts, snoozeAlert } from '../alerts.js';
 import { dataHealthSummary, scanDataHealth, scanState, settings as dataSettings } from '../dataHealth.js';
 import { categoryByName, ensureCategory, findCategory, sortByName, syncCategoryName } from '../categories.js';
@@ -929,7 +930,7 @@ adminRouter.delete('/clients/:id', route(async (req, res) => {
 
 // Nunca devolve senha nem a chave da Anthropic; só diz se o usuário tem assistente ativo.
 // gerenciaEfetiva: a gerência do Time Cargill ou a herdada de quem cadastrou (ver gerenciaOf).
-const safeUser = ({ passwordHash, sessionVersion, anthropicKey, savedViews, ...rest }) => ({ ...rest, hasAssistant: Boolean(anthropicKey), savedViewCount: savedViews?.length || 0, gerenciaEfetiva: gerenciaOf(rest), responsavelId: responsavelOf(rest) });
+const safeUser = ({ passwordHash, sessionVersion, anthropicKey, savedViews, mfa, mfaPending, ...rest }) => ({ ...rest, mfaEnabled: Boolean(mfa?.enabledAt), mfaRecoveryLeft: mfa?.recovery?.length ?? null, hasAssistant: Boolean(anthropicKey), savedViewCount: savedViews?.length || 0, gerenciaEfetiva: gerenciaOf(rest), responsavelId: responsavelOf(rest) });
 
 function readUser(body, existing) {
   const user = {
@@ -1025,7 +1026,7 @@ adminRouter.post('/users/:id/impersonate', route(async (req, res) => {
   data.audit = [...(data.audit || []), { at: new Date().toISOString(), action: 'impersonate', adminId: req.user.id, userId: user.id }].slice(-1000);
   await save();
   console.log(`[auditoria] ${req.user.email} entrou como ${user.email}`);
-  req.session = { uid: user.id, sv: user.sessionVersion, imp: req.user.id, isv: req.user.sessionVersion };
+  req.session = { uid: user.id, sv: user.sessionVersion, imp: req.user.id, isv: req.user.sessionVersion, m: req.session.m };
   res.json({ ok: true });
 }));
 
@@ -1037,6 +1038,15 @@ adminRouter.post('/users/:id/reset-password', route(async (req, res) => {
   user.sessionVersion += 1;
   await save();
   res.json({ password });
+}));
+
+// Zera a verificação em duas etapas (celular perdido): a pessoa configura de novo no próximo login.
+adminRouter.post('/users/:id/mfa-reset', route(async (req, res) => {
+  const user = findOr404(db().users, req.params.id, 'Usuário');
+  resetMfa(user, req.user);
+  await save();
+  if (user.id === req.user.id) req.session = null;
+  res.json({ ok: true });
 }));
 
 // Libera, nega ou revoga o acesso à calculadora 4M Confinamento.

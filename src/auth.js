@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { promisify } from 'node:util';
+import { mfaRequired } from './mfa.js';
 import { db } from './store.js';
 
 const scrypt = promisify(crypto.scrypt);
@@ -35,16 +36,18 @@ export function generatePassword() {
 }
 
 // Carrega o usuário da sessão. A sessão guarda a versão da sessão do usuário:
-// trocar a senha ou desativar o usuário invalida todos os logins abertos.
+// trocar a senha ou desativar o usuário invalida todos os logins abertos. Quem precisa da verificação em
+// duas etapas (src/mfa.js) só vale com a marca `m`, gravada depois do código certo.
 export function loadUser(req, _res, next) {
-  const { uid, sv, imp, isv } = req.session || {};
+  const { uid, sv, imp, isv, m } = req.session || {};
   const users = db().users;
   const user = uid ? users.find((u) => u.id === uid) : null;
   // Admin "entrando como" um usuário: a sessão guarda também o admin, que precisa continuar
   // ativo, administrador e com a mesma versão de sessão; senão tudo cai.
   const impersonator = imp ? users.find((u) => u.id === imp) : null;
   const impersonationOk = !imp || (impersonator && impersonator.active && impersonator.role === 'admin' && impersonator.sessionVersion === isv);
-  if (user && user.active && user.sessionVersion === sv && impersonationOk) {
+  const mfaOk = Boolean(m) || (user && !mfaRequired(user) && !(impersonator && mfaRequired(impersonator)));
+  if (user && user.active && user.sessionVersion === sv && impersonationOk && mfaOk) {
     req.user = user;
     req.impersonator = impersonator || null;
   } else {

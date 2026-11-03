@@ -31,6 +31,15 @@ A partir de agora, o trabalho contínuo nessas ferramentas deve acontecer **aqui
   coleção nova (como `confinamentoSimulations`) entra em `empty()`/`normalize()` nesse arquivo.
 - Autenticação por sessão (`cookie-session`), não JWT. `src/auth.js` tem `requireAuth` /
   `requireAdmin` / `loadUser`. Senhas com scrypt.
+- **Verificação em duas etapas** (`src/mfa.js`, TOTP de aplicativo autenticador, sem biblioteca; o QR
+  code sai do pacote `qrcode`): obrigatória para **administradores**. O login com senha certa deixa a
+  sessão pendente (`session.mfa`, 10 min) e responde `{ mfa: 'setup' | 'verify' }`; na primeira vez o
+  admin lê o QR code e recebe 8 códigos de recuperação (uso único, só o hash fica salvo). Só a sessão
+  com a marca `m` vale para quem precisa da verificação (`loadUser`) — "entrar como", voltar e trocar
+  a senha carregam a marca. Segredo criptografado com `secretBox`; código já usado não vale de novo.
+  Celular perdido: Admin → Usuários → "Zerar duas etapas" (outro admin ou ele mesmo, com um código de
+  recuperação) ou, sem nenhum acesso, `npm run create-admin` no Console do Railway (zera senha e
+  verificação). `ADMIN_MFA=off` desliga só fora de produção (testes locais).
 - CSP estrita no `server.js` (Helmet): `scriptSrc: ["'self'"]`, sem CDN externo. Qualquer lib
   de terceiro (Power BI client, Chart.js) é servida localmente via rota `/vendor/*.js` a partir
   de `node_modules`, nunca via `<script src="https://cdn...">`.

@@ -372,6 +372,56 @@ textarea:focus {
   min-height: 44px;
 }
 
+.auth-card form[hidden],
+.auth-card [hidden] {
+  display: none;
+}
+
+.mfa-intro,
+.mfa-setup p {
+  margin: 0;
+  font-size: 14px;
+}
+
+.mfa-setup {
+  display: grid;
+  gap: 10px;
+  justify-items: center;
+  text-align: center;
+}
+
+/* O QR code fica sempre em fundo branco (no tema escuro também), senão o celular não lê. */
+.mfa-setup img {
+  background: #fff;
+  border-radius: 8px;
+  padding: 6px;
+}
+
+.mfa-secret {
+  font-size: 15px;
+  letter-spacing: 0.04em;
+  word-break: break-all;
+  user-select: all;
+}
+
+.mfa-recovery {
+  display: grid;
+  gap: 12px;
+}
+
+.mfa-recovery p {
+  margin: 0;
+  font-size: 14px;
+}
+
+.mfa-recovery ol {
+  margin: 0;
+  padding-left: 28px;
+  columns: 2;
+  font-size: 15px;
+  line-height: 1.8;
+}
+
 @media (max-width: 800px) {
   .auth {
     grid-template-columns: minmax(0, 1fr);

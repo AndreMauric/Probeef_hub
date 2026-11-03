@@ -22,6 +22,8 @@ export const config = {
   // Endereço público do portal (usado nos links enviados pelo WhatsApp), ex.: https://bi.probeef.com.br
   publicUrl: (process.env.PUBLIC_URL || '').replace(/\/$/, ''),
   sessionSecret,
+  // Verificação em duas etapas obrigatória para administradores (src/mfa.js). ADMIN_MFA=off desliga, mas só fora de produção (teste local).
+  requireAdminMfa: isProduction || process.env.ADMIN_MFA !== 'off',
   dataFile: path.resolve(root, process.env.DATA_FILE || 'data/db.json'),
   powerbi: {
     tenantId: process.env.PBI_TENANT_ID || '',

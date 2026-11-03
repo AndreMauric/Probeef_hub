@@ -47,6 +47,29 @@
             <div class="alert" id="error" role="alert" hidden></div>
             <button class="btn btn-primary" type="submit">Entrar</button>
           </form>
+          <!-- Verificação em duas etapas (src/mfa.js): código do aplicativo ou, na primeira vez, o QR code. -->
+          <form id="mfa-form" novalidate hidden>
+            <p class="muted mfa-intro" id="mfa-intro"></p>
+            <div class="mfa-setup" id="mfa-setup" hidden>
+              <img id="mfa-qr" alt="QR code para o aplicativo autenticador" width="200" height="200" />
+              <p class="muted">Não consegue ler o QR code? No aplicativo, escolha "inserir chave" e digite:</p>
+              <code class="mono mfa-secret" id="mfa-secret"></code>
+            </div>
+            <label class="field">
+              <span id="mfa-code-label">Código de 6 dígitos</span>
+              <input id="mfa-code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="11" required />
+            </label>
+            <div class="alert" id="mfa-error" role="alert" hidden></div>
+            <button class="btn btn-primary" type="submit">Confirmar</button>
+            <button class="btn btn-ghost" type="button" id="mfa-recovery-toggle">Perdi o celular: usar um código de recuperação</button>
+            <button class="btn btn-ghost" type="button" id="mfa-back">Voltar</button>
+          </form>
+          <div class="mfa-recovery" id="mfa-recovery" hidden>
+            <p>Guarde estes <strong>códigos de recuperação</strong> em lugar seguro (gerenciador de senhas ou papel). Cada um vale <strong>uma vez</strong> para entrar se você perder o celular. Eles não aparecem de novo.</p>
+            <ol class="mono" id="mfa-recovery-list"></ol>
+            <button class="btn btn-ghost" type="button" id="mfa-recovery-copy">Copiar códigos</button>
+            <button class="btn btn-primary" type="button" id="mfa-recovery-done">Já guardei, continuar</button>
+          </div>
           <p class="muted" style="margin: 0; font-size: 13px">Esqueceu a senha? Peça ao administrador do portal para redefini-la.</p>
         </div>
       </main>

@@ -218,7 +218,7 @@ function renderUsers() {
       h(
         'tr',
         {},
-        h('td', {}, h('strong', {}, u.name), h('span', { class: 'sub' }, u.email), u.phone ? h('span', { class: 'sub mono' }, `WhatsApp +${u.phone}`) : null, u.hasAssistant ? h('span', { class: 'sub' }, '✦ assistente ativo') : null),
+        h('td', {}, h('strong', {}, u.name), h('span', { class: 'sub' }, u.email), u.phone ? h('span', { class: 'sub mono' }, `WhatsApp +${u.phone}`) : null, u.hasAssistant ? h('span', { class: 'sub' }, '✦ assistente ativo') : null, u.mfaEnabled ? h('span', { class: 'sub', title: `Verificação em duas etapas ativa · ${u.mfaRecoveryLeft} código(s) de recuperação sobrando` }, '🔒 duas etapas') : null),
         h('td', {}, perfil(u)),
         h('td', {}, u.gerenciaEfetiva || h('span', { class: 'muted' }, '—')),
         h('td', {}, userName(u.responsavelId) || h('span', { class: 'muted' }, '—')),
@@ -238,6 +238,7 @@ function renderUsers() {
             ? h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => (selectTab('chat'), openThread(u.id)) }, 'Mensagem')
             : null,
           h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => resetPassword(u) }, 'Nova senha'),
+          u.mfaEnabled ? h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => resetMfa(u) }, 'Zerar duas etapas') : null,
           u.id !== state.me.id
             ? h('button', { class: 'btn btn-sm btn-ghost btn-danger', type: 'button', onclick: () => deleteUser(u) }, 'Excluir')
             : null,
@@ -4084,6 +4085,24 @@ function resetPassword(user) {
       return false;
     },
     'Gerar senha',
+  );
+}
+
+// Celular perdido: a pessoa configura a verificação em duas etapas de novo no próximo login (src/mfa.js).
+function resetMfa(user) {
+  const self = user.id === state.me.id;
+  confirmDialog(
+    'Zerar verificação em duas etapas',
+    self
+      ? 'Sua verificação em duas etapas será apagada e você sai agora. No próximo login, entre com a senha e cadastre o aplicativo autenticador de novo.'
+      : `A verificação de ${user.name} será apagada e as sessões abertas dessa pessoa são encerradas. No próximo login, a pessoa cadastra o aplicativo autenticador de novo.`,
+    async () => {
+      await api(`/api/admin/users/${user.id}/mfa-reset`, { method: 'POST', body: {} });
+      if (self) return location.replace('/');
+      await refresh();
+      toast('Verificação em duas etapas zerada.');
+    },
+    'Zerar',
   );
 }
 
