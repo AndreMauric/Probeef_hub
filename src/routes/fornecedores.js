@@ -4,7 +4,7 @@
 // no navegador (model.js).
 import { Router } from 'express';
 import { recordToolAccess, startToolView } from '../accessLog.js';
-import { requireAuth } from '../auth.js';
+import { canRequestTools, requireAuth, toolRequestRefusal } from '../auth.js';
 import { db, newId, save } from '../store.js';
 
 export const fornecedoresRouter = Router();
@@ -23,7 +23,7 @@ fornecedoresRouter.get('/status', (req, res) => {
 fornecedoresRouter.post('/request', route(async (req, res) => {
   const user = req.user;
   if (canUseFornecedores(user)) return res.json({ status: 'approved' });
-  if (user.bmkOnly) return res.status(403).json({ error: 'Seu acesso é só ao Benchmarking. Fale com o administrador.' });
+  if (!canRequestTools(user)) return res.status(403).json({ error: toolRequestRefusal(user) });
 
   user.fornecedores = { ...(user.fornecedores || {}), status: 'pending', requestedAt: new Date().toISOString() };
   await save();

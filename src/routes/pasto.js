@@ -3,7 +3,7 @@
 // só para quem está logado e liberado, ver server.js) e o cálculo roda no navegador (model.js).
 import { Router } from 'express';
 import { recordToolAccess, startToolView } from '../accessLog.js';
-import { requireAuth } from '../auth.js';
+import { canRequestTools, requireAuth, toolRequestRefusal } from '../auth.js';
 import { db, newId, save } from '../store.js';
 
 export const pastoRouter = Router();
@@ -22,7 +22,7 @@ pastoRouter.get('/status', (req, res) => {
 pastoRouter.post('/request', route(async (req, res) => {
   const user = req.user;
   if (canUsePasto(user)) return res.json({ status: 'approved' });
-  if (user.bmkOnly) return res.status(403).json({ error: 'Seu acesso é só ao Benchmarking. Fale com o administrador.' });
+  if (!canRequestTools(user)) return res.status(403).json({ error: toolRequestRefusal(user) });
 
   user.pasto = { ...(user.pasto || {}), status: 'pending', requestedAt: new Date().toISOString() };
   await save();

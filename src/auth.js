@@ -92,6 +92,12 @@ export function clearFailedLogins(key) {
   attempts.delete(key);
 }
 
+// Pedir acesso às ferramentas (4M, 3P, 4M Fornecedores): só Time Cargill e Canais. Cliente Cargill não
+// pede nem vê as ferramentas que não tem; quem libera para ele é o administrador.
+export const canRequestTools = (user) => !user.bmkOnly && ['cargill', 'canal'].includes(user.kind);
+export const toolRequestRefusal = (user) =>
+  user.bmkOnly ? 'Seu acesso é só ao Benchmarking. Fale com o administrador.' : 'As ferramentas são liberadas pelo administrador. Fale com a equipe Probeef.';
+
 // Clientes ativos aos quais o usuário tem acesso, em ordem alfabética. Usuário "só Benchmarking"
 // (bmkOnly, criado por um gestor na aba Equipe) não tem acesso à plataforma: nenhum relatório,
 // painel CCV ou visão; as fazendas dele valem só no Benchmarking (src/benchmark.js usa clientIds).

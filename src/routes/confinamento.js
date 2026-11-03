@@ -3,7 +3,7 @@
 // ver server.js) e fala com estas rotas usando a mesma sessão do portal.
 import { Router } from 'express';
 import { recordToolAccess, startToolView } from '../accessLog.js';
-import { requireAuth } from '../auth.js';
+import { canRequestTools, requireAuth, toolRequestRefusal } from '../auth.js';
 import { db, newId, save } from '../store.js';
 
 export const confinamentoRouter = Router();
@@ -24,7 +24,7 @@ confinamentoRouter.get('/status', (req, res) => {
 confinamentoRouter.post('/request', route(async (req, res) => {
   const user = req.user;
   if (canUse(user)) return res.json({ status: 'approved' });
-  if (user.bmkOnly) return res.status(403).json({ error: 'Seu acesso é só ao Benchmarking. Fale com o administrador.' });
+  if (!canRequestTools(user)) return res.status(403).json({ error: toolRequestRefusal(user) });
 
   user.confinamento = { ...(user.confinamento || {}), status: 'pending', requestedAt: new Date().toISOString() };
   await save();

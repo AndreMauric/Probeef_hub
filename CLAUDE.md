@@ -57,7 +57,9 @@ A partir de agora, o trabalho contínuo nessas ferramentas deve acontecer **aqui
 
 Esse é o padrão pra adicionar a próxima ferramenta:
 
-1. **Acesso por pedido/aprovação**, não liberado por padrão. Cada usuário tem um campo
+1. **Acesso por pedido/aprovação**, não liberado por padrão. **Só Time Cargill e Canais pedem** e veem
+   todas as ferramentas no portal; o Cliente Cargill vê só as que o admin liberou e não pede
+   (`canRequestTools` em `src/auth.js`, usado no `/request` de cada ferramenta e em `toolsSection`). Cada usuário tem um campo
    `confinamento: {status, requestedAt, decidedAt}` (ver `src/store.js` `normalize()`) — o nome
    do campo ficou específico do 4M porque foi o primeiro; uma segunda ferramenta provavelmente
    merece seu próprio campo (`u.nomeDaFerramenta`) ou generalizar para um objeto `u.tools[id]`

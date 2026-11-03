@@ -207,11 +207,15 @@ async function requestTool(tool) {
 function toolsSection() {
   // Usuário só do Benchmarking não vê as ferramentas da plataforma.
   if (me.bmkOnly) return null;
+  // Cliente Cargill vê só as que o admin liberou (não pede acesso); Time e Canais veem todas e pedem.
+  const cliente = me.role !== 'admin' && !['cargill', 'canal'].includes(me.kind);
+  const cards = cliente ? TOOL_CARDS.filter((t) => toolStatus[t.id] === 'approved') : TOOL_CARDS;
+  if (!cards.length) return null;
   return h(
     'section',
     { class: 'home-group' },
     h('h2', { class: 'label' }, 'Ferramentas'),
-    h('div', { class: 'cards' }, TOOL_CARDS.map((t) => h('div', { class: 'card-wrap' }, toolCard(t)))),
+    h('div', { class: 'cards' }, cards.map((t) => h('div', { class: 'card-wrap' }, toolCard(t)))),
   );
 }
 
