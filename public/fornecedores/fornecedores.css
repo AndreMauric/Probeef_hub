@@ -1,0 +1,357 @@
+/* 4M Fornecedores. Usa os tokens do portal (app.css) e só acrescenta o próprio layout. */
+
+.fz-title {
+  font: 600 15px/1.2 var(--font-display);
+  color: var(--muted);
+}
+
+.fz {
+  overflow: auto;
+}
+
+.fz-inner {
+  display: grid;
+  gap: 16px;
+  max-width: 1500px;
+  margin: 0 auto;
+  padding: 16px 20px 40px;
+}
+
+.fz-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.fz-head .tabs {
+  margin: 0;
+}
+
+.fz-sim-name {
+  font-size: 13px;
+}
+
+[data-panel] {
+  display: grid;
+  gap: 16px;
+}
+
+[data-panel][hidden] {
+  display: none;
+}
+
+.fz-card {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 18px 20px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.fz-card h2 {
+  font: 600 18px/1.2 var(--font-ui);
+}
+
+.fz-card h3 {
+  font: 600 14px/1.2 var(--font-ui);
+  color: var(--muted);
+}
+
+.fz-card p {
+  margin: 0;
+}
+
+.fz-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.fz-card-head p {
+  margin-top: 4px;
+  font-size: 14px;
+}
+
+.fz-empty {
+  justify-items: start;
+}
+
+.fz-note {
+  font-size: 13px;
+  color: var(--muted);
+  max-width: 110ch;
+}
+
+.fz-label {
+  display: block;
+  margin-bottom: 6px;
+  font: 600 12px/1.2 var(--font-ui);
+  color: var(--muted);
+}
+
+.fz-modelbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 16px 28px;
+}
+
+.fz-inline {
+  display: grid;
+  gap: 6px;
+  font: 600 12px/1.2 var(--font-ui);
+  color: var(--muted);
+}
+
+.fz-inline select {
+  min-width: 160px;
+}
+
+/* Botões em pílula (modelo de negócio, perspectiva) */
+.fz-seg {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-2);
+}
+
+.fz-seg button {
+  padding: 6px 14px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font: 600 13px/1.2 var(--font-ui);
+  cursor: pointer;
+}
+
+.fz-seg button:hover:not(:disabled) {
+  color: var(--ink);
+}
+
+.fz-seg button.on {
+  background: var(--accent);
+  color: var(--on-accent);
+  box-shadow: var(--shadow);
+}
+
+.fz-seg.disabled {
+  opacity: 0.55;
+}
+
+.fz-seg button:disabled {
+  cursor: not-allowed;
+}
+
+/* Formulário econômico */
+.fz-groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 18px 24px;
+}
+
+.fz-group {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+
+.fz-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 12px 16px;
+  align-items: start;
+}
+
+.fz-input {
+  position: relative;
+  display: block;
+}
+
+.fz .fz-input input {
+  width: 100%;
+  padding-right: 74px;
+  font-variant-numeric: tabular-nums;
+}
+
+.fz-suffix {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  transform: translateY(-50%);
+  color: var(--muted);
+  font-size: 12px;
+  pointer-events: none;
+}
+
+/* Tabelas */
+.fz-table th {
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
+.fz-th-unit {
+  display: block;
+  margin-top: 3px;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  opacity: 0.8;
+}
+
+.fz-name {
+  min-width: 230px;
+}
+
+.fz-callout {
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--warn-bg);
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.fz-table td,
+.fz-table th {
+  padding: 9px 12px;
+}
+
+.fz-num {
+  font-family: var(--font-data);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.fz-table th:not(:first-child) {
+  text-align: right;
+}
+
+.fz-table td .sub {
+  font-family: var(--font-ui);
+  font-size: 12px;
+}
+
+.fz-table tr.off td {
+  color: var(--muted);
+}
+
+.fz-table tr.off td strong {
+  font-weight: 500;
+}
+
+.fz-warn {
+  color: var(--warn);
+}
+
+.fz-neg {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.fz-total td {
+  background: var(--surface-2);
+  font-weight: 600;
+}
+
+.fz-click {
+  cursor: pointer;
+}
+
+.fz-click:hover td,
+.fz-click:focus-visible td {
+  background: var(--surface-2);
+}
+
+.fz-click.sel td {
+  background: var(--selected);
+}
+
+/* Gráficos */
+.fz-chart {
+  position: relative;
+  min-width: 0;
+}
+
+.fz-detail {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 18px 28px;
+}
+
+.fz-detail h3 {
+  margin-bottom: 8px;
+}
+
+/* Ajuda */
+.fz-help ul {
+  margin: 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 6px;
+  max-width: 110ch;
+  line-height: 1.5;
+}
+
+/* Análises salvas */
+.fz-sims {
+  display: grid;
+  gap: 12px;
+  min-width: min(520px, 80vw);
+}
+
+.fz-sims ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fz-sims li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fz-sim {
+  display: grid;
+  flex: 1;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.fz-sim:hover {
+  border-color: var(--accent);
+}
+
+.fz-sim .muted {
+  font-size: 12px;
+}
+
+@media (max-width: 700px) {
+  .fz-inner {
+    padding: 12px 16px 32px;
+  }
+
+  .fz-title {
+    display: none;
+  }
+}

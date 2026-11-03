@@ -12,6 +12,7 @@ import { authRouter } from './src/routes/auth.js';
 import { ccvRouter } from './src/routes/ccv.js';
 import { chatRouter } from './src/routes/chat.js';
 import { canUsePasto, pastoRouter } from './src/routes/pasto.js';
+import { canUseFornecedores, fornecedoresRouter } from './src/routes/fornecedores.js';
 import { benchmarkRouter } from './src/routes/benchmark.js';
 import { canUseBenchmark } from './src/benchmark.js';
 import { confinamentoRouter } from './src/routes/confinamento.js';
@@ -98,10 +99,13 @@ const smallJson = express.json({ limit: '100kb' });
 const largeJson = express.json({ limit: '20mb' });
 // Uma coleta do benchmarking com centenas de lotes passa de 100 KB.
 const benchmarkJson = express.json({ limit: '3mb' });
+// Análise salva do 4M Fornecedores leva a planilha inteira (fornecedores com média e CV).
+const fornecedoresJson = express.json({ limit: '500kb' });
 app.use((req, res, next) => {
   const restore = req.path === '/api/admin/restore' && req.user?.role === 'admin';
   if (restore) return largeJson(req, res, next);
   if (req.user && req.method === 'PUT' && req.path.startsWith('/api/benchmark/')) return benchmarkJson(req, res, next);
+  if (req.user && req.path.startsWith('/api/fornecedores/simulations')) return fornecedoresJson(req, res, next);
   return smallJson(req, res, next);
 });
 
@@ -132,6 +136,7 @@ app.use('/api/confinamento', confinamentoRouter);
 app.use('/api/ccv', ccvRouter);
 app.use('/api/chat', chatRouter);
 app.use('/api/pasto', pastoRouter);
+app.use('/api/fornecedores', fornecedoresRouter);
 app.use('/api/benchmark', benchmarkRouter);
 app.use('/api', portalRouter);
 app.use('/api', (_req, res) => res.status(404).json({ error: 'Rota não encontrada.' }));
@@ -171,6 +176,17 @@ app.use(
     next();
   },
   express.static(path.join(config.root, 'public/pasto'), { extensions: ['html'] }),
+);
+
+// 4M Fornecedores: mesma regra (logado e liberado, ou admin); ver src/routes/fornecedores.js.
+app.use(
+  '/fornecedores',
+  (req, res, next) => {
+    if (!req.user) return res.redirect('/portal');
+    if (!canUseFornecedores(req.user)) return res.redirect('/portal#inicio');
+    next();
+  },
+  express.static(path.join(config.root, 'public/fornecedores'), { extensions: ['html'] }),
 );
 
 // Benchmarking Confinamento: quem é de um cliente participante (ou admin); ver src/benchmark.js.

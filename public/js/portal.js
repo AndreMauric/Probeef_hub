@@ -189,6 +189,7 @@ function filteredReports() {
 // id: rota da API (/api/<id>) e endereço da ferramenta (/<id>).
 const TOOL_CARDS = [
   { id: 'confinamento', name: '4M Confinamento', description: 'Calculadora de risco e modelos de negócio para confinamento de bovinos.' },
+  { id: 'fornecedores', name: '4M Fornecedores', description: 'Resultado econômico e risco por fornecedor a partir da planilha de desempenho (média e CV de peso, GMD, rendimento, dias e CMS), nos quatro modelos de negócio do 4M.' },
   { id: 'pasto', name: '3P · Desempenho a Pasto', description: 'Projeção de peso, GMD e resultado econômico na recria a pasto com suplementação Probeef, comparando dois cenários.' },
 ];
 

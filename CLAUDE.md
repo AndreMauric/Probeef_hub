@@ -96,6 +96,25 @@ essa conferência. No portal e no admin, as ferramentas já são listas (`TOOL_C
 é gerado no navegador com `exceljs` (`/vendor/exceljs.min.js`) e o relatório é uma página para
 imprimir/salvar em PDF (`@media print`).
 
+### 4M Fornecedores (resultado e risco por fornecedor)
+
+Terceira ferramenta, mesmo padrão (campo `user.fornecedores`, rotas `/api/fornecedores`, página
+`/fornecedores`, análises em `fornecedoresSimulations`). Importa no navegador (SheetJS) a planilha de
+desempenho por fornecedor — uma aba por unidade, uma linha por fornecedor, média e "CV ..." de peso de
+entrada, GMD, GDC, rendimento, @ produzidas, dias e CMS (kg MS/dia ou % PV; sem CMS usa um % do PV),
+colunas achadas pelo nome (`parseSheet` em `public/fornecedores/model.js`). DP = média × CV.
+- Econômico (`econ`): as contas do 4M nos quatro modelos e nos dois lados (confinamento/parceiro).
+  **Conferido contra `calc.js` do 4M**: com as três diferenças desligadas, custo, receita, margem,
+  rentabilidades e custo da @ batem nos 4 modelos. As diferenças (de propósito, explicadas na aba "Como
+  funciona"): dieta de adaptação só nos dias de adaptação, ração perdida com os mortos = % do custo
+  alimentar do fornecedor (no 4M é 455 fixo) e sem somar essa ração duas vezes no Boi Próprio.
+- Risco (`simulate`, Monte Carlo com semente fixa): sorteia PE, GMD, RC, dias e CMS pelo CV de cada um;
+  GDC e @ produzidas saem da conta (o CV simulado das @ é mostrado ao lado do da planilha para conferir);
+  preços de compra e venda correlacionados; dieta e operacional à parte. Nível "cada animal" ou "média do
+  lote" (CV ÷ √cabeças). Sensibilidade = correlação de cada fator sorteado com o resultado.
+- O corpo da análise salva passa de 100 KB (planilha inteira): `server.js` usa um parser de 500 KB só em
+  `/api/fornecedores/simulations`.
+
 ### Benchmarking (coleta com validação)
 
 Substitui a coleta pela planilha "Benchmarking Confinamento Probeef 2026 Feed Manager.xlsb"

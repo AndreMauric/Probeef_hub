@@ -213,7 +213,7 @@ function renderUsers() {
         ];
   table(
     document.getElementById('users-table'),
-    ['Usuário', 'Perfil', 'Gerência', 'Responsável', 'Acesso', '4M Confinamento', '3P Pasto', 'Último login', 'Situação', ''],
+    ['Usuário', 'Perfil', 'Gerência', 'Responsável', 'Acesso', '4M Confinamento', '3P Pasto', '4M Fornecedores', 'Último login', 'Situação', ''],
     [...state.users].filter((u) => passes(u) && matches('search-users', u.name, u.email, ...clientNames(u))).sort(byName).map((u) =>
       h(
         'tr',
@@ -225,6 +225,7 @@ function renderUsers() {
         h('td', {}, access(u)),
         h('td', {}, toolCell(u, 'confinamento')),
         h('td', {}, toolCell(u, 'pasto')),
+        h('td', {}, toolCell(u, 'fornecedores')),
         h('td', { class: 'mono' }, fmtDate(u.lastLoginAt)),
         h('td', {}, u.active ? h('span', { class: 'pill pill-ok' }, 'Ativo') : h('span', { class: 'pill pill-off' }, 'Desativado')),
         h(
@@ -255,6 +256,7 @@ function renderUsers() {
 const TOOL_ACCESS = [
   { field: 'confinamento', label: '4M', name: '4M Confinamento' },
   { field: 'pasto', label: '3P', name: '3P · Desempenho a Pasto' },
+  { field: 'fornecedores', label: '4M Fornec.', name: '4M Fornecedores' },
 ];
 
 async function setToolAccess(user, field, action) {
