@@ -21,6 +21,7 @@ const state = {
   persp: 'confinamento',
   risk: null, // { key, results: Map(id → simulação) }
   sel: null, // fornecedor em detalhe no Risco
+  busca: '', // filtro por nome nas abas Econômico e Risco
   sim: null, // análise salva aberta
 };
 
@@ -40,6 +41,9 @@ const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyV
 // ---------- Fornecedores visíveis ----------
 
 const inUnit = (s) => state.unidade === 'todas' || s.unidade === state.unidade;
+const semAcento = (t) => String(t).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+// Busca por parte do nome (sem acento e sem diferenciar maiúscula); vários termos precisam aparecer todos.
+const matches = (s) => semAcento(state.busca).split(/s+/).filter(Boolean).every((t) => semAcento(`${s.nome} ${s.unidade}`).includes(t));
 const included = () => state.suppliers.filter((s) => inUnit(s) && !state.excluded.has(s.id));
 const hasCms = () => state.sheets.some((sh) => sh.hasCms);
 const persp = () => (state.model === 'bp' ? 'confinamento' : state.persp);
@@ -97,7 +101,19 @@ function unitFilter(onChange) {
 }
 
 // Modelo de negócio e de qual lado olhar (compartilhado entre Econômico e Risco).
-function modelBar(onChange) {
+let searchTimer = null;
+function modelBar(onChange, onSearch) {
+  const busca = h('input', {
+    type: 'search',
+    value: state.busca,
+    placeholder: 'Nome ou parte do nome',
+    'aria-label': 'Procurar fornecedor',
+    oninput: (e) => {
+      state.busca = e.target.value;
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(onSearch, 150);
+    },
+  });
   return h(
     'div',
     { class: 'fz-modelbar' },
@@ -117,6 +133,7 @@ function modelBar(onChange) {
       ),
     ),
     unitFilter(onChange),
+    h('label', { class: 'fz-inline fz-search' }, h('span', {}, 'Procurar fornecedor'), busca),
   );
 }
 
@@ -326,7 +343,9 @@ function econRows() {
 function renderEconResults() {
   const box = document.getElementById('econ-results');
   if (!box) return;
-  const rows = econRows().sort((a, b) => b.r.lucro - a.r.lucro);
+  const all = econRows();
+  const rows = all.filter((x) => matches(x.s)).sort((a, b) => b.r.lucro - a.r.lucro);
+  const filtrado = rows.length < all.length;
   const p = persp();
   const cols = [
     ['Dias', (x) => fmt(x.s.dias.m, 0)],
@@ -347,7 +366,7 @@ function renderEconResults() {
     h(
       'div',
       { class: 'fz-card' },
-      h('div', { class: 'fz-card-head' }, h('div', {}, h('h2', {}, `${modelName(state.model)} · resultado ${p === 'parceiro' ? 'do parceiro' : 'do confinamento'}`), h('p', { class: 'muted' }, 'Valores por cabeça, com as médias de cada fornecedor. Ordenado pela margem.'))),
+      h('div', { class: 'fz-card-head' }, h('div', {}, h('h2', {}, `${modelName(state.model)} · resultado ${p === 'parceiro' ? 'do parceiro' : 'do confinamento'}`), h('p', { class: 'muted' }, filtrado ? `${rows.length} de ${all.length} fornecedores com "${state.busca.trim()}". Valores por cabeça, ordenados pela margem.` : 'Valores por cabeça, com as médias de cada fornecedor. Ordenado pela margem.'))),
       rows.length
         ? h(
             'div',
@@ -363,7 +382,7 @@ function renderEconResults() {
                 h(
                   'tr',
                   { class: 'fz-total' },
-                  h('td', {}, h('strong', {}, 'Média ponderada'), h('span', { class: 'sub' }, 'pelas cabeças')),
+                  h('td', {}, h('strong', {}, 'Média ponderada'), h('span', { class: 'sub' }, filtrado ? `dos ${rows.length} encontrados, pelas cabeças` : 'pelas cabeças')),
                   h('td', { class: 'fz-num' }, fmt(rows.reduce((a, x) => a + (x.s.n || 0), 0), 0)),
                   h('td', { class: 'fz-num' }, fmt(w((x) => x.s.dias.m), 0)),
                   h('td', { class: 'fz-num' }, fmt(w((x) => x.e.arEnt), 2)),
@@ -380,7 +399,7 @@ function renderEconResults() {
               ),
             ),
           )
-        : h('p', { class: 'muted' }, 'Nenhum fornecedor em uso nesta unidade.'),
+        : h('p', { class: 'muted' }, all.length ? `Nenhum fornecedor encontrado com "${state.busca.trim()}".` : 'Nenhum fornecedor em uso nesta unidade.'),
     ),
   );
 }
@@ -388,7 +407,7 @@ function renderEconResults() {
 function renderEconomico() {
   if (!state.suppliers.length) return panel('economico').replaceChildren(emptyState('Importe a planilha de desempenho primeiro.'));
   panel('economico').replaceChildren(
-    h('div', { class: 'fz-card' }, modelBar(() => ((state.risk = null), renderEconomico()))),
+    h('div', { class: 'fz-card' }, modelBar(() => ((state.risk = null), renderEconomico()), renderEconResults)),
     econForm(),
     h('div', { id: 'econ-results' }),
   );
@@ -464,7 +483,7 @@ function rankingChart(canvas, rows) {
     data: {
       labels: rows.map((x) => x.s.nome),
       datasets: [
-        { type: 'bar', label: 'Faixa de 90% (P5 a P95)', data: rows.map((x) => [x.r.p5, x.r.p95]), backgroundColor: `${bar}40`, borderColor: bar, borderWidth: 1, borderRadius: 4, barPercentage: 0.7, categoryPercentage: 0.9 },
+        { type: 'bar', label: 'Faixa de 90% (P5 a P95)', data: rows.map((x) => [x.r.p5, x.r.p95]), backgroundColor: `${bar}40`, borderColor: bar, borderWidth: 1, borderRadius: 4, barPercentage: 0.7, categoryPercentage: 0.9, maxBarThickness: 16 },
         { type: 'scatter', label: 'Média', data: rows.map((x, i) => ({ x: x.r.media, y: i })), backgroundColor: bar, borderColor: cssVar('--surface'), borderWidth: 2, pointRadius: 5, pointHoverRadius: 7 },
       ],
     },
@@ -550,11 +569,12 @@ function renderRiskResults() {
   destroyCharts();
   const t0 = performance.now();
   const { results } = runRisk();
-  const rows = included()
+  const all = included()
     .map((s) => ({ s, r: results.get(s.id) }))
-    .filter((x) => x.r)
-    .sort((a, b) => b.r.media - a.r.media);
-  if (!rows.length) return box.replaceChildren(h('div', { class: 'fz-card' }, h('p', { class: 'muted' }, 'Nenhum fornecedor em uso nesta unidade.')));
+    .filter((x) => x.r);
+  const rows = all.filter((x) => matches(x.s)).sort((a, b) => b.r.media - a.r.media);
+  if (!rows.length) return box.replaceChildren(h('div', { class: 'fz-card' }, h('p', { class: 'muted' }, all.length ? `Nenhum fornecedor encontrado com "${state.busca.trim()}".` : 'Nenhum fornecedor em uso nesta unidade.')));
+  const filtrado = rows.length < all.length;
   if (!state.sel || !rows.some((x) => x.s.id === state.sel)) state.sel = rows[0].s.id;
   const sel = rows.find((x) => x.s.id === state.sel);
   const units = [...new Set(rows.map((x) => x.s.unidade))];
@@ -574,7 +594,7 @@ function renderRiskResults() {
     h(
       'div',
       { class: 'fz-card' },
-      h('div', { class: 'fz-card-head' }, h('div', {}, h('h2', {}, `Faixa de resultado por fornecedor · ${modelName(state.model)}, ${p === 'parceiro' ? 'parceiro' : 'confinamento'}`), h('p', { class: 'muted' }, `Barra: 90% dos resultados simulados (P5 a P95). Ponto: média. ${fmt(state.R.nSim, 0)} simulações por fornecedor (${ms} ms).`))),
+      h('div', { class: 'fz-card-head' }, h('div', {}, h('h2', {}, `Faixa de resultado por fornecedor · ${modelName(state.model)}, ${p === 'parceiro' ? 'parceiro' : 'confinamento'}`), h('p', { class: 'muted' }, `${filtrado ? `${rows.length} de ${all.length} fornecedores com "${state.busca.trim()}". ` : ''}Barra: 90% dos resultados simulados (P5 a P95). Ponto: média. ${fmt(state.R.nSim, 0)} simulações por fornecedor (${ms} ms).`))),
       h('div', { class: 'fz-chart', style: `height: ${Math.max(220, rows.length * 22 + 70)}px` }, rankCanvas),
     ),
     h(
@@ -634,7 +654,7 @@ function renderRiskResults() {
 
 function renderRisco() {
   if (!state.suppliers.length) return panel('risco').replaceChildren(emptyState('Importe a planilha de desempenho primeiro.'));
-  panel('risco').replaceChildren(h('div', { class: 'fz-card' }, modelBar(renderRisco)), riskForm(), h('div', { id: 'risk-results' }));
+  panel('risco').replaceChildren(h('div', { class: 'fz-card' }, modelBar(renderRisco, renderRiskResults)), riskForm(), h('div', { id: 'risk-results' }));
   renderRiskResults();
 }
 

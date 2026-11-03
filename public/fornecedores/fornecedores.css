@@ -114,6 +114,15 @@
   min-width: 160px;
 }
 
+.fz-search {
+  flex: 1 1 240px;
+  max-width: 360px;
+}
+
+.fz-search input {
+  width: 100%;
+}
+
 /* Botões em pílula (modelo de negócio, perspectiva) */
 .fz-seg {
   display: inline-flex;
