@@ -4475,3 +4475,42 @@ td.bmk-sel {
   max-height: 120px;
   overflow: auto;
 }
+
+/* Lembrete pelo e-mail/WhatsApp do admin: um bloco por participante. */
+.bmk-fora {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+
+.bmk-fora.feito {
+  border-color: var(--ok);
+}
+
+.bmk-fora-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+
+.bmk-fora details summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.bmk-fora details p {
+  margin: 6px 0 0;
+  white-space: pre-line;
+  font-size: 13px;
+}
+
+.bmk-fora-acoes {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}

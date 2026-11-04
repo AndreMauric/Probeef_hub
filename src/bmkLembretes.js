@@ -90,7 +90,7 @@ async function enviar(admin, lista, { texto = '', responsavel: comResponsavel = 
       semDestino.push(p.client);
       continue;
     }
-    const registro = { id: newId(), clientId: p.clientId, ano: s.ano, at: new Date().toISOString(), by: auto ? null : admin.id, auto, status: p.status, participantes: pessoas.length, responsavel: Boolean(dono) };
+    const registro = { id: newId(), clientId: p.clientId, ano: s.ano, at: new Date().toISOString(), by: auto ? null : admin.id, auto, canal: 'portal', status: p.status, participantes: pessoas.length, responsavel: Boolean(dono) };
     db().bmkLembretes = [...(db().bmkLembretes || []), registro].slice(-5000);
     // No Histórico do participante (quando ele já começou).
     const sub = db().bmkSubmissions.find((x) => x.clientId === p.clientId && x.ano === s.ano);
@@ -109,16 +109,45 @@ export async function sendReminders(admin, { clientIds, texto, responsavel: comR
   return enviar(admin, lista, { texto: texto2, responsavel: comResponsavel !== false });
 }
 
-// Prévia do texto para a janela do admin (o primeiro escolhido de cada situação).
+// Prévia para a janela do admin: o texto de cada situação e, para mandar pelo e-mail ou WhatsApp do admin
+// (como nos Alertas CCV), cada participante com o texto dele e os contatos (logins e responsável).
 export function previewReminders({ clientIds, texto } = {}) {
   const s = settings();
   const lista = adminList().filter((p) => (!clientIds || clientIds.includes(p.clientId)) && p.active && PENDENTES.includes(p.status));
   const porStatus = {};
-  for (const p of lista) porStatus[p.status] ??= montar(String(texto || '').trim() || MODELOS[p.status], p, s);
+  const txt = (p) => montar(String(texto || '').trim() || MODELOS[p.status], p, s);
+  for (const p of lista) porStatus[p.status] ??= txt(p);
+  const contato = (u, papel) => ({ id: u.id, name: u.name, email: u.email || null, phone: u.phone || null, papel });
   return {
     porStatus,
     semLogin: lista.filter((p) => !participantes(p.clientId).length).map((p) => ({ client: p.client, temResponsavel: Boolean(responsavel(p)) })),
+    itens: lista.map((p) => {
+      const pessoas = participantes(p.clientId);
+      const dono = responsavel(p);
+      return {
+        clientId: p.clientId,
+        client: p.client,
+        status: p.status,
+        texto: txt(p),
+        contatos: [...pessoas.map((u) => contato(u, 'participante')), ...(dono && !pessoas.some((u) => u.id === dono.id) ? [contato(dono, 'responsável')] : [])],
+      };
+    }),
+    ano: s.ano,
   };
+}
+
+// Lembrete mandado pelo e-mail ou WhatsApp do próprio admin (fora do portal): só registra.
+export async function registerManual(admin, { clientId, canal } = {}) {
+  if (!['email', 'whatsapp'].includes(canal)) throw new LembreteError('Canal inválido.');
+  const p = adminList().find((x) => x.clientId === clientId && x.active && PENDENTES.includes(x.status));
+  if (!p) throw new LembreteError('Este participante não está pendente.');
+  const s = settings();
+  const at = new Date().toISOString();
+  db().bmkLembretes = [...(db().bmkLembretes || []), { id: newId(), clientId, ano: s.ano, at, by: admin.id, auto: null, canal, status: p.status, participantes: 0, responsavel: false }].slice(-5000);
+  const sub = db().bmkSubmissions.find((x) => x.clientId === clientId && x.ano === s.ano);
+  if (sub) sub.messages.push({ id: newId(), at, by: admin.id, role: 'admin', action: 'lembrete', text: `Lembrete enviado por ${canal === 'email' ? 'e-mail' : 'WhatsApp'} (fora do portal).` });
+  await save();
+  return { ok: true, at };
 }
 
 // Automático: a cada hora confere se chegou um dos dias marcados antes do prazo. Se o servidor ficou fora

@@ -1223,7 +1223,7 @@ function renderBenchmark() {
         h('td', {}, h('strong', {}, c.client), c.active ? null : h('span', { class: 'sub' }, 'participante desativado')),
         h('td', {}, c.owner || h('span', { class: 'muted' }, '—')),
         h('td', {}, c.gerencia || h('span', { class: 'muted' }, '—')),
-        h('td', {}, h('span', { class: cls }, label), c.submittedAt ? h('span', { class: 'sub' }, `enviado ${fmtDate(c.submittedAt)}`) : null, c.lembrete && pendente ? h('span', { class: 'sub', title: c.lembrete.auto ? `Lembrete automático (${c.lembrete.auto} dia(s) antes do prazo)` : 'Lembrete enviado pelo admin' }, `lembrete ${fmtDate(c.lembrete.at)}${c.lembrete.auto ? ' (auto)' : ''}`) : null),
+        h('td', {}, h('span', { class: cls }, label), c.submittedAt ? h('span', { class: 'sub' }, `enviado ${fmtDate(c.submittedAt)}`) : null, c.lembrete && pendente ? h('span', { class: 'sub', title: c.lembrete.auto ? `Lembrete automático (${c.lembrete.auto} dia(s) antes do prazo)` : 'Lembrete enviado pelo admin' }, `lembrete ${fmtDate(c.lembrete.at)}${c.lembrete.auto ? ' (auto)' : c.lembrete.canal === 'email' ? ' (e-mail)' : c.lembrete.canal === 'whatsapp' ? ' (WhatsApp)' : ''}`) : null),
         h('td', { class: 'mono' }, num(c.lotesEngorda + c.lotesRecria), c.lotesRecria ? h('span', { class: 'sub nowrap' }, `${c.lotesEngorda} eng. · ${c.lotesRecria} rec.`) : null),
         h('td', { class: 'mono' }, num((c.animaisEngorda || 0) + (c.animaisRecria || 0)), c.animaisRecria ? h('span', { class: 'sub nowrap' }, `${num(c.animaisEngorda || 0)} eng. · ${num(c.animaisRecria)} rec.`) : null),
         h('td', {}, c.erros ? h('span', { class: 'pill pill-danger' }, `${c.erros} erros`) : h('span', { class: 'muted' }, '0 erros'), ' ', c.alertas ? h('span', { class: 'pill pill-warn' }, `${c.alertas} alertas`) : null),
@@ -1265,57 +1265,150 @@ function renderBenchmark() {
   );
 }
 
-// Lembrete de cobrança para os participantes escolhidos (pelas Mensagens do portal; ver src/bmkLembretes.js).
+// Lembrete de cobrança para os participantes escolhidos (ver src/bmkLembretes.js). Dois jeitos de mandar:
+// pelas Mensagens do portal ou pelo e-mail/WhatsApp do próprio admin (como nos Alertas CCV): os botões abrem o
+// programa de e-mail (Outlook) e o WhatsApp com a mensagem pronta, e o clique fica registrado como lembrete.
 function lembreteDialog(clientIds) {
   const escolhidos = bmkState.data.clients.filter((c) => clientIds.includes(c.clientId));
   const modelos = bmkState.data.lembreteModelos || {};
   const statusDe = [...new Set(escolhidos.map((c) => c.status))];
+  let modo = 'portal';
+  const seg = h(
+    'div',
+    { class: 'ccv-subtabs', role: 'group', 'aria-label': 'Como enviar' },
+    [
+      ['portal', 'Pelas Mensagens do portal'],
+      ['fora', 'Pelo meu e-mail ou WhatsApp'],
+    ].map(([v, t]) => h('button', { type: 'button', class: v === modo ? 'on' : '', 'aria-pressed': String(v === modo), 'data-modo': v, onclick: () => trocarModo(v) }, t)),
+  );
   const proprio = h('input', { type: 'checkbox' });
   const texto = h('textarea', { rows: 6, maxlength: 2000, hidden: true }, modelos[statusDe[0]] || '');
   const dica = h('small', { class: 'muted', hidden: true }, 'Use {fazenda}, {ano}, {prazo} (frase com o prazo e quantos dias faltam) e {pendencias} (lotes lançados, lotes com erro e perguntas que faltam): cada participante recebe com os dados dele.');
   const responsavel = h('input', { type: 'checkbox', checked: true });
+  const explica = h('p', { class: 'muted', style: 'margin: 0' });
   const previa = h('div', { class: 'bmk-lembrete-previa' }, h('p', { class: 'muted' }, 'Montando a prévia…'));
+  const feitos = new Map(); // clientId → canais já registrados nesta janela
+  let dados = null;
+
+  const registrar = async (item, canal) => {
+    const ja = feitos.get(item.clientId) || new Set();
+    if (ja.has(canal)) return;
+    ja.add(canal);
+    feitos.set(item.clientId, ja);
+    try {
+      await api('/api/admin/benchmark/lembretes/registro', { method: 'POST', body: { clientId: item.clientId, canal } });
+    } catch (err) {
+      ja.delete(canal);
+      toast(err.message, 'error');
+    }
+    desenhar();
+  };
+
+  // Um participante no modo "pelo meu e-mail ou WhatsApp": texto, e-mail (logins + responsável em cópia) e WhatsApp.
+  const linhaFora = (item) => {
+    const link = `${location.origin}/benchmark?cliente=${item.clientId}`;
+    const corpo = `${item.texto}\n\nAcesse o Benchmarking: ${link}`;
+    const comResp = responsavel.checked;
+    const part = item.contatos.filter((c) => c.papel === 'participante');
+    const resp = comResp ? item.contatos.filter((c) => c.papel === 'responsável') : [];
+    const emails = (l) => l.map((c) => c.email).filter(Boolean);
+    const para = emails(part).length ? emails(part) : emails(resp);
+    const cc = emails(part).length ? emails(resp) : [];
+    const mailto = para.length ? `mailto:${para.join(',')}?${cc.length ? `cc=${cc.join(',')}&` : ''}subject=${encodeURIComponent(`Benchmarking ${dados.ano} · ${item.client}`)}&body=${encodeURIComponent(corpo)}` : null;
+    const ja = feitos.get(item.clientId) || new Set();
+    const zaps = [...part, ...resp].filter((c) => c.phone);
+    return h(
+      'div',
+      { class: `bmk-fora${ja.size ? ' feito' : ''}` },
+      h('div', { class: 'bmk-fora-head' }, h('strong', {}, item.client), h('span', { class: 'muted' }, (BMK_STATUS[item.status] || [item.status])[0]), ja.size ? h('span', { class: 'pill pill-ok' }, `✓ ${[...ja].map((x) => (x === 'email' ? 'e-mail' : 'WhatsApp')).join(' e ')}`) : null),
+      h('details', {}, h('summary', {}, 'Ver a mensagem'), h('p', {}, corpo)),
+      h(
+        'div',
+        { class: 'bmk-fora-acoes' },
+        mailto
+          ? h('a', { class: 'btn btn-sm', href: mailto, onclick: () => registrar(item, 'email'), title: [para.join(', '), cc.length ? `cópia: ${cc.join(', ')}` : ''].filter(Boolean).join(' · ') }, 'E-mail')
+          : h('span', { class: 'muted' }, 'sem e-mail'),
+        zaps.map((c) => h('a', { class: 'btn btn-sm btn-ghost', target: '_blank', rel: 'noopener', href: `https://wa.me/${c.phone}?text=${encodeURIComponent(corpo)}`, onclick: () => registrar(item, 'whatsapp') }, `WhatsApp · ${c.name.split(' ')[0]}${c.papel === 'responsável' ? ' (resp.)' : ''}`)),
+        zaps.length ? null : h('span', { class: 'muted' }, 'sem WhatsApp cadastrado'),
+        h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: (e) => copyText(corpo, e.currentTarget) }, 'Copiar texto'),
+      ),
+    );
+  };
+
+  const desenhar = () => {
+    if (!dados) return;
+    if (modo === 'fora') {
+      previa.replaceChildren(...dados.itens.map(linhaFora));
+      return;
+    }
+    previa.replaceChildren(
+      ...Object.entries(dados.porStatus).map(([st, msg]) => h('div', {}, h('span', { class: 'label' }, `Exemplo · ${(BMK_STATUS[st] || [st])[0]}`), h('p', {}, msg))),
+      ...[
+        [dados.semLogin.filter((x) => x.temResponsavel), 'sem login no portal: o responsável recebe o aviso para falar com a fazenda', 'bmk-lembrete-aviso'],
+        [dados.semLogin.filter((x) => !x.temResponsavel), 'sem login e sem responsável: não recebem nada (cadastre um login ou um responsável)', 'alert'],
+      ]
+        .filter(([l]) => l.length)
+        .map(([l, txt, cls]) => h('details', { class: cls }, h('summary', {}, `${l.length} participante(s) ${txt}`), h('p', {}, l.map((x) => x.client).join(' · ')))),
+    );
+  };
+
   let timer = null;
   const atualizar = () => {
     clearTimeout(timer);
     timer = setTimeout(async () => {
       try {
-        const p = await api('/api/admin/benchmark/lembretes/preview', { method: 'POST', body: { clientIds, texto: proprio.checked ? texto.value : '' } });
-        previa.replaceChildren(
-          ...Object.entries(p.porStatus).map(([st, msg]) => h('div', {}, h('span', { class: 'label' }, `Exemplo · ${(BMK_STATUS[st] || [st])[0]}`), h('p', {}, msg))),
-          ...[
-            [p.semLogin.filter((x) => x.temResponsavel), 'sem login no portal: o responsável recebe o aviso para falar com a fazenda', 'bmk-lembrete-aviso'],
-            [p.semLogin.filter((x) => !x.temResponsavel), 'sem login e sem responsável: não recebem nada (cadastre um login ou um responsável)', 'alert'],
-          ]
-            .filter(([l]) => l.length)
-            .map(([l, texto, cls]) => h('details', { class: cls }, h('summary', {}, `${l.length} participante(s) ${texto}`), h('p', {}, l.map((x) => x.client).join(' · ')))),
-        );
+        dados = await api('/api/admin/benchmark/lembretes/preview', { method: 'POST', body: { clientIds, texto: proprio.checked ? texto.value : '' } });
+        desenhar();
       } catch (err) {
         previa.replaceChildren(h('p', { class: 'alert' }, err.message));
       }
     }, 300);
   };
+
+  function trocarModo(v) {
+    modo = v;
+    seg.querySelectorAll('button').forEach((b) => {
+      b.classList.toggle('on', b.dataset.modo === v);
+      b.setAttribute('aria-pressed', String(b.dataset.modo === v));
+    });
+    explica.textContent =
+      v === 'portal'
+        ? 'Vai pelas Mensagens do portal para os logins de cada participante. Cada um recebe o texto da sua situação (não iniciado, em preenchimento ou em correção), com o que falta e o prazo.'
+        : 'Os botões abrem o seu programa de e-mail (Outlook) e o seu WhatsApp com a mensagem pronta e o link do Benchmarking: você confere e envia. No e-mail, o responsável vai em cópia. Cada clique fica registrado como lembrete.';
+    const submit = dialog.querySelector('button[type=submit]');
+    if (submit) submit.textContent = v === 'portal' ? 'Enviar pelo portal' : 'Concluir';
+    desenhar();
+  }
+
   proprio.addEventListener('change', () => {
     texto.hidden = !proprio.checked;
     dica.hidden = !proprio.checked;
     atualizar();
   });
   texto.addEventListener('input', atualizar);
+  responsavel.addEventListener('change', desenhar);
   atualizar();
   formDialog(
     escolhidos.length === 1 ? `Lembrete para ${escolhidos[0].client}` : `Lembrete para ${escolhidos.length} participantes`,
     [
-      h('p', { class: 'muted', style: 'margin: 0' }, 'Vai pelas Mensagens do portal para os logins de cada participante. Cada um recebe o texto da sua situação (não iniciado, em preenchimento ou em correção), com o que falta e o prazo.'),
+      seg,
+      explica,
       escolhidos.length > 1 ? h('p', { class: 'bmk-lembrete-nomes' }, escolhidos.map((c) => c.client).join(' · ')) : null,
-      h('label', { class: 'check' }, responsavel, h('span', {}, 'Avisar também o responsável (Time ou Canais Cargill)')),
+      h('label', { class: 'check' }, responsavel, h('span', {}, 'Incluir o responsável (Time ou Canais Cargill)')),
       h('label', { class: 'check' }, proprio, h('span', {}, 'Escrever a mensagem (em vez do texto padrão de cada situação)')),
       texto,
       dica,
       previa,
     ],
     {
-      submitLabel: 'Enviar lembrete',
+      submitLabel: 'Enviar pelo portal',
       onSubmit: async () => {
+        if (modo === 'fora') {
+          bmkState.sel.clear();
+          await loadBenchmark();
+          if (feitos.size) toast(`Lembrete registrado para ${feitos.size} participante(s).`);
+          return;
+        }
         const r = await api('/api/admin/benchmark/lembretes', { method: 'POST', body: { clientIds, texto: proprio.checked ? texto.value : '', responsavel: responsavel.checked } });
         bmkState.sel.clear();
         await loadBenchmark();
@@ -1323,6 +1416,7 @@ function lembreteDialog(clientIds) {
       },
     },
   );
+  trocarModo('portal');
 }
 
 function benchmarkSettingsDialog() {

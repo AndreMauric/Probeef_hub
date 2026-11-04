@@ -273,7 +273,9 @@ O admin marca `client.benchmark` (ou o Time cadastra a fazenda já participando)
   admin; o responsável (Time/Canais) é avisado junto e, se a fazenda não tem login, só ele. Automático em "Ciclo,
   limites e listas" (`settings.lembretes`: dias antes do prazo; verificação de hora em hora, a partir das 8h, com
   prazo e coleta aberta; se o servidor ficou fora no dia, manda na volta uma vez só). Registro em
-  `db().bmkLembretes` (coluna "lembrete" no Andamento) e no Histórico do participante.
+  `db().bmkLembretes` (coluna "lembrete" no Andamento) e no Histórico do participante. A janela também tem o modo "Pelo meu
+  e-mail ou WhatsApp" (como nos Alertas CCV): `mailto:` (abre o Outlook com os logins, o responsável em cópia, o texto e o
+  link) e `wa.me` com o texto pronto; o clique registra o lembrete com o canal (`POST /api/admin/benchmark/lembretes/registro`).
 - Pergunta 24 (energia da recria) é obrigatória só com "Recria confinada na fazenda" na pergunta 10
   (`reqIf`, `isRequired`).
 - Aba Resultado: "Painel" (`public/benchmark/dashboard.js`: filtros por raça, sexo, categoria,
