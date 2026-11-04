@@ -130,6 +130,9 @@ arredondamentos do app; conferido contra as fórmulas transcritas do app com os 
 centavo). Erros do app que foram corrigidos estão na aba "Como funciona" (e marcados com "Corrigido" no
 `model.js`). As telas "Custo Operacional" e "custo depreciação/manutenção" do app não tinham caminho de
 entrada e ficaram de fora.
+Relatório e Excel em `public/semi/report.js`, a partir das mesmas linhas das tabelas da tela: o relatório é um
+bloco próprio (`#report`, A4, 4 páginas: resumo, premissas digitadas, resultados e risco), que também sai no
+Ctrl+P (`beforeprint`); o Excel é do exceljs (Resumo, Premissas em amarelo, Resultados, Análise de risco e Cadastro).
 
 ### Benchmarking (coleta com validação)
 

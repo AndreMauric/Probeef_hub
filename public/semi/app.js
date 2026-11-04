@@ -3,6 +3,7 @@
 // As simulações ficam no portal (/api/semi/simulations), no lugar da lista do SharePoint.
 import { api, h, toast } from '/js/common.js';
 import { initTicker } from '/js/ticker.js';
+import { buildExcel, buildPrint } from './report.js';
 import { CONSUMOS, ESPECIES, FERTILIDADE, MANEJO, N_ING, QUALIDADES, SUPLEMENTACAO, avisos, calc, defaultData, desempenhoSugerido, formula, gradeCompraVenda, gradeMilhoVenda, lotacao } from './model.js';
 
 const dialog = document.getElementById('dialog');
@@ -14,6 +15,7 @@ const state = {
   data: defaultData(),
   sim: null, // simulação salva aberta
   dirty: false,
+  userName: '',
 };
 const prods = () => state.data.prods;
 const ing = () => state.data.ing;
@@ -502,10 +504,7 @@ function comparacao() {
 
 function renderResultados() {
   outs = [];
-  const c = state.data.cadastro;
-  const ident = [c.fazenda, c.proprietario, [c.cidade, c.estado].filter(Boolean).join('/'), c.dataVisita ? new Date(`${c.dataVisita}T12:00`).toLocaleDateString('pt-BR') : ''].filter(Boolean).join(' · ');
   panel('resultados').replaceChildren(
-    h('div', { class: 'sc-print-head' }, h('h1', {}, 'Semi Confinamento · resultados'), h('p', {}, ident || 'Simulação sem identificação'), c.coordenador || c.atc ? h('p', { class: 'muted' }, [c.coordenador && `Coordenador: ${c.coordenador}`, c.atc && `ATC: ${c.atc}`].filter(Boolean).join(' · ')) : null),
     kpis(),
     comparacao(),
     fold('Resultado econômico', 'lucro, rentabilidade, ponto de equilíbrio e comparação com milho e soja', true, grid(RES_RESULT)),
@@ -636,54 +635,34 @@ function renderAjuda() {
   );
 }
 
-// ---------- Excel ----------
+// ---------- Relatório e Excel (report.js) ----------
 
-function exportExcel() {
-  const X = window.XLSX;
-  const wb = X.utils.book_new();
+// Tudo o que o relatório e a planilha precisam, com as mesmas linhas das tabelas da tela.
+function reportContext() {
   recompute();
   const P = prods();
-  const names = P.map((p, i) => prodName(i));
-  const val = (row, i) => (row.key ? P[i][row.key] : row.get(R[i], P[i], i));
-  const sheet = (rows) => [['Variável', 'Unidade', ...names], ...rows.map((row) => (row.sec ? [row.sec] : [row.label, row.unit || '', ...[0, 1, 2].map((i) => val(row, i))]))];
-  const c = state.data.cadastro;
-  const cad = [
-    ['Campo', 'Valor'],
-    ['Proprietário', c.proprietario],
-    ['Fazenda', c.fazenda],
-    ['Data da visita', c.dataVisita],
-    ['Cidade', c.cidade],
-    ['Estado', c.estado],
-    ['Visita nº', c.nVisita],
-    ['Coordenador', c.coordenador],
-    ['Telefone do coordenador', c.telCoordenador],
-    ['E-mail do coordenador', c.emailCoordenador],
-    ['ATC', c.atc],
-    ['Telefone do ATC', c.telAtc],
-    ['E-mail do ATC', c.emailAtc],
-  ];
-  X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet(cad), 'Cadastro');
-  const form = [['Ingrediente', 'Preço (R$/t MN)', ...names.map((n) => `${n} (% MN)`)], ...ing().map((x, j) => [x.nome, x.preco, ...P.map((p) => p.incl[j])])];
-  form.push(['Total da fórmula (%)', '', ...R.map((r) => r.inclTotal)], ['Custo da fórmula (R$/t)', '', ...R.map((r) => r.custoFormula)], ['Custo de produção (R$/t)', '', ...P.map((p) => p.custoProd)], ['Custo final (R$/kg)', '', ...R.map((r) => r.custoKg)]);
-  X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet(form), 'Formulação');
-  X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet(sheet(ZOO_ROWS.filter((r) => !r.extra))), 'Zootécnico');
-  X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet(sheet(FIN_ROWS)), 'Financeiro');
-  X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet(sheet([{ sec: 'Resultado' }, ...RES_RESULT, { sec: 'Custos' }, ...RES_CUSTO, { sec: 'Zootécnico' }, ...RES_ZOO])), 'Resultados');
-  const Rk = state.data.risco;
-  const risco = [];
-  for (const [titulo, fn, linha] of [
-    ['Valor de compra (R$/@) × valor de venda (R$/@) · lucro R$/ha', gradeCompraVenda, 'Compra'],
-    ['Preço do milho (R$/saca) × valor de venda (R$/@) · lucro R$/ha', gradeMilhoVenda, 'Milho'],
-  ]) {
-    risco.push([titulo]);
-    P.forEach((p, i) => {
-      const g = fn(p, ing(), Rk);
-      risco.push([names[i]], [`${linha} \\ Venda`, ...g.colunas], ...g.linhas.map((l, a) => [l, ...g.valores[a]]), []);
-    });
+  return {
+    data: state.data,
+    R,
+    prodName,
+    simName: state.sim?.name || '',
+    userName: state.userName,
+    COMPARA,
+    rows: { zoo: ZOO_ROWS, fin: FIN_ROWS, result: RES_RESULT, custo: RES_CUSTO, resZoo: RES_ZOO },
+    grades: { compraVenda: P.map((p) => gradeCompraVenda(p, ing(), state.data.risco)), milhoVenda: P.map((p) => gradeMilhoVenda(p, ing(), state.data.risco)) },
+  };
+}
+
+async function exportExcel() {
+  const btn = document.getElementById('excel');
+  btn.disabled = true;
+  try {
+    await buildExcel(reportContext());
+  } catch (err) {
+    toast(err.message, 'error');
+  } finally {
+    btn.disabled = false;
   }
-  X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet(risco), 'Risco');
-  const nome = (c.fazenda || 'simulacao').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\w-]+/g, '-').toLowerCase();
-  X.writeFile(wb, `semi-confinamento-${nome}-${new Date().toISOString().slice(0, 10)}.xlsx`);
 }
 
 // ---------- Simulações salvas (o "Histórico" do app) ----------
@@ -841,10 +820,16 @@ function selectTab(name) {
   window.scrollTo({ top: 0 });
 }
 
+// Relatório próprio para o papel (A4); também sai com Ctrl+P, pelo evento beforeprint.
+function fillPrint() {
+  document.getElementById('report').replaceChildren(...buildPrint(reportContext()));
+}
 function printReport() {
-  selectTab('resultados');
-  document.querySelectorAll('[data-panel="resultados"] details').forEach((d) => (d.open = true));
-  setTimeout(() => window.print(), 50);
+  fillPrint();
+  // espera o logo carregar antes de abrir a impressão
+  const img = document.querySelector('#report img');
+  if (img && !img.complete) img.addEventListener('load', () => window.print(), { once: true });
+  else window.print();
 }
 
 // ---------- Tempo de uso (mesmo esquema das outras ferramentas) ----------
@@ -866,6 +851,8 @@ function trackUsage(viewId) {
 async function init() {
   const { user } = await api('/api/auth/me');
   document.getElementById('user-name').textContent = user.name;
+  state.userName = user.name;
+  window.addEventListener('beforeprint', fillPrint);
   if (user.impersonatedBy) {
     document.getElementById('impersonation-text').textContent = `Você (${user.impersonatedBy.name}) está vendo o Semi Confinamento como ${user.name}.`;
     document.getElementById('impersonation').hidden = false;
