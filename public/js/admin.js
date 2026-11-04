@@ -3835,6 +3835,31 @@ function clientDialog(client) {
       h('span', {}, r.name, ' ', h('span', { class: 'muted' }, `· ${r.category}`), r.rls ? [' ', h('span', { class: 'pill pill-accent' }, 'RLS')] : null, r.kind === 'ccv' ? [' ', h('span', { class: 'pill pill-accent' }, 'Painel CCV')] : null),
     ),
   );
+  // Procurar relatório pelo nome ou categoria (sem acento; vários termos precisam aparecer todos) e, se
+  // quiser, ver só os marcados. Esconder a linha não desmarca: o que está marcado continua indo no salvar.
+  const reportSearch = h('input', { type: 'search', placeholder: 'Procurar relatório por nome ou categoria', 'aria-label': 'Procurar relatório' });
+  const onlyChecked = h('input', { type: 'checkbox' });
+  const reportCount = h('span', { class: 'muted' });
+  const reportEmpty = h('small', { class: 'muted', hidden: true }, 'Nenhum relatório com esse nome.');
+  const filterReports = () => {
+    const terms = fold(reportSearch.value).split(/\s+/).filter(Boolean);
+    let shown = 0;
+    reportChecks.forEach((row) => {
+      const box = row.querySelector('input');
+      const text = fold(row.textContent);
+      row.hidden = !(terms.every((t) => text.includes(t)) && (!onlyChecked.checked || box.checked));
+      if (!row.hidden) shown += 1;
+    });
+    const marked = reportChecks.filter((row) => row.querySelector('input').checked).length;
+    reportCount.textContent = `${marked} de ${reportChecks.length} marcado(s)`;
+    reportEmpty.hidden = shown > 0;
+  };
+  // Enter na busca não envia o formulário.
+  reportSearch.addEventListener('keydown', (e) => e.key === 'Enter' && e.preventDefault());
+  reportSearch.addEventListener('input', filterReports);
+  onlyChecked.addEventListener('change', filterReports);
+  reportChecks.forEach((row) => row.querySelector('input').addEventListener('change', filterReports));
+  filterReports();
   // Fazendas do painel CCV: aparecem quando algum relatório CCV está marcado.
   const farms = farmPicker({ label: 'Fazendas do painel CCV que este cliente vê', hint: 'Nenhuma marcada: o cliente não vê dados no painel CCV.', selected: client?.ccvFarms || [], options: loadCcvFarms });
   const ccvIds = new Set(state.reports.filter((r) => r.kind === 'ccv').map((r) => r.id));
@@ -3858,7 +3883,10 @@ function clientDialog(client) {
         { class: 'field' },
         h('span', {}, 'Relatórios liberados'),
         reportChecks.length
-          ? h('div', { class: 'checkbox-list', id: 'client-reports' }, reportChecks)
+          ? [
+              h('div', { class: 'report-filter' }, reportSearch, h('label', { class: 'check' }, onlyChecked, h('span', {}, 'Só os marcados')), reportCount),
+              h('div', { class: 'checkbox-list', id: 'client-reports' }, reportChecks, reportEmpty),
+            ]
           : h('small', {}, 'Cadastre relatórios primeiro.'),
       ),
       farms.el,

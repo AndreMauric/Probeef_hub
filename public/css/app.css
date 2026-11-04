@@ -4477,3 +4477,24 @@ tr.row-on td {
   padding: 0 4px;
   font-weight: 600;
 }
+
+/* Cadastro de cliente: procurar relatório na lista de liberados. */
+.report-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+}
+
+.report-filter input[type='search'] {
+  flex: 1 1 260px;
+  min-height: 36px;
+}
+
+.report-filter .muted {
+  font-size: 12.5px;
+}
+
+.checkbox-list > label.check[hidden] {
+  display: none;
+}
