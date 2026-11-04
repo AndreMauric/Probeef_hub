@@ -1,0 +1,158 @@
+/* Cartão da pesquisa de satisfação (NPS). Carregado por /js/nps.js em qualquer página: no portal, nas
+   ferramentas e no Benchmarking (que usam o app.css) e no 4M Confinamento (tema próprio). Por isso cada cor
+   tem um valor de reserva. */
+
+.nps-card {
+  position: fixed;
+  left: 20px;
+  bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  z-index: 60;
+  display: grid;
+  gap: 10px;
+  width: min(380px, calc(100vw - 32px));
+  padding: 18px 18px 16px;
+  border: 1px solid var(--line, var(--border, #dce4e8));
+  border-radius: var(--radius, 10px);
+  background: var(--surface, #ffffff);
+  color: var(--ink, var(--text, #0c2a29));
+  box-shadow: var(--shadow, 0 1px 2px rgb(9 65 64 / 6%), 0 8px 24px rgb(9 65 64 / 12%));
+  font: 400 14px/1.4 var(--font-ui, 'Instrument Sans', 'Segoe UI', system-ui, sans-serif);
+}
+
+body.has-ticker .nps-card {
+  bottom: calc(20px + var(--ticker-h, 0px) + env(safe-area-inset-bottom, 0px));
+}
+
+.nps-card h2 {
+  margin: 0;
+  padding-right: 28px;
+  font: 600 15px/1.35 var(--font-ui, 'Instrument Sans', 'Segoe UI', system-ui, sans-serif);
+  color: inherit;
+}
+
+.nps-close {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted, #546d6c);
+  font-size: 20px;
+  cursor: pointer;
+}
+
+.nps-close:hover {
+  background: var(--surface-2, #eef2f5);
+  color: inherit;
+}
+
+.nps-scale {
+  display: grid;
+  grid-template-columns: repeat(11, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.nps-score {
+  min-height: 36px;
+  padding: 0;
+  border: 1px solid var(--line, var(--border, #dce4e8));
+  border-radius: var(--radius-sm, 6px);
+  background: var(--surface-2, #eef2f5);
+  color: inherit;
+  font: 600 13px/1 var(--font-data, ui-monospace, Consolas, monospace);
+  cursor: pointer;
+}
+
+.nps-score:hover {
+  border-color: var(--accent, #094140);
+}
+
+.nps-score[aria-pressed='true'] {
+  border-color: var(--accent, #094140);
+  background: var(--accent, #094140);
+  color: var(--on-accent, #f7f7f7);
+}
+
+.nps-ends {
+  display: flex;
+  justify-content: space-between;
+  margin-top: -4px;
+  color: var(--muted, #546d6c);
+  font-size: 12px;
+}
+
+.nps-follow {
+  display: grid;
+  gap: 8px;
+}
+
+.nps-follow label {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.nps-follow textarea {
+  width: 100%;
+  min-height: 64px;
+  padding: 8px 10px;
+  border: 1px solid var(--line, var(--border, #dce4e8));
+  border-radius: var(--radius-sm, 6px);
+  background: var(--surface, #ffffff);
+  color: inherit;
+  font: inherit;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.nps-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.nps-send {
+  min-height: 32px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: var(--radius-sm, 6px);
+  background: var(--accent, #094140);
+  color: var(--on-accent, #f7f7f7);
+  font: 600 13px/1 var(--font-ui, 'Instrument Sans', 'Segoe UI', system-ui, sans-serif);
+  cursor: pointer;
+}
+
+.nps-send:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.nps-error {
+  margin: 0;
+  color: var(--danger, #b3261e);
+  font-size: 13px;
+}
+
+.nps-thanks {
+  margin: 0;
+  padding: 6px 0;
+  font-weight: 600;
+}
+
+@media (max-width: 600px) {
+  .nps-card {
+    left: 16px;
+    right: 16px;
+    width: auto;
+    bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+@media print {
+  .nps-card {
+    display: none !important;
+  }
+}

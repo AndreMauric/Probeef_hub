@@ -2,6 +2,7 @@
 // O cálculo fica em model.js (tradução fiel do app.R); aqui ficam os formulários dos dois
 // cenários, o Dashboard comparativo, as simulações salvas e as exportações (Excel e relatório).
 import { api, h, toast } from '/js/common.js';
+import { initNps } from '/js/nps.js';
 import { initTicker } from '/js/ticker.js';
 import { comparar, cenarioPadrao, EPOCAS, epocasDoAno, OPCOES, PASTOS, PRODUTOS, simular, sobreposicao, validar, VARIAVEIS } from './model.js';
 
@@ -898,6 +899,7 @@ async function init() {
     document.getElementById('impersonation').hidden = false;
   }
   initTicker();
+  initNps(); // pesquisa de satisfação (o servidor decide se é hora de perguntar)
   state.c1 = cenarioPadrao(undefined, 1);
   state.c2 = cenarioPadrao(undefined, 2);
   recalc();

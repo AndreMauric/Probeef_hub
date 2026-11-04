@@ -2,6 +2,7 @@
 // calcula o desvio padrão, o resultado econômico nos quatro modelos do 4M e o risco (Monte Carlo).
 // Cálculo em model.js; a planilha é lida no navegador com SheetJS (/vendor/xlsx.full.min.js).
 import { api, h, toast } from '/js/common.js';
+import { initNps } from '/js/nps.js';
 import { initTicker } from '/js/ticker.js';
 import { MEASURES, MODELS, alertasDe, defaultEcon, defaultRisk, econ, meanZ, parseSheet, sdOf, simulate, weighted } from './model.js';
 
@@ -867,6 +868,7 @@ async function init() {
     document.getElementById('impersonation').hidden = false;
   }
   initTicker();
+  initNps(); // pesquisa de satisfação (o servidor decide se é hora de perguntar)
   document.querySelectorAll('[data-tab]').forEach((t) => (t.onclick = () => selectTab(t.dataset.tab)));
   document.getElementById('sim-save').onclick = saveDialog;
   document.getElementById('sim-open').onclick = openDialog;

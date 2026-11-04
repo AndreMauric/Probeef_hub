@@ -2,6 +2,7 @@
 // "Benchmarking Confinamento Probeef 2026 Feed Manager.xlsb"). As regras ficam em fields.js,
 // as mesmas que o servidor usa. Fluxo: rascunho → enviado → correção/aprovado (ver src/benchmark.js).
 import { api, h, toast } from '/js/common.js';
+import { initNps } from '/js/nps.js';
 import { initTicker } from '/js/ticker.js';
 import { initChat } from '/js/chat.js';
 import { renderDashboard } from './dashboard.js';
@@ -2103,6 +2104,7 @@ async function init() {
   const { user } = await api('/api/auth/me');
   state.me = user;
   initTicker();
+  initNps(); // pesquisa de satisfação (o servidor decide se é hora de perguntar)
   // Mensagens com a equipe: a mesma conversa do portal; cada mensagem leva o Benchmarking e o cliente.
   // Só o cliente (a fazenda) conversa com a equipe por aqui; o Time e os Canais são a equipe.
   if (user.role === 'client' && (user.kind || 'cliente') === 'cliente') {

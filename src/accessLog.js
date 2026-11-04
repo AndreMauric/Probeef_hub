@@ -637,8 +637,9 @@ export function usageCsv(days, { tagIds = [] } = {}) {
   return `${BOM}${[header, ...rows].map((r) => r.map(cell).join(';')).join('\r\n')}\r\n`;
 }
 
-// Quanto a pessoa já usou o portal: relatórios abertos e em quantos dias diferentes.
+// Quanto a pessoa já usou a plataforma: relatórios e ferramentas abertos (o Benchmarking conta como
+// ferramenta) e em quantos dias diferentes.
 export function userActivity(userId) {
-  const views = events.filter((e) => e.userId === userId && typeOf(e) === 'view');
+  const views = events.filter((e) => e.userId === userId && ['view', 'tool_view'].includes(typeOf(e)));
   return { views: views.length, days: new Set(views.map((e) => dayKey.format(new Date(e.at)))).size };
 }

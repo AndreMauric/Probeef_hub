@@ -3023,7 +3023,6 @@ function renderUsage() {
       h('div', {}, sectionTitle('Horários'), heatmap(u.heatmap)),
     ),
     ...(tagSection || []),
-    ...npsSection(u.nps),
     sectionTitle('Saúde dos clientes', chips),
     h('p', { class: 'muted usage-hint' }, 'Clique num cliente para ver usuários, relatórios e o uso dia a dia.'),
     scrollTable(clientsTable),
@@ -3040,6 +3039,13 @@ function renderUsage() {
     ].filter(Boolean),
   );
   renderToolUsage();
+  renderNpsUsage();
+}
+
+// Uso → Satisfação (NPS): a pesquisa vale para a plataforma toda (portal, ferramentas e Benchmarking).
+function renderNpsUsage() {
+  const n = usageState.data?.nps;
+  if (n) document.getElementById('usage-nps').replaceChildren(...npsSection(n));
 }
 
 // ---------- Uso → Ferramentas (4M e 3P) ----------
@@ -3054,6 +3060,7 @@ function selectUsageView(view) {
   });
   document.getElementById('usage').hidden = view !== 'bi';
   document.getElementById('usage-tools').hidden = view !== 'tools';
+  document.getElementById('usage-nps').hidden = view !== 'nps';
 }
 
 function renderToolUsage() {
@@ -3180,6 +3187,27 @@ function npsDelta(cur, prev) {
   return h('span', { class: `delta ${diff > 0 ? 'up' : 'down'}` }, `${diff > 0 ? '▲' : '▼'} ${Math.abs(diff)} pontos vs. período anterior`);
 }
 
+// NPS de cada grupo (público ou lugar onde respondeu), com a variação sobre o período anterior.
+function npsGroups(title, groups = []) {
+  const el = h('table');
+  table(
+    el,
+    [title, 'Respostas', 'NPS', 'Antes'],
+    groups.map((g) =>
+      h(
+        'tr',
+        {},
+        h('td', {}, g.label),
+        h('td', { class: 'mono' }, num(g.responses)),
+        h('td', { class: 'mono' }, h('strong', {}, g.score === null ? '—' : String(g.score)), g.responses && g.responses < 5 ? h('span', { class: 'sub' }, 'poucas respostas') : null),
+        h('td', { class: 'mono' }, g.previousScore === null ? '—' : String(g.previousScore)),
+      ),
+    ),
+    'Nenhuma resposta no período.',
+  );
+  return h('div', { class: 'table-wrap' }, el);
+}
+
 function npsSection(n) {
   if (!n) return [];
   const pct = (v) => (n.responses ? `${Math.round((v / n.responses) * 100)}%` : '—');
@@ -3211,13 +3239,15 @@ function npsSection(n) {
   const comments = h('table');
   table(
     comments,
-    ['Quando', 'Pessoa', 'Cliente', 'Nota', 'Comentário'],
+    ['Quando', 'Pessoa', 'Público', 'Onde', 'Cliente / fazenda', 'Nota', 'Comentário'],
     n.recent.map((r) =>
       h(
         'tr',
         {},
         h('td', { class: 'mono' }, fmtDate(r.at)),
         h('td', {}, r.user),
+        h('td', {}, r.publico || '—'),
+        h('td', {}, r.context || 'Portal (relatórios)'),
         h('td', {}, r.clients.join(', ') || '—'),
         h('td', {}, h('span', { class: `pill ${NPS_CAT[r.category].cls}` }, `${r.score} · ${NPS_CAT[r.category].label}`)),
         h('td', { class: 'nps-comment' }, r.comment || h('span', { class: 'muted' }, 'Sem comentário')),
@@ -3226,11 +3256,11 @@ function npsSection(n) {
     'Nenhuma resposta no período.',
   );
   return [
-    sectionTitle('Satisfação (NPS)', h('label', { class: 'check' }, toggle, h('span', {}, 'Perguntar aos clientes'))),
+    sectionTitle('Satisfação (NPS)', h('label', { class: 'check' }, toggle, h('span', {}, 'Perguntar aos usuários'))),
     h(
       'p',
       { class: 'muted usage-hint' },
-      'A pergunta "De 0 a 10, quanto o portal te ajuda no dia a dia?" aparece no canto da tela para quem já abriu relatórios em pelo menos 2 dias, no máximo a cada 90 dias (quem fecha sem responder é perguntado de novo em 30). NPS = % de promotores (9–10) − % de detratores (0–6), de −100 a 100.',
+      'A pergunta "De 0 a 10, quanto o portal te ajuda no dia a dia?" aparece no canto da tela (no portal, nas ferramentas e no Benchmarking) para quem já abriu relatórios, ferramentas ou o Benchmarking em pelo menos 2 dias, no máximo a cada 90 dias (quem fecha sem responder é perguntado de novo em 30). Nunca aparece para administradores. NPS = % de promotores (9–10) − % de detratores (0–6), de −100 a 100.',
     ),
     h(
       'div',
@@ -3243,6 +3273,7 @@ function npsSection(n) {
     ),
     n.responses ? dist : null,
     n.responses ? h('p', { class: 'nps-legend' }, h('span', {}, h('i', { class: 'sw promotor' }), 'Promotores'), h('span', {}, h('i', { class: 'sw neutro' }), 'Neutros'), h('span', {}, h('i', { class: 'sw detrator' }), 'Detratores (viram alerta)')) : null,
+    n.byPublico?.length || n.byContext?.length ? h('div', { class: 'nps-groups' }, npsGroups('Por público', n.byPublico), npsGroups('Onde respondeu', n.byContext)) : null,
     scrollTable(comments),
   ];
 }

@@ -2,6 +2,7 @@
 // suplementação. Veio do app "Semi Confinamento Probeef" do Power Apps; o cálculo está em model.js.
 // As simulações ficam no portal (/api/semi/simulations), no lugar da lista do SharePoint.
 import { api, h, toast } from '/js/common.js';
+import { initNps } from '/js/nps.js';
 import { initTicker } from '/js/ticker.js';
 import { buildExcel, buildPrint } from './report.js';
 import { CONSUMOS, ESPECIES, FERTILIDADE, MANEJO, N_ING, QUALIDADES, SUPLEMENTACAO, avisos, calc, defaultData, desempenhoSugerido, formula, gradeCompraVenda, gradeMilhoVenda, lotacao } from './model.js';
@@ -858,6 +859,7 @@ async function init() {
     document.getElementById('impersonation').hidden = false;
   }
   initTicker();
+  initNps(); // pesquisa de satisfação (o servidor decide se é hora de perguntar)
   showSimName();
   // Sair com alterações não salvas: o navegador pergunta antes.
   window.addEventListener('beforeunload', (e) => {

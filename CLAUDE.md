@@ -328,6 +328,17 @@ também está na página do Benchmarking (`initChat` com `note`/`welcome` própr
 "entrando como" só lê. Os Alertas CCV podem ser enviados pelo canal `portal`, que vira mensagem
 nessa conversa.
 
+## Pesquisa de satisfação (NPS)
+
+`src/nps.js` + `public/js/nps.js` (cartão no canto da tela; visual em `public/css/nps.css`, carregado pelo
+próprio `nps.js`, com cores de reserva para funcionar no tema do 4M). Pergunta "De 0 a 10, quanto o portal te
+ajuda no dia a dia?" para quem já usa a plataforma: 3+ aberturas de relatório **ou ferramenta** (o Benchmarking
+conta) em 2+ dias (`userActivity`), no máximo a cada 90 dias (30 depois de fechar sem responder). Nunca para
+admin, "entrar como" ou quem ainda precisa trocar a senha. Aparece no portal, nas ferramentas e no Benchmarking
+(`initNps()` em cada `app.js`; o 4M liga por `/js/nps-boot.js`). A resposta guarda `context` (onde: portal ou
+o id da ferramenta, pelo endereço da página) e `publico` (Clientes, Time, Canais ou "só Benchmarking"). Admin →
+Uso → sub-aba **Satisfação (NPS)**: NPS geral, por público e por lugar, e os comentários; nota 0–6 vira alerta.
+
 ## Faixa de cotações (rodapé do portal)
 
 `src/quotes.js` + `public/js/ticker.js`, configurada na aba Cotações do admin (`db().quotes`).

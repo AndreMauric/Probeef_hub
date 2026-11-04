@@ -2811,118 +2811,8 @@ pre.digest {
   white-space: nowrap;
 }
 
-/* ---------- Pesquisa de satisfação (NPS) ---------- */
-
-.nps-card {
-  position: fixed;
-  left: 20px;
-  bottom: calc(20px + env(safe-area-inset-bottom, 0px));
-  z-index: 60;
-  display: grid;
-  gap: 10px;
-  width: min(380px, calc(100vw - 32px));
-  padding: 18px 18px 16px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--surface);
-  color: var(--ink);
-  box-shadow: var(--shadow);
-}
-
-.nps-card h2 {
-  margin: 0;
-  padding-right: 28px;
-  font: 600 15px/1.35 var(--font-ui);
-}
-
-.nps-close {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  width: 36px;
-  height: 36px;
-  border: 0;
-  border-radius: 999px;
-  background: transparent;
-  color: var(--muted);
-  font-size: 20px;
-  cursor: pointer;
-}
-
-.nps-close:hover {
-  background: var(--surface-2);
-  color: var(--ink);
-}
-
-.nps-scale {
-  display: grid;
-  grid-template-columns: repeat(11, minmax(0, 1fr));
-  gap: 4px;
-}
-
-.nps-score {
-  min-height: 36px;
-  padding: 0;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  background: var(--surface-2);
-  color: var(--ink);
-  font: 600 13px/1 var(--font-data);
-  cursor: pointer;
-}
-
-.nps-score:hover {
-  border-color: var(--accent);
-}
-
-.nps-score[aria-pressed='true'] {
-  border-color: var(--accent);
-  background: var(--accent);
-  color: var(--on-accent);
-}
-
-.nps-ends {
-  display: flex;
-  justify-content: space-between;
-  margin-top: -4px;
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.nps-follow {
-  display: grid;
-  gap: 8px;
-}
-
-.nps-follow textarea {
-  resize: vertical;
-}
-
-.nps-actions {
-  display: flex;
-  justify-content: flex-end;
-}
-
-.nps-error {
-  margin: 0;
-  color: var(--danger);
-  font-size: 13px;
-}
-
-.nps-thanks {
-  margin: 0;
-  padding: 6px 0;
-  font-weight: 600;
-}
-
-@media (max-width: 600px) {
-  .nps-card {
-    left: 16px;
-    right: 16px;
-    width: auto;
-    bottom: calc(76px + env(safe-area-inset-bottom, 0px));
-  }
-}
+/* ---------- Pesquisa de satisfação (NPS) ----------
+   O cartão da pesquisa fica em /css/nps.css (carregado pelo /js/nps.js em qualquer página). */
 
 /* NPS no painel de uso */
 .pill-danger {
@@ -4513,4 +4403,12 @@ tr.row-on td {
   .stats.bmk-volume {
     grid-template-columns: repeat(4, 1fr);
   }
+}
+
+/* Uso → Satisfação: NPS por público e por lugar onde respondeu, lado a lado. */
+.nps-groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
+  gap: 16px;
+  margin: 16px 0;
 }
