@@ -1,5 +1,27 @@
 /* Semi Confinamento. Usa os tokens do portal (app.css) e só acrescenta o próprio layout. */
 
+/* Cor fixa de cada produto (paleta categórica validada para daltonismo nos dois temas). O nome sempre
+   aparece junto: a cor só ajuda a achar o produto. */
+:root {
+  --p1: #2a78d6;
+  --p2: #eb6834;
+  --p3: #6250d6;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --p1: #3987e5;
+    --p2: #d95926;
+    --p3: #9085e9;
+  }
+}
+
+:root[data-theme='dark'] {
+  --p1: #3987e5;
+  --p2: #d95926;
+  --p3: #9085e9;
+}
+
 .sc-title {
   font: 600 15px/1.2 var(--font-display);
   color: var(--muted);
@@ -29,6 +51,11 @@
   margin: 0;
 }
 
+.sc-head .viewer-actions {
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+
 .sc-sim-name {
   font-size: 13px;
 }
@@ -51,6 +78,10 @@
   border-radius: var(--radius);
   background: var(--surface);
   box-shadow: var(--shadow);
+}
+
+.sc-card > * {
+  min-width: 0;
 }
 
 .sc-card h2 {
@@ -88,7 +119,7 @@
 /* Cadastro */
 .sc-fields {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(240px, 100%), 1fr));
   gap: 12px 16px;
 }
 
@@ -242,7 +273,7 @@
 /* Resultados: um cartão por produto */
 .sc-kpis {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr));
   gap: 16px;
 }
 
@@ -326,7 +357,7 @@
 
 .sc-heats {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr));
   gap: 18px 24px;
 }
 
@@ -451,9 +482,424 @@
     padding: 12px 16px 32px;
   }
 
+  .sc-inner > *,
+  [data-panel] > * {
+    min-width: 0;
+  }
+
+  .sc-head .tabs {
+    flex: 1 1 100%;
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: auto;
+  }
+
+  .sc-summary-label,
+  .sc-summary-item .muted {
+    display: none;
+  }
+
+  .sc-summary-next {
+    margin-left: 0;
+    width: 100%;
+  }
+
+  .sc-cmp-row {
+    grid-template-columns: minmax(60px, 90px) 1fr auto;
+  }
+
   .sc-title {
     display: none;
   }
+}
+
+
+/* ---------- Identidade dos produtos ---------- */
+.sc-dot {
+  display: inline-block;
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--p1);
+}
+
+.sc-dot.p2 {
+  background: var(--p2);
+}
+
+.sc-dot.p3 {
+  background: var(--p3);
+}
+
+.sc-prod {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.sc-table th.sc-col .sc-prod {
+  justify-content: flex-end;
+  width: 100%;
+  font: 600 12px/1.2 var(--font-ui);
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink);
+}
+
+.sc-prod-edit input.sc-prodname {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ---------- Passos (abas numeradas) ---------- */
+.sc-step-n {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  margin-right: 7px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  color: var(--muted);
+  font: 600 11px/1 var(--font-data);
+}
+
+.tab[aria-selected='true'] .sc-step-n {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.sc-unsaved {
+  color: var(--warn);
+  font-weight: 600;
+}
+
+/* ---------- Campos: preencher x calculado ---------- */
+.sc-table input::placeholder {
+  color: var(--muted);
+  opacity: 0.4;
+}
+
+.sc-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.sc-key {
+  display: inline-block;
+  width: 22px;
+  height: 14px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: var(--surface);
+}
+
+.sc-key.calc {
+  margin-left: 10px;
+  background: color-mix(in srgb, var(--surface-2) 70%, var(--surface));
+}
+
+.sc-table tr.sc-calc td {
+  background: color-mix(in srgb, var(--surface-2) 45%, var(--surface));
+}
+
+.sc-table tr.sc-calc td.sc-var > span:first-child {
+  color: var(--muted);
+}
+
+.sc-table tr.sc-in input:hover,
+.sc-table tr.sc-in select:hover {
+  border-color: var(--accent);
+}
+
+.sc-ok {
+  color: var(--ok);
+  font-weight: 600;
+}
+
+.sc-meter {
+  display: block;
+  height: 5px;
+  margin-top: 6px;
+  border-radius: 3px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+.sc-meter > span {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--warn);
+}
+
+.sc-meter.ok > span {
+  background: var(--ok);
+}
+
+.sc-meter.over > span {
+  background: var(--danger);
+}
+
+.sc-subtitle {
+  margin-top: 6px;
+}
+
+/* ---------- Barra de resultado no rodapé ---------- */
+.sc-summary {
+  position: sticky;
+  bottom: 12px;
+  z-index: 3;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 8px 28px rgb(0 0 0 / 16%);
+}
+
+.sc-summary-label {
+  font: 600 11px/1.2 var(--font-data);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.sc-summary-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink);
+  font: 500 13px/1.2 var(--font-ui);
+  cursor: pointer;
+}
+
+.sc-summary-item:hover {
+  border-color: var(--line);
+  background: var(--surface-2);
+}
+
+.sc-summary-item strong {
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+}
+
+.sc-summary-item .muted {
+  font-size: 12px;
+}
+
+.sc-summary-name {
+  max-width: 16ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sc-summary-next {
+  margin-left: auto;
+}
+
+/* ---------- Resultados ---------- */
+.sc-kpi {
+  border-top: 4px solid var(--p1);
+}
+
+.sc-kpi.p2 {
+  border-top-color: var(--p2);
+}
+
+.sc-kpi.p3 {
+  border-top-color: var(--p3);
+}
+
+.sc-kpi-cap {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.sc-cmps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr));
+  gap: 18px 32px;
+}
+
+.sc-cmp {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+
+.sc-cmp-label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 14px;
+}
+
+.sc-cmp-label .muted {
+  font-size: 12px;
+}
+
+.sc-cmp-bars {
+  display: grid;
+  gap: 2px;
+}
+
+.sc-cmp-row {
+  display: grid;
+  grid-template-columns: minmax(80px, 130px) 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 3px 4px;
+  border-radius: 4px;
+  font-size: 12.5px;
+}
+
+.sc-cmp-row:hover {
+  background: var(--surface-2);
+}
+
+.sc-cmp-name {
+  overflow: hidden;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sc-cmp-track {
+  display: block;
+  height: 14px;
+}
+
+.sc-cmp-bar {
+  display: block;
+  height: 100%;
+  min-width: 2px;
+  border-radius: 0 4px 4px 0;
+  background: var(--p1);
+}
+
+.sc-cmp-bar.p2 {
+  background: var(--p2);
+}
+
+.sc-cmp-bar.p3 {
+  background: var(--p3);
+}
+
+/* Valor negativo: mesma cor do produto, com hachura (não depende só da cor). */
+.sc-cmp-bar.neg {
+  background-image: repeating-linear-gradient(45deg, rgb(255 255 255 / 55%) 0 3px, transparent 3px 7px);
+}
+
+.sc-cmp-val {
+  min-width: 9ch;
+  text-align: right;
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.sc-fold {
+  display: block;
+  max-width: 100%;
+  padding: 0;
+}
+
+.sc-fold > summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 20px;
+  cursor: pointer;
+  list-style: none;
+  font-size: 16px;
+}
+
+.sc-fold > summary::-webkit-details-marker {
+  display: none;
+}
+
+.sc-fold > summary::before {
+  content: '▸';
+  color: var(--muted);
+  transition: transform 0.15s;
+}
+
+.sc-fold[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+.sc-fold > summary > span {
+  min-width: 0;
+}
+
+.sc-fold > summary .muted {
+  font-size: 13px;
+}
+
+.sc-fold > .table-wrap {
+  margin: 0 20px 18px;
+}
+
+/* ---------- Risco ---------- */
+.sc-heat-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.sc-swatch {
+  display: inline-block;
+  width: 18px;
+  height: 14px;
+  margin-left: 8px;
+  border-radius: 3px;
+}
+
+.sc-swatch:first-child {
+  margin-left: 0;
+}
+
+.sc-swatch.neg {
+  background: color-mix(in srgb, var(--danger) 55%, var(--surface));
+}
+
+.sc-swatch.zero {
+  background: color-mix(in srgb, var(--ok) 8%, var(--surface));
+  border: 1px solid var(--line);
+}
+
+.sc-swatch.pos {
+  background: color-mix(in srgb, var(--ok) 55%, var(--surface));
+}
+
+.sc-swatch.mid {
+  outline: 2px solid var(--ink);
+  outline-offset: -2px;
+}
+
+.sc-heatbox h3 {
+  color: var(--ink);
 }
 
 /* Imprimir: só os Resultados, com o cabeçalho da visita. */
@@ -464,7 +910,8 @@
   .ticker,
   dialog,
   .toast,
-  .sc-next {
+  .sc-next,
+  .sc-summary {
     display: none !important;
   }
 

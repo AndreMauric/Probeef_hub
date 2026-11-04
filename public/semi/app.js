@@ -51,13 +51,19 @@ const live = (fn, tag = 'span', attrs = {}) => {
   upd();
   return el;
 };
-function changed() {
+function markDirty() {
   state.dirty = true;
+  showSimName();
+}
+function changed() {
+  markDirty();
   recompute();
 }
 
 function numInput(obj, key, opts = {}) {
-  const input = h('input', { type: 'text', inputmode: 'decimal', value: asInput(obj[key], opts.dec), 'aria-label': opts.label || key });
+  const input = h('input', { type: 'text', inputmode: 'decimal', value: asInput(obj[key], opts.dec), 'aria-label': opts.label || key, placeholder: '0' });
+  // Ao entrar no campo, seleciona o valor: digitar já substitui.
+  input.addEventListener('focus', () => input.select());
   input.addEventListener('change', () => {
     const v = parseNum(input.value);
     if (!Number.isFinite(v) || v < 0) {
@@ -81,16 +87,19 @@ function selInput(obj, key, options, opts = {}) {
 }
 
 function textInput(obj, key, attrs = {}) {
-  return h('input', { type: 'text', value: obj[key] || '', ...attrs, oninput: (e) => ((obj[key] = e.target.value), (state.dirty = true), attrs.after?.()) });
+  return h('input', { type: 'text', value: obj[key] || '', ...attrs, oninput: (e) => ((obj[key] = e.target.value), markDirty(), attrs.after?.()) });
 }
 
 // ---------- Tabela de três colunas (uma por produto) ----------
 
 // Linha: { sec } = título de seção; { key } = campo do produto; { get(r, p) } = valor calculado.
 const prodName = (i) => prods()[i].nome || `Produto ${i + 1}`;
+// Cada produto tem uma cor fixa em todas as abas (--p1..--p3 em semi.css); o nome sempre vai junto.
+const dot = (i) => h('span', { class: `sc-dot p${i + 1}`, 'aria-hidden': 'true' });
+const prodLabel = (i) => h('span', { class: 'sc-prod' }, dot(i), live(() => prodName(i)));
 
 function grid(rows, opts = {}) {
-  const head = h('tr', {}, h('th', {}, opts.first || 'Variável'), [0, 1, 2].map((i) => h('th', { class: 'sc-col' }, live(() => prodName(i)))));
+  const head = h('tr', {}, h('th', {}, opts.first || 'Variável'), [0, 1, 2].map((i) => h('th', { class: 'sc-col' }, prodLabel(i))));
   const body = rows.map((row) => {
     if (row.sec) return h('tr', { class: 'sc-sec' }, h('td', { colspan: 4 }, row.sec));
     const label = h('td', { class: 'sc-var' }, h('span', {}, row.label), row.unit ? h('span', { class: 'sub' }, row.unit) : null);
@@ -110,34 +119,61 @@ function grid(rows, opts = {}) {
         row.extra ? row.extra(i) : null,
       );
     });
-    return h('tr', { class: row.key ? 'sc-in' : '' }, label, cells);
+    return h('tr', { class: row.key ? 'sc-in' : 'sc-calc' }, label, cells);
   });
   return h('div', { class: 'table-wrap' }, h('table', { class: 'sc-table' }, h('thead', {}, head), h('tbody', {}, body)));
 }
 
 const card = (title, sub, ...children) => h('section', { class: 'sc-card' }, h('div', { class: 'sc-card-head' }, h('div', {}, h('h2', {}, title), sub ? h('p', { class: 'muted' }, sub) : null)), ...children);
+// Legenda dos campos: branco = preencher, sombreado = calculado.
+const legenda = () => h('p', { class: 'sc-legend' }, h('span', { class: 'sc-key in' }), 'você preenche', h('span', { class: 'sc-key calc' }), 'calculado na hora');
+// Bloco recolhível (os detalhes dos Resultados).
+const fold = (title, sub, open, ...children) => h('details', { class: 'sc-card sc-fold', open }, h('summary', {}, h('span', {}, h('strong', {}, title), sub ? h('span', { class: 'muted' }, ` · ${sub}`) : null)), ...children);
+
+// Barra fixa no rodapé das abas de entrada: o resultado de cada produto muda enquanto se preenche.
+const STEPS = ['cadastro', 'formulacao', 'zootecnico', 'financeiro', 'resultados', 'risco'];
+const STEP_NAME = { cadastro: 'Cadastro', formulacao: 'Formulação', zootecnico: 'Zootécnico', financeiro: 'Financeiro', resultados: 'Resultados', risco: 'Análise de risco' };
+function summaryBar(tab) {
+  const next = STEPS[STEPS.indexOf(tab) + 1];
+  return h(
+    'div',
+    { class: 'sc-summary' },
+    h('span', { class: 'sc-summary-label' }, 'Lucro agora'),
+    [0, 1, 2].map((i) =>
+      live(
+        () => {
+          const r = R[i];
+          return [dot(i), h('span', { class: 'sc-summary-name' }, prodName(i)), h('strong', { class: r.lucroHa < 0 ? 'sc-neg' : '' }, `R$ ${fmt(r.lucroHa, 0)}/ha`), h('span', { class: 'muted' }, pct(r.rentMes, 1), ' a.m.')];
+        },
+        'button',
+        { class: 'sc-summary-item', type: 'button', title: 'Ver os resultados', onclick: () => selectTab('resultados') },
+      ),
+    ),
+    next ? h('button', { class: 'btn btn-primary btn-sm sc-summary-next', type: 'button', onclick: () => selectTab(next) }, `${STEP_NAME[next]} →`) : null,
+  );
+}
 
 // ---------- 1. Cadastro ----------
 
 function renderCadastro() {
   const c = state.data.cadastro;
   const f = (label, input) => h('label', { class: 'field' }, h('span', {}, label), input);
-  const estado = h('select', { onchange: (e) => ((c.estado = e.target.value), (state.dirty = true)) }, h('option', { value: '' }, '—'), UFS.map((uf) => h('option', { value: uf, selected: c.estado === uf }, uf)));
+  const estado = h('select', { onchange: (e) => ((c.estado = e.target.value), markDirty()) }, h('option', { value: '' }, '—'), UFS.map((uf) => h('option', { value: uf, selected: c.estado === uf }, uf)));
   panel('cadastro').replaceChildren(
     card(
       'Dados da visita',
-      'Identificam a simulação no histórico. Depois siga pelas abas: Formulação, Zootécnico, Financeiro e Resultados.',
+      'Identificam a simulação em "Minhas simulações". Nada aqui é obrigatório: dá para ir direto à Formulação.',
       h(
         'div',
         { class: 'sc-fields' },
         f('Proprietário', textInput(c, 'proprietario')),
         f('Fazenda', textInput(c, 'fazenda')),
-        f('Data da visita', h('input', { type: 'date', value: c.dataVisita || '', onchange: (e) => ((c.dataVisita = e.target.value), (state.dirty = true)) })),
+        f('Data da visita', h('input', { type: 'date', value: c.dataVisita || '', onchange: (e) => ((c.dataVisita = e.target.value), markDirty()) })),
         f('Cidade', textInput(c, 'cidade')),
         f('Estado', estado),
         f('Visita nº', textInput(c, 'nVisita', { inputmode: 'numeric' })),
       ),
-      h('h3', {}, 'Equipe'),
+      h('h3', { class: 'sc-subtitle' }, 'Equipe Probeef'),
       h(
         'div',
         { class: 'sc-fields' },
@@ -149,7 +185,7 @@ function renderCadastro() {
         f('E-mail do ATC', textInput(c, 'emailAtc', { type: 'email' })),
       ),
     ),
-    h('div', { class: 'sc-next' }, h('button', { class: 'btn btn-primary', type: 'button', onclick: () => selectTab('formulacao') }, 'Formulação →')),
+    summaryBar('cadastro'),
   );
 }
 
@@ -162,7 +198,7 @@ function renderFormulacao() {
     {},
     h('th', {}, 'Ingrediente'),
     h('th', { class: 'sc-col' }, 'Preço', h('span', { class: 'sc-th-unit' }, 'R$/t MN')),
-    P.map((p, i) => h('th', { class: 'sc-col' }, textInput(p, 'nome', { class: 'sc-prodname', 'aria-label': `Nome do produto ${i + 1}`, maxlength: 40, after: () => outs.forEach((f) => f()) }), h('span', { class: 'sc-th-unit' }, 'inclusão, % MN'))),
+    P.map((p, i) => h('th', { class: 'sc-col' }, h('span', { class: 'sc-prod sc-prod-edit' }, dot(i), textInput(p, 'nome', { class: 'sc-prodname', title: 'Clique para trocar o nome do produto', 'aria-label': `Nome do produto ${i + 1}`, maxlength: 40, after: () => outs.forEach((f) => f()) })), h('span', { class: 'sc-th-unit' }, 'inclusão, % MN'))),
   );
   const rows = ing().map((x, j) =>
     h(
@@ -185,22 +221,27 @@ function renderFormulacao() {
           { class: 'sc-out' },
           live(() => {
             const t = f[i]().inclTotal;
-            return h('span', { class: Math.abs(t - 100) > 0.05 ? 'sc-warn' : '' }, `${fmt(t, 2)}%`);
+            const ok = Math.abs(t - 100) <= 0.05;
+            return [
+              h('span', { class: ok ? 'sc-ok' : 'sc-warn' }, ok ? '✓ ' : t > 100 ? '▲ ' : '▼ ', `${fmt(t, 1)}%`),
+              h('span', { class: `sc-meter${ok ? ' ok' : t > 100 ? ' over' : ''}`, role: 'img', 'aria-label': `${fmt(t, 1)}% de 100%` }, h('span', { style: `width:${Math.min(t, 100)}%` })),
+            ];
           }),
         ),
       ),
     ),
-    h('tr', {}, h('td', { colspan: 2 }, 'Custo da fórmula', h('span', { class: 'sub' }, 'R$/t')), P.map((p, i) => h('td', { class: 'sc-out' }, live(() => fmt(f[i]().custoFormula, 2))))),
+    h('tr', { class: 'sc-calc' }, h('td', { colspan: 2 }, 'Custo da fórmula', h('span', { class: 'sub' }, 'R$/t')), P.map((p, i) => h('td', { class: 'sc-out' }, live(() => fmt(f[i]().custoFormula, 2))))),
     h('tr', { class: 'sc-in' }, h('td', { colspan: 2 }, 'Custo de produção', h('span', { class: 'sub' }, 'R$/t (mistura, frete da ração…)')), P.map((p, i) => h('td', {}, numInput(p, 'custoProd', { label: `Custo de produção · produto ${i + 1}` })))),
     h('tr', { class: 'sc-total' }, h('td', { colspan: 2 }, 'Custo final', h('span', { class: 'sub' }, 'R$/kg MN')), P.map((p, i) => h('td', { class: 'sc-out' }, live(() => h('strong', {}, fmt(f[i]().custoKg, 3)))))),
   ];
   panel('formulacao').replaceChildren(
     card(
       'Formulação',
-      'Preço de cada ingrediente na matéria natural e a inclusão em cada produto. Os nomes dos produtos (no topo das colunas) aparecem em todas as abas.',
+      'Preço de cada ingrediente (R$ por tonelada, matéria natural) e quanto entra em cada produto. A fórmula de cada produto precisa somar 100%.',
+      legenda(),
       h('div', { class: 'table-wrap' }, h('table', { class: 'sc-table sc-formula' }, h('thead', {}, head), h('tbody', {}, rows, foot))),
     ),
-    h('div', { class: 'sc-next' }, h('button', { class: 'btn btn-primary', type: 'button', onclick: () => selectTab('zootecnico') }, 'Zootécnico →')),
+    summaryBar('formulacao'),
   );
 }
 
@@ -303,10 +344,10 @@ function desempenhoCard() {
 function renderZootecnico() {
   outs = [];
   panel('zootecnico').replaceChildren(
-    card('Informações zootécnicas', 'Campos em branco contam como zero. Os valores calculados se atualizam ao sair de cada campo.', grid(ZOO_ROWS)),
+    card('Informações zootécnicas', 'Campo em branco conta como zero. Os valores calculados mudam assim que você sai do campo.', legenda(), grid(ZOO_ROWS)),
     lotacaoCard(),
     desempenhoCard(),
-    h('div', { class: 'sc-next' }, h('button', { class: 'btn btn-primary', type: 'button', onclick: () => selectTab('financeiro') }, 'Financeiro →')),
+    summaryBar('zootecnico'),
   );
   recompute();
 }
@@ -338,8 +379,8 @@ const FIN_ROWS = [
 function renderFinanceiro() {
   outs = [];
   panel('financeiro').replaceChildren(
-    card('Informações financeiras', null, grid(FIN_ROWS)),
-    h('div', { class: 'sc-next' }, h('button', { class: 'btn btn-primary', type: 'button', onclick: () => selectTab('resultados') }, 'Resultados →')),
+    card('Informações financeiras', 'Valores por cabeça, salvo onde a unidade diz outra coisa.', legenda(), grid(FIN_ROWS)),
+    summaryBar('financeiro'),
   );
   recompute();
 }
@@ -397,15 +438,64 @@ function kpis() {
           const best = R.every((x, k) => k === i || x.lucroHa < r.lucroHa) && R.length > 1;
           const warn = avisos(prods()[i], ing());
           return [
-            h('div', { class: 'sc-kpi-head' }, h('strong', {}, prodName(i)), best ? h('span', { class: 'pill pill-ok' }, 'maior lucro/ha') : null),
+            h('div', { class: 'sc-kpi-head' }, h('span', { class: 'sc-prod' }, dot(i), h('strong', {}, prodName(i))), best ? h('span', { class: 'pill pill-ok' }, '★ maior lucro/ha') : null),
+            h('span', { class: 'sc-kpi-cap' }, 'Lucro por hectare'),
             h('div', { class: `sc-kpi-big${r.lucroHa < 0 ? ' sc-neg' : ''}` }, `R$ ${fmt(r.lucroHa, 0)}`, h('span', {}, '/ha')),
             h('dl', {}, h('dt', {}, 'Lucro'), h('dd', { class: r.lucro < 0 ? 'sc-neg' : '' }, `R$ ${fmt(r.lucro, 2)}/cab`), h('dt', {}, 'Rentabilidade'), h('dd', {}, `${pct(r.rentMes)} ao mês`), h('dt', {}, 'Custo da @ produzida'), h('dd', {}, `R$ ${fmt(r.custoArroba, 2)}`), h('dt', {}, '@ produzidas'), h('dd', {}, `${fmt(r.arrobaHa, 2)} @/ha`)),
             warn.length ? h('ul', { class: 'sc-warnlist' }, warn.map((w) => h('li', {}, w))) : null,
           ];
         },
         'div',
-        { class: 'sc-kpi' },
+        { class: `sc-kpi p${i + 1}` },
       ),
+    ),
+  );
+}
+
+// Comparação lado a lado: uma barra por produto (cor do produto + nome + valor), a partir do zero.
+const COMPARA = [
+  { label: 'Lucro', unit: 'R$/ha', get: (r) => r.lucroHa, dec: 0, better: 'max' },
+  { label: 'Lucro', unit: 'R$/cab', get: (r) => r.lucro, dec: 2, better: 'max' },
+  { label: 'Rentabilidade', unit: '% ao mês', get: (r) => r.rentMes, pct: true, better: 'max' },
+  { label: '@ produzidas', unit: '@/ha', get: (r) => r.arrobaHa, dec: 2, better: 'max' },
+  { label: 'Custo da @ produzida', unit: 'R$/@ · menor é melhor', get: (r) => r.custoArroba, dec: 2, better: 'min' },
+  { label: 'Ponto de equilíbrio', unit: 'R$/@ de venda · menor é melhor', get: (r) => r.equilibrio, dec: 2, better: 'min' },
+];
+
+function comparacao() {
+  return card(
+    'Comparação entre os produtos',
+    'Cada barra começa no zero; a estrela marca o melhor em cada indicador.',
+    live(
+      () =>
+        COMPARA.map((m) => {
+          const vals = R.map((r) => m.get(r));
+          const ok = vals.filter((v) => Number.isFinite(v));
+          const max = Math.max(...ok.map((v) => Math.abs(v)), 1e-9);
+          const best = ok.length ? (m.better === 'max' ? Math.max(...ok) : Math.min(...ok)) : null;
+          return h(
+            'div',
+            { class: 'sc-cmp' },
+            h('div', { class: 'sc-cmp-label' }, h('strong', {}, m.label), h('span', { class: 'muted' }, m.unit)),
+            h(
+              'div',
+              { class: 'sc-cmp-bars' },
+              vals.map((v, i) => {
+                const txt = m.pct ? pct(v, 2) : fmt(v, m.dec);
+                const w = Number.isFinite(v) ? (Math.abs(v) / max) * 100 : 0;
+                return h(
+                  'div',
+                  { class: 'sc-cmp-row', title: `${prodName(i)}: ${txt} ${m.unit.split(' ·')[0]}` },
+                  h('span', { class: 'sc-cmp-name' }, prodName(i)),
+                  h('span', { class: 'sc-cmp-track' }, h('span', { class: `sc-cmp-bar p${i + 1}${v < 0 ? ' neg' : ''}`, style: `width:${w}%` })),
+                  h('span', { class: `sc-cmp-val${v < 0 ? ' sc-neg' : ''}` }, v === best && ok.length > 1 ? '★ ' : '', txt),
+                );
+              }),
+            ),
+          );
+        }),
+      'div',
+      { class: 'sc-cmps' },
     ),
   );
 }
@@ -417,9 +507,11 @@ function renderResultados() {
   panel('resultados').replaceChildren(
     h('div', { class: 'sc-print-head' }, h('h1', {}, 'Semi Confinamento · resultados'), h('p', {}, ident || 'Simulação sem identificação'), c.coordenador || c.atc ? h('p', { class: 'muted' }, [c.coordenador && `Coordenador: ${c.coordenador}`, c.atc && `ATC: ${c.atc}`].filter(Boolean).join(' · ')) : null),
     kpis(),
-    card('Resultado econômico', 'Por cabeça e por hectare (lotação em animais/ha).', grid(RES_RESULT)),
-    card('Custos', null, grid(RES_CUSTO)),
-    card('Resultado zootécnico', null, grid(RES_ZOO)),
+    comparacao(),
+    fold('Resultado econômico', 'lucro, rentabilidade, ponto de equilíbrio e comparação com milho e soja', true, grid(RES_RESULT)),
+    fold('Custos', 'suplemento, operacional, custo da @ e custo total', false, grid(RES_CUSTO)),
+    fold('Resultado zootécnico', 'pesos, arrobas e lotação', false, grid(RES_ZOO)),
+    h('div', { class: 'sc-next' }, h('button', { class: 'btn btn-primary', type: 'button', onclick: () => selectTab('risco') }, 'Análise de risco →')),
   );
   recompute();
 }
@@ -481,7 +573,7 @@ function renderRisco() {
         { class: 'sc-heats' },
         P.map((p, i) => {
           const g = fn(p, ing(), Rk);
-          return h('div', { class: 'sc-heatbox' }, h('h3', {}, prodName(i)), g.semMilho ? h('p', { class: 'sc-callout' }, 'Este produto não tem o ingrediente escolhido como milho: o preço do milho não muda o resultado.') : null, h('div', { class: 'sc-heatwrap' }, heat(g, corner, fmtLinha)));
+          return h('div', { class: 'sc-heatbox' }, h('h3', { class: 'sc-prod' }, dot(i), prodName(i)), g.semMilho ? h('p', { class: 'sc-callout' }, 'Este produto não tem o ingrediente escolhido como milho: o preço do milho não muda o resultado.') : null, h('div', { class: 'sc-heatwrap' }, heat(g, corner, fmtLinha)));
         }),
       ),
     );
@@ -489,6 +581,7 @@ function renderRisco() {
     card(
       'Análise de risco',
       'Lucro em R$/ha para cada combinação de preços, dois passos para baixo e dois para cima. A célula do meio (com borda) é a dos Resultados. Verde: lucro; vermelho: prejuízo; quanto mais forte, maior o valor.',
+      h('p', { class: 'sc-heat-legend' }, h('span', { class: 'sc-swatch neg' }), 'prejuízo', h('span', { class: 'sc-swatch zero' }), 'perto de zero', h('span', { class: 'sc-swatch pos' }), 'lucro', h('span', { class: 'sc-swatch mid' }), 'preços de hoje (os dos Resultados)'),
       h('div', { class: 'sc-ctl' }, ctl('Passo do valor de compra', 'passoCompra', 'R$/@'), ctl('Passo do valor de venda', 'passoVenda', 'R$/@'), ctl('Passo do preço do milho', 'passoMilho', 'R$/sc'), milhoSel),
     ),
     blocos('Valor de compra × valor de venda', 'Linhas: valor de compra do boi magro (R$/@). Colunas: valor de venda do boi gordo (R$/@).', gradeCompraVenda, 'Compra ↓ · Venda →', preco),
@@ -596,7 +689,8 @@ function exportExcel() {
 // ---------- Simulações salvas (o "Histórico" do app) ----------
 
 function showSimName() {
-  document.getElementById('sim-name').textContent = state.sim ? `Simulação: ${state.sim.name}` : '';
+  const el = document.getElementById('sim-name');
+  el.replaceChildren(...[state.sim ? h('span', {}, state.sim.name) : h('span', { class: 'muted' }, 'Simulação nova'), state.dirty ? h('span', { class: 'sc-unsaved' }, ' · não salva') : null].filter(Boolean));
 }
 
 function restore(data) {
@@ -749,6 +843,7 @@ function selectTab(name) {
 
 function printReport() {
   selectTab('resultados');
+  document.querySelectorAll('[data-panel="resultados"] details').forEach((d) => (d.open = true));
   setTimeout(() => window.print(), 50);
 }
 
@@ -776,6 +871,11 @@ async function init() {
     document.getElementById('impersonation').hidden = false;
   }
   initTicker();
+  showSimName();
+  // Sair com alterações não salvas: o navegador pergunta antes.
+  window.addEventListener('beforeunload', (e) => {
+    if (state.dirty) e.preventDefault();
+  });
   document.querySelectorAll('[data-tab]').forEach((t) => (t.onclick = () => selectTab(t.dataset.tab)));
   document.getElementById('sim-new').onclick = newSim;
   document.getElementById('sim-save').onclick = saveDialog;
