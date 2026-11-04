@@ -4,7 +4,7 @@
 import { Router } from 'express';
 import { recordToolAccess, startToolView } from '../accessLog.js';
 import { requireAuth } from '../auth.js';
-import { adminList, canUseBenchmark, clearDraft, coletaAberta, createClientFor, getForUser, isValidator, participantClients, review, saveDraft, setOwner, settings, submit } from '../benchmark.js';
+import { adminList, canUseBenchmark, clearDraft, coletaAberta, createClientFor, getForUser, isValidator, participantClients, prefillQuestionario, review, saveDraft, setOwner, settings, submit } from '../benchmark.js';
 import { canCreateFarm, canCreateTeam, canSetOwner, createMember, isGestor, isInternal, kindOf, ownerCandidates, resetMemberPassword, teamView, updateMember } from '../bmkTeam.js';
 
 export const benchmarkRouter = Router();
@@ -106,6 +106,12 @@ benchmarkRouter.put('/:clientId', route(async (req, res) => {
 benchmarkRouter.post('/:clientId/clear', route(async (req, res) => {
   if (req.impersonator) return res.status(403).json({ error: 'Você está vendo como esse usuário: as alterações não são salvas.' });
   res.json(await clearDraft(req.user, req.params.clientId, req.body || {}));
+}));
+
+// Questionário do ano passado como ponto de partida (só o admin; ver prefillQuestionario).
+benchmarkRouter.post('/:clientId/prefill', route(async (req, res) => {
+  if (req.impersonator) return res.status(403).json({ error: 'Você está vendo como esse usuário: as alterações não são salvas.' });
+  res.json(await prefillQuestionario(req.user, req.params.clientId, req.body || {}));
 }));
 
 benchmarkRouter.post('/:clientId/submit', route(async (req, res) => {

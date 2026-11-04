@@ -1449,3 +1449,43 @@
   min-height: 0;
   max-height: none;
 }
+
+/* Questionário do ano passado: botão do admin, etiqueta nas respostas que vieram de lá e prévia na janela. */
+.bmk-q-tools {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 10px;
+}
+
+.bmk-q-prev {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--warn-bg);
+  color: var(--warn);
+  font: 600 11px/1.5 var(--font-ui);
+  vertical-align: middle;
+}
+
+.bmk-prefill-preview {
+  display: grid;
+  gap: 2px 0;
+  max-height: 220px;
+  margin: 0;
+  padding: 10px 12px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+}
+
+.bmk-prefill-preview dt {
+  margin-top: 6px;
+  color: var(--muted);
+}
+
+.bmk-prefill-preview dd {
+  margin: 0;
+  font-weight: 600;
+}

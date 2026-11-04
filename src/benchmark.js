@@ -203,6 +203,31 @@ export async function saveDraft(user, clientId, body = {}) {
   return view(user, client, sub);
 }
 
+// Questionário do ano passado como ponto de partida (só o admin): as respostas lidas da planilha do ciclo
+// anterior entram nas perguntas em branco (ou em todas, se o admin escolher) e o participante confere. Fica
+// guardado o que veio (sub.prefill), para a tela marcar as respostas que continuam iguais às importadas.
+const blankAnswer = (v) => v === null || v === undefined || v === '' || (Array.isArray(v) && !v.length);
+export async function prefillQuestionario(user, clientId, { version, respostas, modo, arquivo } = {}) {
+  if (user.role !== 'admin') throw new BenchmarkError('Só o administrador traz o questionário do ano passado.', 403);
+  const client = clientOr404(user, clientId);
+  const sub = submissionOf(clientId, { create: true });
+  if (Number(version) !== sub.version) throw new BenchmarkError('Outra pessoa salvou alterações neste benchmarking. Recarregue a página para ver a versão mais nova.', 409);
+  const lidas = Object.fromEntries(Object.entries(cleanRespostas(respostas && typeof respostas === 'object' ? respostas : {})).filter(([, v]) => !blankAnswer(v)));
+  if (!Object.keys(lidas).length) throw new BenchmarkError('Nenhuma resposta encontrada no arquivo.');
+  const todas = modo === 'todas';
+  const aplicar = Object.fromEntries(Object.entries(lidas).filter(([id]) => todas || blankAnswer(sub.respostas[id])));
+  sub.respostas = { ...sub.respostas, ...aplicar };
+  const nome = String(arquivo || '').trim().slice(0, 160);
+  sub.prefill = { at: new Date().toISOString(), by: user.id, arquivo: nome, respostas: lidas };
+  const n = Object.keys(aplicar).length;
+  log(sub, user, 'questionario_anterior', `${n} resposta(s) do questionário do ano passado ${todas ? 'substituíram as atuais' : 'preencheram as perguntas em branco'}${nome ? ` (arquivo ${nome})` : ''}.`);
+  sub.version += 1;
+  sub.updatedAt = new Date().toISOString();
+  sub.updatedBy = user.id;
+  await save();
+  return view(user, client, sub);
+}
+
 // Apaga de uma vez o que foi preenchido (lotes de engorda, de recria e/ou o questionário).
 // Mesmas travas do rascunho; fica registrado no histórico quem apagou e o quê.
 const CLEAR_PARTS = { engorda: 'lotes de engorda', recria: 'lotes de recria', respostas: 'questionário' };

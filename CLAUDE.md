@@ -261,6 +261,12 @@ O admin marca `client.benchmark` (ou o Time cadastra a fazenda já participando)
 - **Comparação entre clientes — só admin** (Admin → Benchmarking → Comparação): `public/benchmark/comparacao.js`
   (resultado de cada cliente com o critério de exclusão, estatísticas, ranking e quartil; `SENTIDO`
   diz se maior ou menor é melhor). Dados de `/api/admin/benchmark/export`. Quartil só com 4+ clientes.
+- **Questionário do ano passado** (só admin, botão na aba Questionário; `prefillQuestionario` em `src/benchmark.js`,
+  `POST /api/benchmark/:clientId/prefill`): lê a planilha do ciclo anterior no navegador (`lerQuestionarioAnterior`: aba
+  Questionário do modelo, Q1 ou Formulário — a de 2025 só tem a Formulário, mesmas 100 perguntas na ordem da Q1 entre
+  títulos de seção) e preenche as perguntas em branco (ou todas). A planilha mostra 0 no lugar do vazio: 0 em texto/escolha,
+  nos custos opcionais, em seção inteira zerada e nas energias 69a–e somando 0 vira em branco. Guarda `sub.prefill` (o que
+  veio), anota no Histórico, e a tela avisa o participante e marca "ano passado" nas respostas ainda iguais.
 - Pergunta 24 (energia da recria) é obrigatória só com "Recria confinada na fazenda" na pergunta 10
   (`reqIf`, `isRequired`).
 - Aba Resultado: "Painel" (`public/benchmark/dashboard.js`: filtros por raça, sexo, categoria,

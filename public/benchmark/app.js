@@ -6,7 +6,7 @@ import { initNps } from '/js/nps.js';
 import { initTicker } from '/js/ticker.js';
 import { initChat } from '/js/chat.js';
 import { renderDashboard } from './dashboard.js';
-import { baixarModelo, lerQuestionario, MODELOS } from './modelo.js';
+import { baixarModelo, lerQuestionario, MODELOS, QUESTIONARIO_SHEET } from './modelo.js';
 import {
   calcLote,
   cleanAnswer,
@@ -925,6 +925,151 @@ function importDialog() {
   dialog.showModal();
 }
 
+// ---------- Questionário do ano passado (só o admin) ----------
+
+// Na planilha, pergunta sem resposta aparece como 0 (vem de fórmula). Em pergunta de texto ou de escolha, 0 é
+// "em branco"; nos custos e preços opcionais (45, 46, 52–54) também, como na importação da planilha.
+const NUMERICAS = new Set(['int', 'num', 'pct']);
+function respostaAnterior(q, v) {
+  if (!q) return null;
+  if ((v === 0 || v === '0') && (!NUMERICAS.has(q.type) || ['q45', 'q46', 'q52', 'q53', 'q54'].includes(q.id))) return null;
+  const a = answerFromCell(q, v);
+  return a === null || (Array.isArray(a) && !a.length) ? null : a;
+}
+
+// Seção em que tudo veio 0 não foi respondida (a planilha mostra 0 no lugar do vazio): sai inteira. As fontes de
+// energia (69a–e) somando 0 também. Um 0 numa seção respondida continua valendo (ex.: nenhuma leitura noturna).
+function semSecoesZeradas(respostas) {
+  for (const s of QUESTIONARIO) {
+    const ids = s.questions.map((q) => q.id).filter((id) => id in respostas);
+    if (ids.length && ids.every((id) => respostas[id] === 0)) ids.forEach((id) => delete respostas[id]);
+  }
+  const energia = ['q69a', 'q69b', 'q69c', 'q69d', 'q69e'].filter((id) => id in respostas);
+  if (energia.length && energia.every((id) => !respostas[id])) energia.forEach((id) => delete respostas[id]);
+  return respostas;
+}
+
+// Título de seção da aba Formulário ("SAÚDE ANIMAL", "SAÚDE ANIMAL (validar/corrigir)"): maiúsculas, sem número.
+const secaoFormulario = (texto) => {
+  const t = String(texto ?? '').replace(/\(.*?\)/g, '').trim();
+  return Boolean(t) && !/\d/.test(t) && t === t.toUpperCase();
+};
+
+// Lê o questionário de um ciclo anterior: modelo do portal (aba Questionário), aba Q1 ou aba Formulário da
+// planilha (a de 2025 só tem a Formulário: mesmas 100 perguntas da Q1, na mesma ordem, entre títulos de seção).
+async function lerQuestionarioAnterior(file) {
+  const XLSX = await loadXlsx();
+  const wb = XLSX.read(await file.arrayBuffer(), { type: 'array', sheets: [QUESTIONARIO_SHEET, 'Q1', 'Formulário'] });
+  const doModelo = lerQuestionario(XLSX, wb, respostaAnterior);
+  if (doModelo && Object.keys(doModelo).length) return { respostas: doModelo, aba: QUESTIONARIO_SHEET };
+  const porOrdem = (linhas, aba) => {
+    const respostas = {};
+    Q1_ROWS.forEach((id, i) => {
+      const a = respostaAnterior(QUESTIONS.find((x) => x.id === id), linhas[i]?.B);
+      if (a !== null) respostas[id] = a;
+    });
+    semSecoesZeradas(respostas);
+    return { respostas, aba, linhas: linhas.length };
+  };
+  if (wb.Sheets.Q1) return porOrdem(XLSX.utils.sheet_to_json(wb.Sheets.Q1, { header: 'A', raw: true, defval: null }), 'Q1');
+  if (wb.Sheets['Formulário']) {
+    const linhas = XLSX.utils
+      .sheet_to_json(wb.Sheets['Formulário'], { header: 'A', raw: true, defval: null })
+      .filter((r) => String(r.A ?? '').trim() && String(r.A).trim().toLowerCase() !== 'seção' && !secaoFormulario(r.A));
+    return porOrdem(linhas, 'Formulário');
+  }
+  return { respostas: {}, aba: null };
+}
+
+const respostaVazia = (v) => v === null || v === undefined || v === '' || (Array.isArray(v) && !v.length);
+const mesmaResposta = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+const textoResposta = (v) => (Array.isArray(v) ? v.join('; ') : String(v));
+
+function prefillDialog() {
+  const fileInput = h('input', { type: 'file', accept: '.xlsb,.xlsx,.xlsm,.xls' });
+  const result = h('div', { class: 'bmk-import-result' });
+  const modos = h(
+    'div',
+    { class: 'bmk-import-modes', hidden: true },
+    h('label', { class: 'check' }, h('input', { type: 'radio', name: 'modo', value: 'vazias', checked: true }), h('span', {}, h('strong', {}, 'Só as perguntas em branco'), ' — o que já foi respondido neste ano fica como está')),
+    h('label', { class: 'check' }, h('input', { type: 'radio', name: 'modo', value: 'todas' }), h('span', {}, h('strong', {}, 'Todas'), ' — as respostas do ano passado substituem as deste ano')),
+  );
+  const submitBtn = h('button', { class: 'btn btn-primary', type: 'submit', disabled: true }, 'Trazer respostas');
+  let lido = null;
+  fileInput.addEventListener('change', async () => {
+    const file = fileInput.files[0];
+    if (!file) return;
+    fill(result, h('p', { class: 'muted' }, 'Lendo a planilha… (arquivos grandes podem levar alguns segundos)'));
+    submitBtn.disabled = true;
+    modos.hidden = true;
+    try {
+      lido = { ...(await lerQuestionarioAnterior(file)), arquivo: file.name };
+      const ids = Object.keys(lido.respostas);
+      if (!ids.length) {
+        fill(result, h('p', { class: 'alert' }, lido.aba ? `A aba "${lido.aba}" não tem respostas.` : 'Não encontrei o questionário neste arquivo (abas Questionário, Q1 ou Formulário).'));
+        return;
+      }
+      const atuais = state.data.respostas;
+      const vazias = ids.filter((id) => respostaVazia(atuais[id]));
+      const diferentes = ids.filter((id) => !respostaVazia(atuais[id]) && !mesmaResposta(atuais[id], lido.respostas[id]));
+      const exemplo = ['q1', 'q2', 'q3', 'q8', 'q9', 'q10'].filter((id) => lido.respostas[id] !== undefined);
+      fill(
+        result,
+        h(
+          'ul',
+          { class: 'bmk-import-list' },
+          h('li', {}, h('strong', {}, ids.length), ` respostas encontradas na aba "${lido.aba}"`),
+          h('li', {}, h('strong', {}, vazias.length), ' perguntas em branco neste ano vão ser preenchidas'),
+          diferentes.length ? h('li', {}, h('strong', {}, diferentes.length), ' já respondidas neste ano estão diferentes do ano passado') : null,
+        ),
+        lido.aba === 'Formulário' && lido.linhas !== Q1_ROWS.length ? h('p', { class: 'bmk-callout warn' }, `A aba Formulário tem ${lido.linhas} perguntas (o questionário tem ${Q1_ROWS.length}): confira se as respostas caíram nas perguntas certas.`) : null,
+        exemplo.length ? h('dl', { class: 'bmk-prefill-preview' }, exemplo.flatMap((id) => [h('dt', {}, `${QUESTIONS.find((q) => q.id === id).n}. ${QUESTIONS.find((q) => q.id === id).text}`), h('dd', {}, textoResposta(lido.respostas[id]))])) : null,
+      );
+      modos.hidden = false;
+      submitBtn.disabled = false;
+    } catch (err) {
+      lido = null;
+      fill(result, h('p', { class: 'alert' }, `Não consegui ler o arquivo: ${err.message}`));
+    }
+  });
+  fill(
+    dialog,
+    h(
+      'form',
+      {
+        class: 'bmk-dialog',
+        onsubmit: async (e) => {
+          e.preventDefault();
+          if (!lido) return;
+          submitBtn.disabled = true;
+          try {
+            // Grava antes o que estiver pendente, para não perder o que foi digitado.
+            await saveNow();
+            const modo = e.target.elements.modo.value;
+            const view = await api(`/api/benchmark/${state.clientId}/prefill`, { method: 'POST', body: { version: state.version, respostas: lido.respostas, modo, arquivo: lido.arquivo } });
+            applyView(view);
+            dialog.close();
+            if (state.tab !== 'questionario') selectTab('questionario');
+            else renderAll();
+            toast('Respostas do ano passado trazidas. O participante vê o aviso para conferir.');
+          } catch (err) {
+            toast(err.message, 'error');
+            submitBtn.disabled = false;
+            sync();
+          }
+        },
+      },
+      h('h2', {}, 'Trazer o questionário do ano passado'),
+      h('p', { class: 'muted' }, `Escolha a planilha de benchmarking do ano passado deste participante (.xlsb ou .xlsx): o questionário é lido da aba "Formulário" ou "Q1" (ou da aba "Questionário" do modelo do portal). Só as respostas entram; os lotes não. O participante vê um aviso para conferir e corrigir o que mudou.`),
+      fileInput,
+      result,
+      modos,
+      h('div', { class: 'dialog-actions' }, h('button', { class: 'btn', type: 'button', onclick: () => dialog.close() }, 'Cancelar'), submitBtn),
+    ),
+  );
+  dialog.showModal();
+}
+
 // ---------- Padronizar listas (o "Validação e Classificação" da planilha) ----------
 
 // ---------- Preencher vários lotes de uma vez (origem, tipo de entrada, raça, categoria) ----------
@@ -1231,8 +1376,27 @@ function renderQuestions() {
   const section = QUESTIONARIO.find((s) => s.id === state.qSection) || QUESTIONARIO[0];
   const idx = QUESTIONARIO.indexOf(section);
   const scrollY = document.getElementById('bmk').scrollTop;
+  // Respostas trazidas do ano passado (pelo admin): aviso para conferir e etiqueta nas que continuam iguais.
+  const pre = state.view?.submission?.prefill;
+  const doAnoPassado = (id) => Boolean(pre) && pre.respostas?.[id] !== undefined && mesmaResposta(state.data.respostas[id], pre.respostas[id]);
+  const iguais = pre ? Object.keys(pre.respostas || {}).filter(doAnoPassado).length : 0;
+  const aviso =
+    pre && iguais
+      ? h(
+          'div',
+          { class: 'bmk-callout' },
+          h('strong', {}, 'Respostas do ano passado'),
+          h('p', {}, `O questionário veio preenchido com as respostas do ano passado (trazidas em ${fmtDateTime(pre.at)}). Confira cada seção: o que continua valendo pode ficar como está; corrija o que mudou. ${iguais} resposta(s) ainda estão iguais às do ano passado (marcadas com "ano passado").`),
+        )
+      : null;
+  const ferramentas =
+    state.isAdmin && editable
+      ? h('div', { class: 'bmk-q-tools' }, h('button', { class: 'btn btn-sm', type: 'button', disabled: state.conflict, onclick: prefillDialog }, 'Trazer questionário do ano passado (Excel)'))
+      : null;
   fill(
     panel,
+    ferramentas,
+    aviso,
     h(
       'div',
       { class: 'bmk-q-layout' },
@@ -1254,7 +1418,7 @@ function renderQuestions() {
             h(
               'div',
               { class: `bmk-q${v.faltando.includes(q.id) ? ' missing' : ''}` },
-              h('label', { class: 'bmk-q-label' }, h('span', { class: 'bmk-q-n' }, q.n), h('span', {}, questionText(q, settings()), isRequired(q, state.data.respostas) ? h('span', { class: 'bmk-req' }, ' *') : null)),
+              h('label', { class: 'bmk-q-label' }, h('span', { class: 'bmk-q-n' }, q.n), h('span', {}, questionText(q, settings()), isRequired(q, state.data.respostas) ? h('span', { class: 'bmk-req' }, ' *') : null), doAnoPassado(q.id) ? h('span', { class: 'bmk-q-prev', title: 'Igual à resposta do ano passado: confira se continua valendo' }, 'ano passado') : null),
               q.hint ? h('small', { class: 'muted' }, questionText({ text: q.hint }, settings())) : null,
               q.reqIfText ? h('small', { class: 'muted' }, q.reqIfText) : null,
               questionInput(q, editable),
@@ -1568,7 +1732,7 @@ async function abrirRelatorio() {
 
 // ---------- Histórico ----------
 
-const ACTION_LABEL = { enviado: 'Enviado para validação', devolver: 'Devolvido para correção', aprovar: 'Aprovado', reabrir: 'Reaberto para edição', limpar: 'Dados apagados' };
+const ACTION_LABEL = { enviado: 'Enviado para validação', devolver: 'Devolvido para correção', aprovar: 'Aprovado', reabrir: 'Reaberto para edição', limpar: 'Dados apagados', questionario_anterior: 'Questionário do ano passado' };
 
 function renderHistory() {
   const panel = document.querySelector('[data-panel="historico"]');
