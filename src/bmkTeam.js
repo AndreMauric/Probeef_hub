@@ -220,6 +220,7 @@ export async function createMember(user, body, farms) {
     confinamento: { status: 'none', requestedAt: null, decidedAt: null },
     pasto: { status: 'none', requestedAt: null, decidedAt: null },
     fornecedores: { status: 'none', requestedAt: null, decidedAt: null },
+    semi: { status: 'none', requestedAt: null, decidedAt: null },
     active: true,
     passwordHash: await hashPassword(password),
     mustChangePassword: true,

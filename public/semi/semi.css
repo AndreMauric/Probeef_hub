@@ -1,0 +1,511 @@
+/* Semi Confinamento. Usa os tokens do portal (app.css) e só acrescenta o próprio layout. */
+
+.sc-title {
+  font: 600 15px/1.2 var(--font-display);
+  color: var(--muted);
+}
+
+.sc {
+  overflow: auto;
+}
+
+.sc-inner {
+  display: grid;
+  gap: 16px;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 16px 20px 40px;
+}
+
+.sc-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.sc-head .tabs {
+  margin: 0;
+}
+
+.sc-sim-name {
+  font-size: 13px;
+}
+
+[data-panel] {
+  display: grid;
+  gap: 16px;
+}
+
+[data-panel][hidden] {
+  display: none;
+}
+
+.sc-card {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 18px 20px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.sc-card h2 {
+  font: 600 18px/1.2 var(--font-ui);
+}
+
+.sc-card h3 {
+  font: 600 14px/1.2 var(--font-ui);
+  color: var(--muted);
+}
+
+.sc-card p {
+  margin: 0;
+}
+
+.sc-card-head p {
+  margin-top: 4px;
+  font-size: 14px;
+  max-width: 110ch;
+}
+
+.sc-next {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.sc-callout {
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--warn-bg);
+  color: var(--ink);
+  font-size: 13px;
+}
+
+/* Cadastro */
+.sc-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px 16px;
+}
+
+.sc input[type='date'],
+.sc input[type='number'] {
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+}
+
+/* Tabelas de três colunas */
+.sc-table {
+  table-layout: fixed;
+  min-width: 720px;
+}
+
+.sc-table th:first-child,
+.sc-table td:first-child {
+  width: 34%;
+}
+
+.sc-formula th:first-child,
+.sc-formula td:first-child {
+  width: 26%;
+}
+
+.sc-formula th:nth-child(2),
+.sc-formula td:nth-child(2) {
+  width: 14%;
+}
+
+.sc-table td,
+.sc-table th {
+  padding: 7px 12px;
+}
+
+.sc-table th.sc-col {
+  text-align: right;
+  white-space: normal;
+}
+
+.sc-th-unit {
+  display: block;
+  margin-top: 3px;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  opacity: 0.8;
+}
+
+.sc-var .sub {
+  font-size: 12px;
+}
+
+.sc-table input,
+.sc-table select {
+  min-height: 34px;
+  padding: 5px 10px;
+  max-width: none;
+}
+
+.sc-table td:not(:first-child) input {
+  text-align: right;
+  font-family: var(--font-data);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.sc-table input.sc-prodname {
+  min-height: 32px;
+  font: 600 13px/1.2 var(--font-ui);
+  letter-spacing: 0;
+  text-transform: none;
+  text-align: right;
+}
+
+.sc-input {
+  position: relative;
+  display: block;
+}
+
+.sc-table .sc-input input {
+  padding-right: 30px;
+}
+
+.sc-suffix {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  transform: translateY(-50%);
+  color: var(--muted);
+  font-size: 12px;
+  pointer-events: none;
+}
+
+.sc-out {
+  text-align: right;
+  font-family: var(--font-data);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.sc-in td:first-child {
+  font-weight: 500;
+}
+
+.sc-sec td {
+  padding-top: 14px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font: 600 11px/1.2 var(--font-data);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.sc-total td {
+  background: var(--surface-2);
+  font-weight: 600;
+}
+
+.sc-use {
+  margin-left: 6px;
+  min-height: 26px;
+  padding: 0 8px;
+  font: 600 12px/1 var(--font-ui);
+}
+
+.sc-neg {
+  color: var(--danger);
+}
+
+.sc-warn {
+  color: var(--warn);
+  font-weight: 600;
+}
+
+.sc-narrow {
+  max-width: 560px;
+}
+
+.sc-narrow .sc-table {
+  min-width: 0;
+}
+
+/* Resultados: um cartão por produto */
+.sc-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+}
+
+.sc-kpi {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.sc-kpi-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.sc-kpi-big {
+  font: 600 28px/1.1 var(--font-display);
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.sc-kpi-big span {
+  margin-left: 4px;
+  font: 500 14px/1 var(--font-ui);
+  color: var(--muted);
+}
+
+.sc-kpi-big.sc-neg {
+  color: var(--danger);
+}
+
+.sc-kpi dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  margin: 0;
+  font-size: 13px;
+}
+
+.sc-kpi dt {
+  color: var(--muted);
+}
+
+.sc-kpi dd {
+  margin: 0;
+  text-align: right;
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+}
+
+.sc-warnlist {
+  margin: 0;
+  padding: 8px 12px 8px 26px;
+  border-radius: var(--radius-sm);
+  background: var(--warn-bg);
+  font-size: 12.5px;
+}
+
+/* Análise de risco */
+.sc-ctl {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px 16px;
+}
+
+.sc-ctl input {
+  text-align: right;
+  font-family: var(--font-data);
+}
+
+.sc-ctl .sc-input input {
+  padding-right: 52px;
+}
+
+.sc-heats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 18px 24px;
+}
+
+.sc-heatbox {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.sc-heatwrap {
+  overflow-x: auto;
+}
+
+.sc-heat {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 2px;
+  font-size: 12.5px;
+}
+
+.sc-heat th,
+.sc-heat td {
+  padding: 7px 4px;
+  border: 0;
+  text-align: right;
+  white-space: nowrap;
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+}
+
+.sc-heat th {
+  background: transparent;
+  letter-spacing: 0;
+  text-transform: none;
+  font-size: 11.5px;
+}
+
+.sc-heat th.sc-corner {
+  text-align: left;
+  font: 600 10.5px/1.2 var(--font-ui);
+}
+
+.sc-heat td {
+  border-radius: 4px;
+  color: var(--ink);
+}
+
+.sc-heat td.pos {
+  background: color-mix(in srgb, var(--ok) var(--t), var(--surface));
+}
+
+.sc-heat td.neg {
+  background: color-mix(in srgb, var(--danger) var(--t), var(--surface));
+}
+
+.sc-heat td.mid {
+  outline: 2px solid var(--ink);
+  outline-offset: -2px;
+  font-weight: 700;
+}
+
+/* Como funciona */
+.sc-help {
+  margin: 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 6px;
+  max-width: 110ch;
+  line-height: 1.5;
+}
+
+/* Simulações salvas */
+.sc-sims {
+  display: grid;
+  gap: 12px;
+  min-width: min(560px, 80vw);
+}
+
+.sc-sims ul {
+  display: grid;
+  gap: 6px;
+  max-height: 60vh;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.sc-sims li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sc-sim {
+  display: grid;
+  flex: 1;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.sc-sim:hover {
+  border-color: var(--accent);
+}
+
+.sc-sim .muted {
+  font-size: 12px;
+}
+
+.sc-print-head {
+  display: none;
+}
+
+@media (max-width: 700px) {
+  .sc-inner {
+    padding: 12px 16px 32px;
+  }
+
+  .sc-title {
+    display: none;
+  }
+}
+
+/* Imprimir: só os Resultados, com o cabeçalho da visita. */
+@media print {
+  .topbar,
+  .sc-head,
+  .impersonation,
+  .ticker,
+  dialog,
+  .toast,
+  .sc-next {
+    display: none !important;
+  }
+
+  html,
+  body,
+  .app,
+  .sc {
+    height: auto !important;
+    overflow: visible !important;
+    background: #ffffff;
+  }
+
+  .sc-inner {
+    max-width: none;
+    padding: 0;
+  }
+
+  .sc-print-head {
+    display: block;
+    padding-bottom: 8px;
+    border-bottom: 2px solid #094140;
+  }
+
+  .sc-print-head h1 {
+    margin: 0 0 4px;
+    font: 600 18px/1.2 var(--font-display);
+  }
+
+  .sc-card,
+  .sc-kpi {
+    box-shadow: none;
+    break-inside: avoid;
+  }
+
+  .sc-table {
+    min-width: 0;
+  }
+
+  .sc-table input {
+    border: 0;
+    padding: 0;
+    min-height: 0;
+  }
+}

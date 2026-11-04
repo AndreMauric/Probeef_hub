@@ -43,7 +43,7 @@ const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyV
 const inUnit = (s) => state.unidade === 'todas' || s.unidade === state.unidade;
 const semAcento = (t) => String(t).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 // Busca por parte do nome (sem acento e sem diferenciar maiúscula); vários termos precisam aparecer todos.
-const matches = (s) => semAcento(state.busca).split(/s+/).filter(Boolean).every((t) => semAcento(`${s.nome} ${s.unidade}`).includes(t));
+const matches = (s) => semAcento(state.busca).split(/\s+/).filter(Boolean).every((t) => semAcento(`${s.nome} ${s.unidade}`).includes(t));
 const included = () => state.suppliers.filter((s) => inUnit(s) && !state.excluded.has(s.id));
 const hasCms = () => state.sheets.some((sh) => sh.hasCms);
 const persp = () => (state.model === 'bp' ? 'confinamento' : state.persp);

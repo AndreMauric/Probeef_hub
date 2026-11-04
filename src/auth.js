@@ -92,7 +92,7 @@ export function clearFailedLogins(key) {
   attempts.delete(key);
 }
 
-// Pedir acesso às ferramentas (4M, 3P, 4M Fornecedores): só Time Cargill e Canais. Cliente Cargill não
+// Pedir acesso às ferramentas (4M, 3P, 4M Fornecedores, Semi Confinamento): só Time Cargill e Canais. Cliente Cargill não
 // pede nem vê as ferramentas que não tem; quem libera para ele é o administrador.
 export const canRequestTools = (user) => !user.bmkOnly && ['cargill', 'canal'].includes(user.kind);
 export const toolRequestRefusal = (user) =>

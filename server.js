@@ -13,6 +13,7 @@ import { ccvRouter } from './src/routes/ccv.js';
 import { chatRouter } from './src/routes/chat.js';
 import { canUsePasto, pastoRouter } from './src/routes/pasto.js';
 import { canUseFornecedores, fornecedoresRouter } from './src/routes/fornecedores.js';
+import { canUseSemi, semiRouter } from './src/routes/semi.js';
 import { benchmarkRouter } from './src/routes/benchmark.js';
 import { canUseBenchmark } from './src/benchmark.js';
 import { confinamentoRouter } from './src/routes/confinamento.js';
@@ -137,6 +138,7 @@ app.use('/api/ccv', ccvRouter);
 app.use('/api/chat', chatRouter);
 app.use('/api/pasto', pastoRouter);
 app.use('/api/fornecedores', fornecedoresRouter);
+app.use('/api/semi', semiRouter);
 app.use('/api/benchmark', benchmarkRouter);
 app.use('/api', portalRouter);
 app.use('/api', (_req, res) => res.status(404).json({ error: 'Rota não encontrada.' }));
@@ -187,6 +189,17 @@ app.use(
     next();
   },
   express.static(path.join(config.root, 'public/fornecedores'), { extensions: ['html'] }),
+);
+
+// Semi Confinamento: mesma regra (logado e liberado, ou admin); ver src/routes/semi.js.
+app.use(
+  '/semi',
+  (req, res, next) => {
+    if (!req.user) return res.redirect('/portal');
+    if (!canUseSemi(req.user)) return res.redirect('/portal#inicio');
+    next();
+  },
+  express.static(path.join(config.root, 'public/semi'), { extensions: ['html'] }),
 );
 
 // Benchmarking Confinamento: quem é de um cliente participante (ou admin); ver src/benchmark.js.

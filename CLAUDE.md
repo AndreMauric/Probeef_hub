@@ -117,6 +117,20 @@ colunas achadas pelo nome (`parseSheet` em `public/fornecedores/model.js`). DP =
 - O corpo da análise salva passa de 100 KB (planilha inteira): `server.js` usa um parser de 500 KB só em
   `/api/fornecedores/simulations`.
 
+### Semi Confinamento (veio do Power Apps)
+
+Quarta ferramenta, mesmo padrão (campo `user.semi`, rotas `/api/semi`, página `/semi`, simulações em
+`semiSimulations`). Substitui o app "Semi Confinamento Probeef" do Power Apps (pacote exportado em
+`Downloads\Seniconfinamento_*.zip`; o código das telas está nos `Src/*.pa.yaml` de dentro do `.msapp`).
+As simulações gravavam numa lista do SharePoint, que não foi migrada (decisão do usuário, nov/2026).
+Compara **três produtos** (formulações) lado a lado: formulação de 8 ingredientes, zootécnico (lotação UA/ha,
+consumo 1/1,5/2% PV, desempenho sugerido pela qualidade do pasto), financeiro, resultados e duas grades de
+risco 5×5 (compra × venda e milho × venda, lucro R$/ha). Cálculo em `public/semi/model.js`, com os
+arredondamentos do app; conferido contra as fórmulas transcritas do app com os valores padrão (bate no
+centavo). Erros do app que foram corrigidos estão na aba "Como funciona" (e marcados com "Corrigido" no
+`model.js`). As telas "Custo Operacional" e "custo depreciação/manutenção" do app não tinham caminho de
+entrada e ficaram de fora.
+
 ### Benchmarking (coleta com validação)
 
 Substitui a coleta pela planilha "Benchmarking Confinamento Probeef 2026 Feed Manager.xlsb"

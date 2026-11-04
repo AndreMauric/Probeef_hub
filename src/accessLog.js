@@ -15,6 +15,7 @@ export const TOOLS = [
   { id: 'confinamento', name: '4M Confinamento' },
   { id: 'pasto', name: '3P · Desempenho a Pasto' },
   { id: 'fornecedores', name: '4M Fornecedores' },
+  { id: 'semi', name: 'Semi Confinamento' },
   { id: 'benchmark', name: 'Benchmarking Confinamento' },
 ];
 import crypto from 'node:crypto';
@@ -403,7 +404,7 @@ function tagBreakdown(rows) {
 const isToolEvent = (e) => typeOf(e) === 'tool_view' || typeOf(e) === 'tool_time';
 const PANEL_TOOLS = TOOLS.filter((t) => t.id !== 'benchmark');
 // Onde cada ferramenta guarda as simulações e o pedido de acesso do usuário.
-const TOOL_DATA = { confinamento: { sims: 'confinamentoSimulations', access: 'confinamento' }, pasto: { sims: 'pastoSimulations', access: 'pasto' }, fornecedores: { sims: 'fornecedoresSimulations', access: 'fornecedores' } };
+const TOOL_DATA = { confinamento: { sims: 'confinamentoSimulations', access: 'confinamento' }, pasto: { sims: 'pastoSimulations', access: 'pasto' }, fornecedores: { sims: 'fornecedoresSimulations', access: 'fornecedores' }, semi: { sims: 'semiSimulations', access: 'semi' } };
 
 function toolTotals(list, w, tools, scopeIds) {
   const ids = new Set(tools.map((t) => t.id));

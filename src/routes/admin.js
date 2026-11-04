@@ -998,6 +998,7 @@ adminRouter.post('/users', route(async (req, res) => {
     confinamento: { status: 'none', requestedAt: null, decidedAt: null },
     pasto: { status: 'none', requestedAt: null, decidedAt: null },
     fornecedores: { status: 'none', requestedAt: null, decidedAt: null },
+    semi: { status: 'none', requestedAt: null, decidedAt: null },
     passwordHash: await hashPassword(password),
     mustChangePassword: true,
     sessionVersion: 1,
@@ -1082,6 +1083,16 @@ adminRouter.post('/users/:id/fornecedores', route(async (req, res) => {
   const status = { approve: 'approved', deny: 'denied', revoke: 'none' }[req.body?.action];
   if (!status) fail('Ação inválida.');
   user.fornecedores = { ...(user.fornecedores || {}), status, decidedAt: new Date().toISOString() };
+  await save();
+  res.json({ user: safeUser(user) });
+}));
+
+// Libera, nega ou revoga o acesso ao Semi Confinamento.
+adminRouter.post('/users/:id/semi', route(async (req, res) => {
+  const user = findOr404(db().users, req.params.id, 'Usuário');
+  const status = { approve: 'approved', deny: 'denied', revoke: 'none' }[req.body?.action];
+  if (!status) fail('Ação inválida.');
+  user.semi = { ...(user.semi || {}), status, decidedAt: new Date().toISOString() };
   await save();
   res.json({ user: safeUser(user) });
 }));

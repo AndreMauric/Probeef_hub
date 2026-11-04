@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Semi Confinamento</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Saira:wght@500;600;700&display=swap" />
+    <script src="/js/theme.js"></script>
+    <link rel="icon" type="image/png" href="/img/probeef-symbol.png" />
+    <link rel="stylesheet" href="/css/app.css" />
+    <link rel="stylesheet" href="/css/ticker.css" />
+    <link rel="stylesheet" href="/semi/semi.css" />
+  </head>
+  <body>
+    <div class="impersonation" id="impersonation" role="status" hidden><span id="impersonation-text"></span></div>
+    <div class="app">
+      <header class="topbar">
+        <a class="brand" href="/portal#inicio"><img class="brand-logo logo-on-light" src="/img/probeef-horizontal.png" alt="Probeef" width="108" height="24" /><img class="brand-logo logo-on-dark" src="/img/probeef-horizontal-light.png" alt="Probeef" width="108" height="24" /><span class="brand-sub">Semi</span></a>
+        <span class="sc-title">Semi Confinamento · três produtos a pasto</span>
+        <span class="spacer"></span>
+        <a class="btn btn-sm" href="/portal#inicio">Voltar ao portal</a>
+        <div class="who"><strong id="user-name"></strong><span class="muted">Probeef · Cargill</span></div>
+        <button class="btn btn-sm btn-ghost theme-toggle" type="button" data-theme-toggle aria-label="Alternar tema claro/escuro">
+          <svg class="icon-sun" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="12" cy="12" r="4.2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 2.5v2.2M12 19.3v2.2M4.6 4.6l1.6 1.6M17.8 17.8l1.6 1.6M2.5 12h2.2M19.3 12h2.2M4.6 19.4l1.6-1.6M17.8 6.2l1.6-1.6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          <svg class="icon-moon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M20.2 14.6A8.5 8.5 0 0 1 9.4 3.8a8.5 8.5 0 1 0 10.8 10.8z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+        </button>
+      </header>
+
+      <main class="sc" id="sc">
+        <div class="sc-inner">
+          <div class="sc-head">
+            <div class="tabs" role="tablist">
+              <button class="tab" role="tab" type="button" data-tab="cadastro" aria-selected="true">Cadastro</button>
+              <button class="tab" role="tab" type="button" data-tab="formulacao" aria-selected="false">Formulação</button>
+              <button class="tab" role="tab" type="button" data-tab="zootecnico" aria-selected="false">Zootécnico</button>
+              <button class="tab" role="tab" type="button" data-tab="financeiro" aria-selected="false">Financeiro</button>
+              <button class="tab" role="tab" type="button" data-tab="resultados" aria-selected="false">Resultados</button>
+              <button class="tab" role="tab" type="button" data-tab="risco" aria-selected="false">Análise de risco</button>
+              <button class="tab" role="tab" type="button" data-tab="ajuda" aria-selected="false">Como funciona</button>
+            </div>
+            <div class="viewer-actions">
+              <span class="muted sc-sim-name" id="sim-name"></span>
+              <button class="btn btn-sm" id="sim-new" type="button">Nova</button>
+              <button class="btn btn-sm" id="sim-open" type="button">Minhas simulações</button>
+              <button class="btn btn-sm" id="excel" type="button">Excel</button>
+              <button class="btn btn-sm" id="print" type="button">Imprimir</button>
+              <button class="btn btn-sm btn-primary" id="sim-save" type="button">Salvar</button>
+            </div>
+          </div>
+
+          <section data-panel="cadastro"></section>
+          <section data-panel="formulacao" hidden></section>
+          <section data-panel="zootecnico" hidden></section>
+          <section data-panel="financeiro" hidden></section>
+          <section data-panel="resultados" hidden></section>
+          <section data-panel="risco" hidden></section>
+          <section data-panel="ajuda" hidden></section>
+        </div>
+      </main>
+    </div>
+
+    <dialog id="dialog"></dialog>
+
+    <script src="/vendor/xlsx.full.min.js"></script>
+    <script type="module" src="/semi/app.js"></script>
+  </body>
+</html>
