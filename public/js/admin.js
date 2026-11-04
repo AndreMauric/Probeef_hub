@@ -1139,7 +1139,7 @@ const BMK_STATUS = {
   correcao: ['Em correção', 'pill pill-danger'],
   aprovado: ['Aprovado', 'pill pill-ok'],
 };
-const bmkState = { data: null };
+const bmkState = { data: null, sel: new Set() }; // sel: participantes marcados para o lembrete
 
 async function loadBenchmark() {
   const box = document.getElementById('benchmark');
@@ -1172,25 +1172,64 @@ function renderBenchmark() {
   const comDados = clients.filter((c) => c.lotesEngorda + c.lotesRecria > 0).length;
   const lotes = (list) => soma(list, 'lotesEngorda') + soma(list, 'lotesRecria');
   const animais = (list) => soma(list, 'animaisEngorda') + soma(list, 'animaisRecria');
+  // Cobrança: quem ainda não enviou pode receber lembrete (src/bmkLembretes.js).
+  const PENDENTE = ['nao_iniciado', 'rascunho', 'correcao'];
+  const pendentes = clients.filter((c) => c.active && PENDENTE.includes(c.status));
+  for (const id of [...bmkState.sel]) if (!pendentes.some((c) => c.clientId === id)) bmkState.sel.delete(id);
+  const marcar = (lista) => {
+    bmkState.sel = new Set(lista.map((c) => c.clientId));
+    renderBenchmark();
+  };
+  const cobranca = pendentes.length
+    ? h(
+        'div',
+        { class: 'bmk-cobranca' },
+        h('span', { class: 'muted' }, 'Selecionar para cobrar:'),
+        [
+          ['Todos os pendentes', pendentes],
+          ['Não iniciados', pendentes.filter((c) => c.status === 'nao_iniciado')],
+          ['Em preenchimento', pendentes.filter((c) => c.status === 'rascunho')],
+          ['Em correção', pendentes.filter((c) => c.status === 'correcao')],
+        ]
+          .filter(([, l]) => l.length)
+          .map(([label, l]) => h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => marcar(l) }, `${label} (${l.length})`)),
+        bmkState.sel.size ? h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => marcar([]) }, 'Limpar') : null,
+        h('span', { class: 'spacer' }),
+        h('button', { class: 'btn btn-sm btn-primary', type: 'button', disabled: !bmkState.sel.size, onclick: () => lembreteDialog([...bmkState.sel]) }, bmkState.sel.size ? `Enviar lembrete (${bmkState.sel.size})` : 'Enviar lembrete'),
+      )
+    : null;
   const tableEl = h('table');
   table(
     tableEl,
-    ['Participante', 'Responsável', 'Gerência', 'Situação', 'Lotes', 'Animais', 'Erros / alertas', 'Questionário', 'Última alteração', ''],
+    ['', 'Participante', 'Responsável', 'Gerência', 'Situação', 'Lotes', 'Animais', 'Erros / alertas', 'Questionário', 'Última alteração', ''],
     clients.map((c) => {
       const [label, cls] = BMK_STATUS[c.status] || BMK_STATUS.nao_iniciado;
+      const pendente = c.active && PENDENTE.includes(c.status);
       return h(
         'tr',
         {},
+        h(
+          'td',
+          { class: 'bmk-sel' },
+          pendente
+            ? h('input', {
+                type: 'checkbox',
+                checked: bmkState.sel.has(c.clientId),
+                'aria-label': `Selecionar ${c.client} para o lembrete`,
+                onchange: (e) => (e.target.checked ? bmkState.sel.add(c.clientId) : bmkState.sel.delete(c.clientId), renderBenchmark()),
+              })
+            : null,
+        ),
         h('td', {}, h('strong', {}, c.client), c.active ? null : h('span', { class: 'sub' }, 'participante desativado')),
         h('td', {}, c.owner || h('span', { class: 'muted' }, '—')),
         h('td', {}, c.gerencia || h('span', { class: 'muted' }, '—')),
-        h('td', {}, h('span', { class: cls }, label), c.submittedAt ? h('span', { class: 'sub' }, `enviado ${fmtDate(c.submittedAt)}`) : null),
+        h('td', {}, h('span', { class: cls }, label), c.submittedAt ? h('span', { class: 'sub' }, `enviado ${fmtDate(c.submittedAt)}`) : null, c.lembrete && pendente ? h('span', { class: 'sub', title: c.lembrete.auto ? `Lembrete automático (${c.lembrete.auto} dia(s) antes do prazo)` : 'Lembrete enviado pelo admin' }, `lembrete ${fmtDate(c.lembrete.at)}${c.lembrete.auto ? ' (auto)' : ''}`) : null),
         h('td', { class: 'mono' }, num(c.lotesEngorda + c.lotesRecria), c.lotesRecria ? h('span', { class: 'sub nowrap' }, `${c.lotesEngorda} eng. · ${c.lotesRecria} rec.`) : null),
         h('td', { class: 'mono' }, num((c.animaisEngorda || 0) + (c.animaisRecria || 0)), c.animaisRecria ? h('span', { class: 'sub nowrap' }, `${num(c.animaisEngorda || 0)} eng. · ${num(c.animaisRecria)} rec.`) : null),
         h('td', {}, c.erros ? h('span', { class: 'pill pill-danger' }, `${c.erros} erros`) : h('span', { class: 'muted' }, '0 erros'), ' ', c.alertas ? h('span', { class: 'pill pill-warn' }, `${c.alertas} alertas`) : null),
         h('td', { class: 'mono' }, `${c.questionario.respondidas}/${c.questionario.visiveis}`, c.questionario.faltando ? h('span', { class: 'sub' }, `faltam ${c.questionario.faltando} obrigatórias`) : null),
         h('td', { class: 'mono' }, c.updatedAt ? fmtDate(c.updatedAt) : '—', c.updatedBy ? h('span', { class: 'sub' }, c.updatedBy) : null),
-        h('td', { class: 'actions' }, h('a', { class: `btn btn-sm${c.status === 'enviado' ? ' btn-primary' : ' btn-ghost'}`, href: `/benchmark?cliente=${c.clientId}`, target: '_blank', rel: 'noopener' }, c.status === 'enviado' ? 'Validar' : 'Abrir')),
+        h('td', { class: 'actions' }, pendente ? h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => lembreteDialog([c.clientId]) }, 'Cobrar') : null, h('a', { class: `btn btn-sm${c.status === 'enviado' ? ' btn-primary' : ' btn-ghost'}`, href: `/benchmark?cliente=${c.clientId}`, target: '_blank', rel: 'noopener' }, c.status === 'enviado' ? 'Validar' : 'Abrir')),
       );
     }),
     'Nenhum participante no benchmarking. Em Clientes → Editar, marque "Participa do Benchmarking".',
@@ -1221,7 +1260,68 @@ function renderBenchmark() {
           ),
         )
       : null,
+    cobranca,
     h('div', { class: 'table-wrap' }, tableEl),
+  );
+}
+
+// Lembrete de cobrança para os participantes escolhidos (pelas Mensagens do portal; ver src/bmkLembretes.js).
+function lembreteDialog(clientIds) {
+  const escolhidos = bmkState.data.clients.filter((c) => clientIds.includes(c.clientId));
+  const modelos = bmkState.data.lembreteModelos || {};
+  const statusDe = [...new Set(escolhidos.map((c) => c.status))];
+  const proprio = h('input', { type: 'checkbox' });
+  const texto = h('textarea', { rows: 6, maxlength: 2000, hidden: true }, modelos[statusDe[0]] || '');
+  const dica = h('small', { class: 'muted', hidden: true }, 'Use {fazenda}, {ano}, {prazo} (frase com o prazo e quantos dias faltam) e {pendencias} (lotes lançados, lotes com erro e perguntas que faltam): cada participante recebe com os dados dele.');
+  const responsavel = h('input', { type: 'checkbox', checked: true });
+  const previa = h('div', { class: 'bmk-lembrete-previa' }, h('p', { class: 'muted' }, 'Montando a prévia…'));
+  let timer = null;
+  const atualizar = () => {
+    clearTimeout(timer);
+    timer = setTimeout(async () => {
+      try {
+        const p = await api('/api/admin/benchmark/lembretes/preview', { method: 'POST', body: { clientIds, texto: proprio.checked ? texto.value : '' } });
+        previa.replaceChildren(
+          ...Object.entries(p.porStatus).map(([st, msg]) => h('div', {}, h('span', { class: 'label' }, `Exemplo · ${(BMK_STATUS[st] || [st])[0]}`), h('p', {}, msg))),
+          ...[
+            [p.semLogin.filter((x) => x.temResponsavel), 'sem login no portal: o responsável recebe o aviso para falar com a fazenda', 'bmk-lembrete-aviso'],
+            [p.semLogin.filter((x) => !x.temResponsavel), 'sem login e sem responsável: não recebem nada (cadastre um login ou um responsável)', 'alert'],
+          ]
+            .filter(([l]) => l.length)
+            .map(([l, texto, cls]) => h('details', { class: cls }, h('summary', {}, `${l.length} participante(s) ${texto}`), h('p', {}, l.map((x) => x.client).join(' · ')))),
+        );
+      } catch (err) {
+        previa.replaceChildren(h('p', { class: 'alert' }, err.message));
+      }
+    }, 300);
+  };
+  proprio.addEventListener('change', () => {
+    texto.hidden = !proprio.checked;
+    dica.hidden = !proprio.checked;
+    atualizar();
+  });
+  texto.addEventListener('input', atualizar);
+  atualizar();
+  formDialog(
+    escolhidos.length === 1 ? `Lembrete para ${escolhidos[0].client}` : `Lembrete para ${escolhidos.length} participantes`,
+    [
+      h('p', { class: 'muted', style: 'margin: 0' }, 'Vai pelas Mensagens do portal para os logins de cada participante. Cada um recebe o texto da sua situação (não iniciado, em preenchimento ou em correção), com o que falta e o prazo.'),
+      escolhidos.length > 1 ? h('p', { class: 'bmk-lembrete-nomes' }, escolhidos.map((c) => c.client).join(' · ')) : null,
+      h('label', { class: 'check' }, responsavel, h('span', {}, 'Avisar também o responsável (Time ou Canais Cargill)')),
+      h('label', { class: 'check' }, proprio, h('span', {}, 'Escrever a mensagem (em vez do texto padrão de cada situação)')),
+      texto,
+      dica,
+      previa,
+    ],
+    {
+      submitLabel: 'Enviar lembrete',
+      onSubmit: async () => {
+        const r = await api('/api/admin/benchmark/lembretes', { method: 'POST', body: { clientIds, texto: proprio.checked ? texto.value : '', responsavel: responsavel.checked } });
+        bmkState.sel.clear();
+        await loadBenchmark();
+        toast(`Lembrete enviado para ${r.enviados.length} participante(s).${r.semDestino.length ? ` Sem ninguém para receber: ${r.semDestino.join(', ')}.` : ''}`, r.semDestino.length ? 'error' : 'info');
+      },
+    },
   );
 }
 
@@ -1235,12 +1335,21 @@ function benchmarkSettingsDialog() {
     const ano = input('bmk-ano', { value: String(s.ano), type: 'text' });
     const prazo = h('input', { type: 'date', value: s.prazo || '' });
     const aberta = h('input', { type: 'checkbox', checked: s.aberta !== false });
+    const lembAuto = h('input', { type: 'checkbox', checked: Boolean(s.lembretes?.auto) });
+    const lembDias = h('input', { type: 'text', value: (s.lembretes?.dias?.length ? s.lembretes.dias : [7, 2]).join(', '), style: 'max-width: 160px', 'aria-label': 'Dias antes do prazo' });
     const parse = (el) => Number(String(el.value).trim().replace(/\./g, '').replace(',', '.'));
     formDialog(
       'Ciclo, limites e listas do benchmarking',
       [
         h('div', { class: 'grid-2' }, field('Ciclo (ano do benchmarking)', ano, 'Os dados se referem ao ano anterior. Mudar o ano abre um ciclo novo; os anteriores ficam guardados.'), field('Prazo de envio (opcional)', prazo)),
         h('label', { class: 'check' }, aberta, h('span', {}, h('strong', {}, 'Coleta aberta'), h('br'), h('span', { class: 'muted' }, 'Fechada: os participantes e a equipe só consultam (não cadastram fazendas nem alteram ou enviam dados). O admin continua podendo tudo.'))),
+        h(
+          'label',
+          { class: 'check' },
+          lembAuto,
+          h('span', {}, h('strong', {}, 'Lembrete automático'), h('br'), h('span', { class: 'muted' }, 'Quem ainda não enviou recebe uma cobrança pelas Mensagens do portal (e o responsável é avisado) nestes dias antes do prazo, a partir das 8h. Precisa de prazo e da coleta aberta.')),
+        ),
+        field('Dias antes do prazo (separe com vírgula; 0 = no dia)', lembDias),
         h('h3', { class: 'usage-title' }, 'Tolerâncias de coerência (valor informado × recalculado)'),
         h('div', { class: 'table-wrap' }, h('table', {}, h('tbody', {}, tol.map((t) => h('tr', {}, h('td', {}, t.label), h('td', {}, t.el), h('td', { class: 'muted' }, t.unit)))))),
         h('h3', { class: 'usage-title' }, 'Faixas esperadas dos indicadores econômicos (mínimo e máximo)'),
@@ -1256,6 +1365,7 @@ function benchmarkSettingsDialog() {
             ano: parse(ano),
             aberta: aberta.checked,
             prazo: prazo.value || null,
+            lembretes: { auto: lembAuto.checked, dias: lembDias.value.split(/[,; ]+/).map(Number).filter((n) => Number.isInteger(n)) },
             tolerancias: Object.fromEntries(tol.map((t) => [t.k, parse(t.el)])),
             faixas: Object.fromEntries(fx.map((f) => [f.k, [parse(f.min), parse(f.max)]])),
             listas: Object.fromEntries(ls.map((l) => [l.k, l.el.value.split('\n').map((x) => x.trim()).filter(Boolean)])),

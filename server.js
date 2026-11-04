@@ -5,6 +5,7 @@ import helmet from 'helmet';
 import { loadAccessLog } from './src/accessLog.js';
 import { generatePassword, hashPassword, loadUser } from './src/auth.js';
 import { startDailyBackups } from './src/backup.js';
+import { startReminderJob } from './src/bmkLembretes.js';
 import { config } from './src/config.js';
 import { adminRouter } from './src/routes/admin.js';
 import { assistantRouter } from './src/routes/assistant.js';
@@ -225,6 +226,7 @@ app.use((err, _req, res, _next) => {
 });
 
 startDailyBackups();
+startReminderJob();
 startRefreshWatcher();
 startDataHealthWatcher();
 

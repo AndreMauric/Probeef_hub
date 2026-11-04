@@ -400,6 +400,11 @@ export async function saveSettings(body = {}) {
   }
   if (body.aberta !== undefined) next.aberta = body.aberta !== false;
   if (body.prazo !== undefined) next.prazo = /^\d{4}-\d{2}-\d{2}$/.test(body.prazo || '') ? body.prazo : null;
+  // Lembrete automático para quem ainda não enviou (src/bmkLembretes.js): dias antes do prazo, de 0 a 60.
+  if (body.lembretes !== undefined) {
+    const dias = [...new Set((Array.isArray(body.lembretes?.dias) ? body.lembretes.dias : []).map(Number).filter((d) => Number.isInteger(d) && d >= 0 && d <= 60))].sort((a, b) => b - a).slice(0, 5);
+    next.lembretes = { auto: Boolean(body.lembretes?.auto) && dias.length > 0, dias };
+  }
   if (body.tolerancias) for (const k of Object.keys(cur.tolerancias)) next.tolerancias[k] = Math.max(0, numOr(body.tolerancias[k], cur.tolerancias[k]));
   if (body.faixas) {
     for (const k of Object.keys(cur.faixas)) {

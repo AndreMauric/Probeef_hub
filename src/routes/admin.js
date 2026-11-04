@@ -12,6 +12,7 @@ import { ccvPages, ccvPdfJob, publicJob, startCcvPdf } from '../ccvPdf.js';
 import { adminQuotes, deleteManual, saveManual, setManualValue, setQuoteOptions } from '../quotes.js';
 import { processMetrics } from '../benchmarkMetrics.js';
 import { checkReportsTo, gerenciaOf, KINDS, responsavelOf } from '../bmkTeam.js';
+import { MODELOS as LEMBRETE_MODELOS, previewReminders, sendReminders, ultimosLembretes } from '../bmkLembretes.js';
 import { adminList as bmkList, exportAll as bmkExport, saveSettings as saveBmkSettings, settings as bmkSettings } from '../benchmark.js';
 import { adminConversation, adminInbox, adminMarkRead, adminSend, chatFile, forgetChat, saveChatFile, setThreadStatus } from '../chat.js';
 import { exportData, listSnapshots, offsiteStatus, sendOffsite, snapshotPath, validateBackup } from '../backup.js';
@@ -310,7 +311,20 @@ adminRouter.get('/ccv/log', (_req, res) => {
 
 // ---------- Benchmarking Confinamento ----------
 
-adminRouter.get('/benchmark', (_req, res) => res.json({ settings: bmkSettings(), clients: bmkList() }));
+adminRouter.get('/benchmark', (_req, res) => {
+  const settings = bmkSettings();
+  // Último lembrete de cobrança de cada participante no ciclo (src/bmkLembretes.js).
+  const lembretes = ultimosLembretes(settings.ano);
+  const clients = bmkList().map((c) => ({ ...c, lembrete: lembretes.has(c.clientId) ? { at: lembretes.get(c.clientId).at, auto: lembretes.get(c.clientId).auto } : null }));
+  res.json({ settings, clients, lembreteModelos: LEMBRETE_MODELOS });
+});
+
+// Cobrança: prévia do texto e envio do lembrete para os participantes escolhidos (src/bmkLembretes.js).
+adminRouter.post('/benchmark/lembretes/preview', (req, res) => res.json(previewReminders(req.body || {})));
+
+adminRouter.post('/benchmark/lembretes', route(async (req, res) => {
+  res.json(await sendReminders(req.user, req.body || {}));
+}));
 
 adminRouter.put('/benchmark/settings', route(async (req, res) => {
   res.json({ settings: await saveBmkSettings(req.body || {}) });

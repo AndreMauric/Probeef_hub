@@ -4412,3 +4412,66 @@ tr.row-on td {
   gap: 16px;
   margin: 16px 0;
 }
+
+/* Benchmarking → Andamento: seleção e lembrete de cobrança. */
+.bmk-cobranca {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  margin: 10px 0;
+}
+
+.bmk-cobranca .spacer {
+  flex: 1;
+}
+
+td.bmk-sel {
+  width: 32px;
+  padding-right: 0;
+}
+
+.bmk-lembrete-nomes {
+  margin: 0;
+  max-height: 90px;
+  overflow: auto;
+  font-size: 13px;
+}
+
+.bmk-lembrete-previa {
+  display: grid;
+  gap: 10px;
+}
+
+.bmk-lembrete-previa > div {
+  padding: 10px 12px;
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
+.bmk-lembrete-previa p {
+  margin: 4px 0 0;
+  white-space: pre-line;
+  font-size: 13.5px;
+}
+
+.bmk-lembrete-previa details {
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+}
+
+.bmk-lembrete-previa details.bmk-lembrete-aviso {
+  background: var(--warn-bg);
+}
+
+.bmk-lembrete-previa details summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.bmk-lembrete-previa details p {
+  max-height: 120px;
+  overflow: auto;
+}

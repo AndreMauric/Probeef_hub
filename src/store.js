@@ -5,7 +5,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { config } from './config.js';
 
-const empty = () => ({ users: [], clients: [], reports: [], images: [], categories: [], tags: [], confinamentoSimulations: [], ccvAlertLog: [], chatThreads: [], chatMessages: [], pastoSimulations: [], fornecedoresSimulations: [], semiSimulations: [], bmkSubmissions: [], gerencias: [] });
+const empty = () => ({ users: [], clients: [], reports: [], images: [], categories: [], tags: [], confinamentoSimulations: [], ccvAlertLog: [], chatThreads: [], chatMessages: [], pastoSimulations: [], fornecedoresSimulations: [], semiSimulations: [], bmkLembretes: [], bmkSubmissions: [], gerencias: [] });
 
 // Usuários antigos tinham um único "clientId"; hoje cada usuário tem uma lista "clientIds".
 function normalize(raw) {

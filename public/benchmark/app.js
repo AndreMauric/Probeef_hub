@@ -1732,7 +1732,7 @@ async function abrirRelatorio() {
 
 // ---------- Histórico ----------
 
-const ACTION_LABEL = { enviado: 'Enviado para validação', devolver: 'Devolvido para correção', aprovar: 'Aprovado', reabrir: 'Reaberto para edição', limpar: 'Dados apagados', questionario_anterior: 'Questionário do ano passado' };
+const ACTION_LABEL = { enviado: 'Enviado para validação', devolver: 'Devolvido para correção', aprovar: 'Aprovado', reabrir: 'Reaberto para edição', limpar: 'Dados apagados', questionario_anterior: 'Questionário do ano passado', lembrete: 'Lembrete de envio' };
 
 function renderHistory() {
   const panel = document.querySelector('[data-panel="historico"]');

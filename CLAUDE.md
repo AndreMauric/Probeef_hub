@@ -267,6 +267,13 @@ O admin marca `client.benchmark` (ou o Time cadastra a fazenda já participando)
   títulos de seção) e preenche as perguntas em branco (ou todas). A planilha mostra 0 no lugar do vazio: 0 em texto/escolha,
   nos custos opcionais, em seção inteira zerada e nas energias 69a–e somando 0 vira em branco. Guarda `sub.prefill` (o que
   veio), anota no Histórico, e a tela avisa o participante e marca "ano passado" nas respostas ainda iguais.
+- **Cobrança (lembretes)** (`src/bmkLembretes.js`): no Andamento do admin, quem não enviou (não iniciado, em
+  preenchimento, em correção) recebe lembrete pelas Mensagens do portal — um ("Cobrar"), vários ou todos os pendentes,
+  com o texto padrão da situação (`MODELOS`, com `{fazenda}`, `{ano}`, `{prazo}`, `{pendencias}`) ou um texto do
+  admin; o responsável (Time/Canais) é avisado junto e, se a fazenda não tem login, só ele. Automático em "Ciclo,
+  limites e listas" (`settings.lembretes`: dias antes do prazo; verificação de hora em hora, a partir das 8h, com
+  prazo e coleta aberta; se o servidor ficou fora no dia, manda na volta uma vez só). Registro em
+  `db().bmkLembretes` (coluna "lembrete" no Andamento) e no Histórico do participante.
 - Pergunta 24 (energia da recria) é obrigatória só com "Recria confinada na fazenda" na pergunta 10
   (`reqIf`, `isRequired`).
 - Aba Resultado: "Painel" (`public/benchmark/dashboard.js`: filtros por raça, sexo, categoria,
