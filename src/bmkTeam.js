@@ -163,7 +163,7 @@ export function teamView(user, farms) {
 
 function readMember(user, body, farmIds, existing) {
   const kind = KINDS[body.kind] ? body.kind : null;
-  if (!kind) throw new TeamError('Escolha o perfil: Time Cargill, Canais Cargill ou Cliente Cargill.');
+  if (!kind) throw new TeamError('Escolha o perfil: Time Cargill, Canais Cargill ou Participante (fazenda).');
   // Time Cargill só o admin cria (no cadastro de usuários). O gestor edita quem já é do Time na
   // equipe dele, mas não cria nem transforma ninguém em Time Cargill.
   const wasCargill = existing && kindOf(existing) === 'cargill';

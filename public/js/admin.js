@@ -1166,36 +1166,46 @@ function renderBenchmark() {
   counter.textContent = waitingAll || '';
   counter.classList.toggle('has-high', waitingAll > 0);
   const count = (s) => clients.filter((c) => c.status === s).length;
+  // Volume da coleta: participantes, lotes e animais (todos e só os aprovados, que entram no resultado).
+  const soma = (list, k) => list.reduce((t, c) => t + (c[k] || 0), 0);
+  const aprovados = clients.filter((c) => c.status === 'aprovado');
+  const comDados = clients.filter((c) => c.lotesEngorda + c.lotesRecria > 0).length;
+  const lotes = (list) => soma(list, 'lotesEngorda') + soma(list, 'lotesRecria');
+  const animais = (list) => soma(list, 'animaisEngorda') + soma(list, 'animaisRecria');
   const tableEl = h('table');
   table(
     tableEl,
-    ['Cliente', 'Responsável', 'Gerência', 'Situação', 'Lotes', 'Erros / alertas', 'Questionário', 'Última alteração', ''],
+    ['Participante', 'Responsável', 'Gerência', 'Situação', 'Lotes', 'Animais', 'Erros / alertas', 'Questionário', 'Última alteração', ''],
     clients.map((c) => {
       const [label, cls] = BMK_STATUS[c.status] || BMK_STATUS.nao_iniciado;
       return h(
         'tr',
         {},
-        h('td', {}, h('strong', {}, c.client), c.active ? null : h('span', { class: 'sub' }, 'cliente desativado')),
+        h('td', {}, h('strong', {}, c.client), c.active ? null : h('span', { class: 'sub' }, 'participante desativado')),
         h('td', {}, c.owner || h('span', { class: 'muted' }, '—')),
         h('td', {}, c.gerencia || h('span', { class: 'muted' }, '—')),
         h('td', {}, h('span', { class: cls }, label), c.submittedAt ? h('span', { class: 'sub' }, `enviado ${fmtDate(c.submittedAt)}`) : null),
-        h('td', { class: 'mono' }, `${c.lotesEngorda} eng. · ${c.lotesRecria} rec.`),
+        h('td', { class: 'mono' }, num(c.lotesEngorda + c.lotesRecria), c.lotesRecria ? h('span', { class: 'sub nowrap' }, `${c.lotesEngorda} eng. · ${c.lotesRecria} rec.`) : null),
+        h('td', { class: 'mono' }, num((c.animaisEngorda || 0) + (c.animaisRecria || 0)), c.animaisRecria ? h('span', { class: 'sub nowrap' }, `${num(c.animaisEngorda || 0)} eng. · ${num(c.animaisRecria)} rec.`) : null),
         h('td', {}, c.erros ? h('span', { class: 'pill pill-danger' }, `${c.erros} erros`) : h('span', { class: 'muted' }, '0 erros'), ' ', c.alertas ? h('span', { class: 'pill pill-warn' }, `${c.alertas} alertas`) : null),
         h('td', { class: 'mono' }, `${c.questionario.respondidas}/${c.questionario.visiveis}`, c.questionario.faltando ? h('span', { class: 'sub' }, `faltam ${c.questionario.faltando} obrigatórias`) : null),
         h('td', { class: 'mono' }, c.updatedAt ? fmtDate(c.updatedAt) : '—', c.updatedBy ? h('span', { class: 'sub' }, c.updatedBy) : null),
         h('td', { class: 'actions' }, h('a', { class: `btn btn-sm${c.status === 'enviado' ? ' btn-primary' : ' btn-ghost'}`, href: `/benchmark?cliente=${c.clientId}`, target: '_blank', rel: 'noopener' }, c.status === 'enviado' ? 'Validar' : 'Abrir')),
       );
     }),
-    'Nenhum cliente no benchmarking. Em Clientes → Editar, marque "Participa do Benchmarking".',
+    'Nenhum participante no benchmarking. Em Clientes → Editar, marque "Participa do Benchmarking".',
   );
   box.replaceChildren(
     h(
       'div',
-      { class: 'stats' },
-      statTile(`Clientes no ciclo ${settings.ano}`, num(clients.length), h('span', { class: 'muted' }, settings.aberta === false ? 'coleta fechada' : 'coleta aberta', settings.prazo ? ` · prazo ${fmtDateOnly(`${settings.prazo}T12:00:00`)}` : '')),
+      { class: 'stats bmk-volume' },
+      statTile('Participantes', num(clients.length), h('span', { class: 'muted' }, `${num(comDados)} com lotes lançados`)),
+      statTile('Lotes', num(lotes(clients)), h('span', { class: 'muted' }, `${num(soma(clients, 'lotesEngorda'))} engorda · ${num(soma(clients, 'lotesRecria'))} recria`)),
+      statTile('Animais', num(animais(clients)), h('span', { class: 'muted' }, `${num(soma(clients, 'animaisEngorda'))} engorda · ${num(soma(clients, 'animaisRecria'))} recria`)),
+      statTile('Participantes aprovados', num(aprovados.length), h('span', { class: 'muted' }, `${num(lotes(aprovados))} lotes · ${num(animais(aprovados))} animais`)),
+      statTile(`Coleta ${settings.ano}`, settings.aberta === false ? 'Fechada' : 'Aberta', settings.prazo ? h('span', { class: 'muted' }, `prazo ${fmtDateOnly(`${settings.prazo}T12:00:00`)}`) : null),
       statTile('Enviados para validar', num(waiting)),
       statTile('Em correção', num(count('correcao'))),
-      statTile('Aprovados', num(count('aprovado'))),
       statTile('Em preenchimento / não iniciados', `${num(count('rascunho'))} / ${num(count('nao_iniciado'))}`),
     ),
     gerencias.length > 1
@@ -1230,7 +1240,7 @@ function benchmarkSettingsDialog() {
       'Ciclo, limites e listas do benchmarking',
       [
         h('div', { class: 'grid-2' }, field('Ciclo (ano do benchmarking)', ano, 'Os dados se referem ao ano anterior. Mudar o ano abre um ciclo novo; os anteriores ficam guardados.'), field('Prazo de envio (opcional)', prazo)),
-        h('label', { class: 'check' }, aberta, h('span', {}, h('strong', {}, 'Coleta aberta'), h('br'), h('span', { class: 'muted' }, 'Fechada: os clientes e a equipe só consultam (não cadastram fazendas nem alteram ou enviam dados). O admin continua podendo tudo.'))),
+        h('label', { class: 'check' }, aberta, h('span', {}, h('strong', {}, 'Coleta aberta'), h('br'), h('span', { class: 'muted' }, 'Fechada: os participantes e a equipe só consultam (não cadastram fazendas nem alteram ou enviam dados). O admin continua podendo tudo.'))),
         h('h3', { class: 'usage-title' }, 'Tolerâncias de coerência (valor informado × recalculado)'),
         h('div', { class: 'table-wrap' }, h('table', {}, h('tbody', {}, tol.map((t) => h('tr', {}, h('td', {}, t.label), h('td', {}, t.el), h('td', { class: 'muted' }, t.unit)))))),
         h('h3', { class: 'usage-title' }, 'Faixas esperadas dos indicadores econômicos (mínimo e máximo)'),
@@ -1301,19 +1311,19 @@ async function exportBenchmark() {
         });
       }
       const periodoCols = [['p_entrada', 'Entrada estimada', 14], ['p_aguas', 'Dias nas águas (%)', 12], ['p_periodo', 'Período', 10]];
-      sheet(name, [['cliente', 'Cliente', 28], ['status', 'Situação', 14], ...fields.map((f) => [f.key, `${f.label}${f.unit ? ` (${f.unit})` : ''}`]), ...periodoCols, ...(recria ? [] : calcCols.map(([k, label]) => [`c_${k}`, label])), ['exclusao', 'Resultado (critério de exclusão)', 50], ['erros', 'Erros', 50], ['alertas', 'Alertas', 60]], rows);
+      sheet(name, [['cliente', 'Participante', 28], ['status', 'Situação', 14], ...fields.map((f) => [f.key, `${f.label}${f.unit ? ` (${f.unit})` : ''}`]), ...periodoCols, ...(recria ? [] : calcCols.map(([k, label]) => [`c_${k}`, label])), ['exclusao', 'Resultado (critério de exclusão)', 50], ['erros', 'Erros', 50], ['alertas', 'Alertas', 60]], rows);
     };
     sheet(
       'Andamento',
-      [['cliente', 'Cliente', 30], ['status', 'Situação', 18], ['eng', 'Lotes engorda'], ['rec', 'Lotes recria'], ['erros', 'Erros'], ['alertas', 'Alertas'], ['quest', 'Questionário respondido']],
-      bmkState.data.clients.map((c) => ({ cliente: c.client, status: (BMK_STATUS[c.status] || BMK_STATUS.nao_iniciado)[0], eng: c.lotesEngorda, rec: c.lotesRecria, erros: c.erros, alertas: c.alertas, quest: `${c.questionario.respondidas}/${c.questionario.visiveis}` })),
+      [['cliente', 'Participante', 30], ['status', 'Situação', 18], ['eng', 'Lotes engorda'], ['rec', 'Lotes recria'], ['aeng', 'Animais engorda'], ['arec', 'Animais recria'], ['erros', 'Erros'], ['alertas', 'Alertas'], ['quest', 'Questionário respondido']],
+      bmkState.data.clients.map((c) => ({ cliente: c.client, status: (BMK_STATUS[c.status] || BMK_STATUS.nao_iniciado)[0], eng: c.lotesEngorda, rec: c.lotesRecria, aeng: c.animaisEngorda || 0, arec: c.animaisRecria || 0, erros: c.erros, alertas: c.alertas, quest: `${c.questionario.respondidas}/${c.questionario.visiveis}` })),
     );
     loteSheet('Lotes Engorda', 'engorda', false);
     loteSheet('Lotes Recria', 'recria', true);
     const qText = (q) => `${q.n}. ${m.questionText(q, data.settings)}`;
     sheet(
       'Questionário',
-      [['cliente', 'Cliente', 28], ...m.QUESTIONS.map((q) => [q.id, qText(q), 24])],
+      [['cliente', 'Participante', 28], ...m.QUESTIONS.map((q) => [q.id, qText(q), 24])],
       data.submissions.map((s) => ({ cliente: s.client, ...Object.fromEntries(m.QUESTIONS.map((q) => [q.id, Array.isArray(s.respostas[q.id]) ? s.respostas[q.id].join('; ') : (s.respostas[q.id] ?? null)])) })),
     );
     const resultRows = [];
@@ -1327,7 +1337,7 @@ async function exportBenchmark() {
         if (rr) recriaRows.push({ cliente: s.client, status: s.status, categoria: cat, ...rr.zootecnico });
       }
     }
-    const resCols = (rows) => [['cliente', 'Cliente', 28], ['status', 'Situação', 14], ['categoria', 'Categoria', 18], ...rows.map(([k, label]) => [k, label])];
+    const resCols = (rows) => [['cliente', 'Participante', 28], ['status', 'Situação', 14], ['categoria', 'Categoria', 18], ...rows.map(([k, label]) => [k, label])];
     const round = (rows) => rows.map((r) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, typeof v === 'number' && Number.isFinite(v) ? Number(v.toFixed(4)) : v])));
     sheet('Resultado Engorda', resCols([...m.ZOO_RESULT_ROWS, ...m.ECO_RESULT_ROWS.filter(([k]) => k !== 'dias')]), round(resultRows));
     sheet('Resultado Recria', resCols(m.ZOO_RESULT_ROWS), round(recriaRows));
@@ -1399,7 +1409,7 @@ const fmtMin = (m) => {
   return `${Math.floor(m / 60)} h${m % 60 ? ` ${String(m % 60).padStart(2, '0')}` : ''}`;
 };
 const fmtDec = (v, d = 1, unit = '') => (v === null || v === undefined ? '—' : `${v.toLocaleString('pt-BR', { minimumFractionDigits: d, maximumFractionDigits: d })}${unit}`);
-const BMK_ROLE = { cliente: 'Cliente', validador: 'Validador', admin: 'Admin' };
+const BMK_ROLE = { cliente: 'Participante', validador: 'Validador', admin: 'Admin' };
 
 function renderBmkMetrics() {
   const d = bmkMetricsState.data;
@@ -1410,7 +1420,7 @@ function renderBmkMetrics() {
   const clientTable = h('table');
   table(
     clientTable,
-    ['Cliente', 'Situação', 'Início', '1º envio', 'Aprovado', 'Dias até enviar', 'Ciclo (dias)', 'Envios / devoluções', 'Validação (dias)', 'Pessoas', 'Preenchimento', 'Página aberta', '1º dado: erros/lote'],
+    ['Participante', 'Situação', 'Início', '1º envio', 'Aprovado', 'Dias até enviar', 'Ciclo (dias)', 'Envios / devoluções', 'Validação (dias)', 'Pessoas', 'Preenchimento', 'Página aberta', '1º dado: erros/lote'],
     d.porCliente.map((c) => {
       const [label, cls] = BMK_STATUS[c.status] || BMK_STATUS.nao_iniciado;
       return h(
@@ -1431,13 +1441,13 @@ function renderBmkMetrics() {
         h('td', { class: 'mono' }, c.primeiro ? fmtDec(c.primeiro.errosPorLote, 2) : '—', c.primeiro ? sub(`${c.primeiro.erros} erros em ${c.primeiro.lotes} lotes`) : null),
       );
     }),
-    'Nenhum cliente no benchmarking.',
+    'Nenhum participante no benchmarking.',
   );
 
   const peopleTable = h('table');
   table(
     peopleTable,
-    ['Pessoa', 'Tipo', 'Cliente(s)', 'Primeira / última atividade', 'Dias ativos', 'Sessões', 'Editando', 'Página aberta', 'Lotes', 'Questionário', 'Resultado', 'Alterações (lotes / quest.)'],
+    ['Pessoa', 'Tipo', 'Participante(s)', 'Primeira / última atividade', 'Dias ativos', 'Sessões', 'Editando', 'Página aberta', 'Lotes', 'Questionário', 'Resultado', 'Alterações (lotes / quest.)'],
     d.porPessoa.map((p) =>
       h(
         'tr',
@@ -1470,7 +1480,7 @@ function renderBmkMetrics() {
       acc += c.erro;
       return h(
         'div',
-        { class: 'bmk-pareto-row', title: `${c.label}: ${c.erro} erros e ${c.alerta} alertas no 1º dado de ${c.clientes} cliente(s); ${c.envioAlerta} alertas no envio` },
+        { class: 'bmk-pareto-row', title: `${c.label}: ${c.erro} erros e ${c.alerta} alertas no 1º dado de ${c.clientes} participante(s); ${c.envioAlerta} alertas no envio` },
         h('span', { class: 'bmk-pareto-label' }, c.label),
         h('span', { class: 'bmk-pareto-track' }, h('span', { class: 'bmk-pareto-bar', style: `width: ${(c.erro / maxErro) * 100}%` })),
         h('span', { class: 'mono' }, num(c.erro)),
@@ -1496,8 +1506,8 @@ function renderBmkMetrics() {
       statTile('Ciclo até aprovar', fmtDec(r.cicloDiasMedia, 1, ' dias'), sub(`mediana ${fmtDec(r.cicloDiasMediana, 1, ' dias')}`)),
       statTile('Até o 1º envio', fmtDec(r.diasAtePrimeiroEnvio, 1, ' dias')),
       statTile('Em validação por rodada', fmtDec(r.validacaoDias, 1, ' dias')),
-      statTile('Devoluções por cliente', fmtDec(r.devolucoesPorCliente)),
-      statTile('Preenchimento por cliente', r.preenchimentoMin === null ? '—' : fmtMin(Math.round(r.preenchimentoMin))),
+      statTile('Devoluções por participante', fmtDec(r.devolucoesPorCliente)),
+      statTile('Preenchimento por participante', r.preenchimentoMin === null ? '—' : fmtMin(Math.round(r.preenchimentoMin))),
       statTile('Erros por lote no 1º dado', fmtDec(r.errosPorLotePrimeiro, 2)),
     ),
     h(
@@ -1512,7 +1522,7 @@ function renderBmkMetrics() {
         ['Aprovados', r.aprovados],
       ].map(([label, n]) => h('div', {}, h('strong', {}, num(n)), h('span', {}, label))),
     ),
-    h('h3', { class: 'bmk-metrics-h' }, 'Por cliente'),
+    h('h3', { class: 'bmk-metrics-h' }, 'Por participante'),
     h('div', { class: 'table-wrap' }, clientTable),
     h('h3', { class: 'bmk-metrics-h' }, 'Por pessoa'),
     h('div', { class: 'table-wrap' }, peopleTable),
@@ -1554,19 +1564,19 @@ async function exportBmkMetrics() {
     };
     const r = d.resumo;
     sheet('Resumo', [['k', 'Indicador', 36], ['v', 'Valor', 16]], [
-      ['Clientes participantes', r.participantes], ['Começaram', r.iniciados], ['Enviaram', r.enviados], ['Aprovados', r.aprovados],
+      ['Participantes', r.participantes], ['Começaram', r.iniciados], ['Enviaram', r.enviados], ['Aprovados', r.aprovados],
       ['% aprovados de primeira', r.pctAprovadoPrimeira], ['Ciclo até aprovar — média (dias)', r.cicloDiasMedia], ['Ciclo até aprovar — mediana (dias)', r.cicloDiasMediana],
-      ['Dias até o 1º envio (média)', r.diasAtePrimeiroEnvio], ['Dias em validação por rodada (média)', r.validacaoDias], ['Devoluções por cliente', r.devolucoesPorCliente],
-      ['Minutos de preenchimento por cliente (média)', r.preenchimentoMin], ['Erros por lote no 1º dado', r.errosPorLotePrimeiro],
+      ['Dias até o 1º envio (média)', r.diasAtePrimeiroEnvio], ['Dias em validação por rodada (média)', r.validacaoDias], ['Devoluções por participante', r.devolucoesPorCliente],
+      ['Minutos de preenchimento por participante (média)', r.preenchimentoMin], ['Erros por lote no 1º dado', r.errosPorLotePrimeiro],
     ].map(([k, v]) => ({ k, v })));
     const dt = (iso) => (iso ? new Date(iso) : null);
-    sheet('Clientes', [['client', 'Cliente', 28], ['status', 'Situação'], ['inicio', 'Início'], ['envio', '1º envio'], ['aprovado', 'Aprovado'], ['diasEnvio', 'Dias até enviar'], ['ciclo', 'Ciclo (dias)'], ['envios', 'Envios'], ['devolucoes', 'Devoluções'], ['primeira', 'Aprovado de primeira'], ['validacao', 'Validação por rodada (dias)'], ['correcao', 'Correção por rodada (dias)'], ['pessoas', 'Pessoas'], ['sessoes', 'Sessões'], ['preench', 'Preenchimento (min)'], ['equipe', 'Edição da equipe (min)'], ['tool', 'Página aberta (min)'], ['lotes', 'Lotes hoje'], ['pLotes', '1º dado: lotes'], ['pErros', '1º dado: erros'], ['pAlertas', '1º dado: alertas'], ['pErrosLote', '1º dado: erros por lote'], ['alertasEnvio', 'Alertas no último envio']],
+    sheet('Participantes', [['client', 'Participante', 28], ['status', 'Situação'], ['inicio', 'Início'], ['envio', '1º envio'], ['aprovado', 'Aprovado'], ['diasEnvio', 'Dias até enviar'], ['ciclo', 'Ciclo (dias)'], ['envios', 'Envios'], ['devolucoes', 'Devoluções'], ['primeira', 'Aprovado de primeira'], ['validacao', 'Validação por rodada (dias)'], ['correcao', 'Correção por rodada (dias)'], ['pessoas', 'Pessoas'], ['sessoes', 'Sessões'], ['preench', 'Preenchimento (min)'], ['equipe', 'Edição da equipe (min)'], ['tool', 'Página aberta (min)'], ['lotes', 'Lotes hoje'], ['pLotes', '1º dado: lotes'], ['pErros', '1º dado: erros'], ['pAlertas', '1º dado: alertas'], ['pErrosLote', '1º dado: erros por lote'], ['alertasEnvio', 'Alertas no último envio']],
       d.porCliente.map((c) => ({ client: c.client, status: (BMK_STATUS[c.status] || BMK_STATUS.nao_iniciado)[0], inicio: dt(c.inicio), envio: dt(c.primeiroEnvio), aprovado: dt(c.aprovadoEm), diasEnvio: c.diasAtePrimeiroEnvio, ciclo: c.cicloDias, envios: c.envios, devolucoes: c.devolucoes, primeira: c.aprovadoPrimeira === null || c.aprovadoPrimeira === undefined ? null : c.aprovadoPrimeira ? 'Sim' : 'Não', validacao: c.validacaoDias, correcao: c.correcaoDias, pessoas: c.pessoas, sessoes: c.sessoes, preench: c.preenchimentoMin, equipe: c.equipeMin, tool: c.toolMin, lotes: c.lotes, pLotes: c.primeiro?.lotes, pErros: c.primeiro?.erros, pAlertas: c.primeiro?.alertas, pErrosLote: c.primeiro?.errosPorLote, alertasEnvio: c.alertasNoEnvio })));
-    sheet('Pessoas', [['name', 'Pessoa', 26], ['email', 'E-mail', 28], ['role', 'Tipo'], ['clients', 'Cliente(s)', 28], ['first', 'Primeira atividade'], ['last', 'Última atividade'], ['dias', 'Dias ativos'], ['sessoes', 'Sessões'], ['saves', 'Salvamentos'], ['edit', 'Editando (min)'], ['tool', 'Página aberta (min)'], ['lotes', 'Lotes (min)'], ['quest', 'Questionário (min)'], ['res', 'Resultado (min)'], ['outros', 'Outras abas (min)'], ['altL', 'Alterações em lotes'], ['altQ', 'Alterações no questionário']],
+    sheet('Pessoas', [['name', 'Pessoa', 26], ['email', 'E-mail', 28], ['role', 'Tipo'], ['clients', 'Participante(s)', 28], ['first', 'Primeira atividade'], ['last', 'Última atividade'], ['dias', 'Dias ativos'], ['sessoes', 'Sessões'], ['saves', 'Salvamentos'], ['edit', 'Editando (min)'], ['tool', 'Página aberta (min)'], ['lotes', 'Lotes (min)'], ['quest', 'Questionário (min)'], ['res', 'Resultado (min)'], ['outros', 'Outras abas (min)'], ['altL', 'Alterações em lotes'], ['altQ', 'Alterações no questionário']],
       d.porPessoa.map((p) => ({ name: p.name, email: p.email, role: BMK_ROLE[p.role] || p.role, clients: p.clients, first: dt(p.first), last: dt(p.last), dias: p.diasAtivos, sessoes: p.sessoes, saves: p.salvamentos, edit: p.editandoMin, tool: p.toolMin, lotes: p.areaMin.lotes, quest: p.areaMin.questionario, res: p.areaMin.resultado, outros: p.areaMin.outros, altL: p.alteracoes.lotes, altQ: p.alteracoes.questionario })));
-    sheet('Pareto', [['label', 'Campo', 30], ['erro', 'Erros no 1º dado'], ['alerta', 'Alertas no 1º dado'], ['envioAlerta', 'Alertas no envio'], ['clientes', 'Clientes com o campo']], d.pareto);
-    sheet('Eventos', [['client', 'Cliente', 28], ['at', 'Quando', 20], ['action', 'Ação'], ['by', 'Por', 26], ['role', 'Papel'], ['lotes', 'Lotes no envio'], ['alertas', 'Alertas no envio']], d.eventos.map((e) => ({ ...e, at: dt(e.at) })));
-    sheet('Sessões', [['client', 'Cliente', 28], ['user', 'Pessoa', 26], ['role', 'Papel'], ['start', 'Início', 20], ['end', 'Fim', 20], ['minutos', 'Minutos'], ['saves', 'Salvamentos'], ['lotes', 'Alterações em lotes'], ['questionario', 'Alterações no questionário']], d.sessoes.map((x) => ({ ...x, start: dt(x.start), end: dt(x.end) })));
+    sheet('Pareto', [['label', 'Campo', 30], ['erro', 'Erros no 1º dado'], ['alerta', 'Alertas no 1º dado'], ['envioAlerta', 'Alertas no envio'], ['clientes', 'Participantes com o campo']], d.pareto);
+    sheet('Eventos', [['client', 'Participante', 28], ['at', 'Quando', 20], ['action', 'Ação'], ['by', 'Por', 26], ['role', 'Papel'], ['lotes', 'Lotes no envio'], ['alertas', 'Alertas no envio']], d.eventos.map((e) => ({ ...e, at: dt(e.at) })));
+    sheet('Sessões', [['client', 'Participante', 28], ['user', 'Pessoa', 26], ['role', 'Papel'], ['start', 'Início', 20], ['end', 'Fim', 20], ['minutos', 'Minutos'], ['saves', 'Salvamentos'], ['lotes', 'Alterações em lotes'], ['questionario', 'Alterações no questionário']], d.sessoes.map((x) => ({ ...x, start: dt(x.start), end: dt(x.end) })));
     for (const ws of wb.worksheets) ws.eachRow((row) => row.eachCell((cell) => { if (cell.value instanceof Date) cell.numFmt = 'dd/mm/yyyy hh:mm'; }));
     const blob = new Blob([await wb.xlsx.writeBuffer()], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     const a = h('a', { href: URL.createObjectURL(blob), download: `Benchmarking-${d.ano}-metricas-do-processo.xlsx` });
@@ -1594,7 +1604,7 @@ async function loadBmkCompare() {
   if (bmkCompare.loading) return;
   bmkCompare.loading = true;
   const box = document.getElementById('benchmark-compare');
-  if (!bmkCompare.data) box.replaceChildren(h('p', { class: 'muted' }, 'Calculando o resultado de cada cliente…'));
+  if (!bmkCompare.data) box.replaceChildren(h('p', { class: 'muted' }, 'Calculando o resultado de cada participante…'));
   try {
     const [data, m, c] = await Promise.all([api('/api/admin/benchmark/export'), import('/benchmark/fields.js'), import('/benchmark/comparacao.js')]);
     Object.assign(bmkCompare, { data, m, c });
@@ -1658,7 +1668,7 @@ function renderBmkCompare() {
   const resumoTable = h('table');
   table(
     resumoTable,
-    ['Indicador', 'Clientes', 'Média', 'Mediana', '1º quartil', '3º quartil', 'Mínimo', 'Máximo', 'Melhor'],
+    ['Indicador', 'Participantes', 'Média', 'Mediana', '1º quartil', '3º quartil', 'Mínimo', 'Máximo', 'Melhor'],
     inds.map(([k, t, dd]) => {
       const s = c.estatisticas(grupo.map((g) => g[kind]?.[cat]?.[k]));
       const f = (v) => (Number.isFinite(v) ? v.toLocaleString('pt-BR', { minimumFractionDigits: dd, maximumFractionDigits: dd }) : '—');
@@ -1680,11 +1690,11 @@ function renderBmkCompare() {
   );
 
   box.replaceChildren(
-    h('p', { class: 'muted bmk-metrics-note' }, 'Só para a equipe: o resultado de cada cliente por categoria, com o critério de exclusão de dados aplicado (como no resultado de cada um), e a posição no grupo. Q1 = os 25% melhores no indicador; Q4 = os 25% piores.'),
+    h('p', { class: 'muted bmk-metrics-note' }, 'Só para a equipe: o resultado de cada participante por categoria, com o critério de exclusão de dados aplicado (como no resultado de cada um), e a posição no grupo. Q1 = os 25% melhores no indicador; Q4 = os 25% piores.'),
     h(
       'div',
       { class: 'bmk-compare-controls' },
-      h('label', { class: 'field' }, h('span', {}, 'Clientes'), sel(bmkCompare.situacao, SITUACOES, (v) => ((bmkCompare.situacao = v), renderBmkCompare()), 'Clientes')),
+      h('label', { class: 'field' }, h('span', {}, 'Participantes'), sel(bmkCompare.situacao, SITUACOES, (v) => ((bmkCompare.situacao = v), renderBmkCompare()), 'Participantes')),
       h('label', { class: 'field' }, h('span', {}, 'Grupo'), grupos.length ? sel(bmkCompare.grupo, grupos, (v) => ((bmkCompare.grupo = v), renderBmkCompare()), 'Grupo') : h('span', { class: 'muted' }, 'sem dados')),
       h('label', { class: 'field' }, h('span', {}, 'Indicador'), indSelect),
     ),
@@ -1693,19 +1703,19 @@ function renderBmkCompare() {
           h(
             'div',
             { class: 'stats' },
-            statTile('Clientes no grupo', num(st.n || 0)),
+            statTile('Participantes no grupo', num(st.n || 0)),
             statTile('Média', fmt(st.media)),
             statTile('Mediana', fmt(st.mediana)),
             statTile('Entre o 1º e o 3º quartil', st.n ? `${fmt(st.q1)} a ${fmt(st.q3)}` : '—'),
             statTile('Mínimo e máximo', st.n ? `${fmt(st.min)} a ${fmt(st.max)}` : '—'),
           ),
           h('h3', { class: 'bmk-metrics-h' }, `${label}: do ${sentido === -1 ? 'menor' : 'maior'} para o ${sentido === -1 ? 'maior' : 'menor'}${sentido ? ` (${sentido === 1 ? 'maior é melhor' : 'menor é melhor'})` : ''}`),
-          ranking.length ? h('div', { class: 'bmk-rank' }, ranking) : h('p', { class: 'muted' }, 'Nenhum cliente com este indicador.'),
+          ranking.length ? h('div', { class: 'bmk-rank' }, ranking) : h('p', { class: 'muted' }, 'Nenhum participante com este indicador.'),
           h('h3', { class: 'bmk-metrics-h' }, 'Todos os indicadores do grupo'),
           h('p', { class: 'muted' }, 'Clique num indicador para ver o ranking dele.'),
           h('div', { class: 'table-wrap' }, resumoTable),
         ]
-      : [h('p', { class: 'muted' }, 'Nenhum cliente com resultado nesta seleção.')]),
+      : [h('p', { class: 'muted' }, 'Nenhum participante com resultado nesta seleção.')]),
   );
 }
 

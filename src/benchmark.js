@@ -47,7 +47,7 @@ function assertAberta(user) {
 
 function clientOr404(user, clientId) {
   const client = participantClients(user).find((c) => c.id === clientId);
-  if (!client) throw new BenchmarkError('Cliente não encontrado ou fora do benchmarking.', 404);
+  if (!client) throw new BenchmarkError('Participante não encontrado ou fora do benchmarking.', 404);
   return client;
 }
 
@@ -70,9 +70,13 @@ export function summary(sub) {
   const eng = validateLotes(sub?.engorda || [], s);
   const rec = validateLotes(sub?.recria || [], s, { recria: true });
   const q = validateQuestionario(sub?.respostas || {});
+  // Animais = soma da quantidade de animais dos lotes (campo vazio conta zero).
+  const animais = (lotes) => (lotes || []).reduce((t, l) => t + (Number(l.qtAnm) > 0 ? Number(l.qtAnm) : 0), 0);
   return {
     lotesEngorda: sub?.engorda.length || 0,
     lotesRecria: sub?.recria.length || 0,
+    animaisEngorda: animais(sub?.engorda),
+    animaisRecria: animais(sub?.recria),
     erros: eng.erros + rec.erros,
     alertas: eng.alertas + rec.alertas,
     lotesComErro: eng.lotesComErro + rec.lotesComErro,
@@ -254,7 +258,7 @@ export async function review(admin, clientId, { action, text }) {
   if (!isValidator(admin)) throw new BenchmarkError('Só quem valida o benchmarking pode aprovar ou devolver.', 403);
   const client = clientOr404(admin, clientId);
   const sub = submissionOf(clientId);
-  if (!sub) throw new BenchmarkError('Este cliente ainda não começou o benchmarking.');
+  if (!sub) throw new BenchmarkError('Este participante ainda não começou o benchmarking.');
   const next = { devolver: 'correcao', aprovar: 'aprovado', reabrir: 'rascunho' }[action];
   if (!next) throw new BenchmarkError('Ação inválida.');
   if (action === 'devolver' && !String(text || '').trim()) throw new BenchmarkError('Explique o que precisa ser corrigido.');
@@ -296,9 +300,9 @@ export async function createClientFor(user, { name, ownerId } = {}) {
   if (!canCreateFarm(user) || !canUseBenchmark(user)) throw new BenchmarkError('Você não participa do benchmarking.', 403);
   assertAberta(user);
   const nome = String(name || '').replace(/\s+/g, ' ').trim().slice(0, 120);
-  if (nome.length < 3) throw new BenchmarkError('Informe o nome do cliente (empresa + unidade do confinamento).');
+  if (nome.length < 3) throw new BenchmarkError('Informe o nome do participante (empresa + unidade do confinamento).');
   const data = db();
-  if (data.clients.some((c) => foldName(c.name) === foldName(nome))) throw new BenchmarkError('Já existe um cliente com esse nome no portal. Se é o mesmo, peça ao admin para incluí-lo na sua equipe.', 409);
+  if (data.clients.some((c) => foldName(c.name) === foldName(nome))) throw new BenchmarkError('Já existe um participante com esse nome no portal. Se é o mesmo, peça ao admin para incluí-lo na sua equipe.', 409);
   const client = { id: newId(), name: nome, rlsUsername: '', rlsRoles: [], reportIds: [], active: true, tagIds: [], ccvFarms: [], benchmark: true, bmkOwner: ownerFor(user, ownerId), createdBy: user.id, createdVia: 'benchmark', createdAt: new Date().toISOString() };
   data.clients.push(client);
   // Cliente e Canais ficam com a fazenda que cadastraram pelo vínculo (clientIds); o Time, pelo responsável.

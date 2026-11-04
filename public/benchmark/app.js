@@ -180,7 +180,7 @@ function renderStatus() {
     sub.status === 'correcao' && lastMsg ? h('div', { class: 'bmk-callout crit' }, h('strong', {}, `Devolvido para correção por ${lastMsg.byName || 'Cargill'} em ${fmtDateTime(lastMsg.at)}:`), h('p', {}, lastMsg.text)) : null,
     sub.status === 'enviado' && !access().review ? h('div', { class: 'bmk-callout warn' }, 'Enviado para a Cargill validar. Enquanto isso a edição fica travada; se precisar mudar algo, fale com o seu coordenador pelo botão Mensagens do portal.') : null,
     sub.status === 'aprovado' ? h('div', { class: 'bmk-callout ok' }, `Aprovado em ${fmtDateTime(sub.decidedAt)}${sub.decidedByName ? ` por ${sub.decidedByName}` : ''}.`) : null,
-    state.me.impersonatedBy ? h('div', { class: 'bmk-callout warn' }, 'Você está vendo como o cliente: nada do que mudar aqui é salvo.') : null,
+    state.me.impersonatedBy ? h('div', { class: 'bmk-callout warn' }, 'Você está vendo como esse usuário: nada do que mudar aqui é salvo.') : null,
   );
 }
 
@@ -1469,11 +1469,11 @@ async function abrirRelatorio() {
     return h(
       'div',
       { class: 'rel-comp' },
-      h('h4', {}, `Comparação com o grupo (${outros.length} cliente(s) com esta categoria, enviados ou aprovados)`),
+      h('h4', {}, `Comparação com o grupo (${outros.length} participante(s) com esta categoria, enviados ou aprovados)`),
       h(
         'table',
         { class: 'rel-table rel-table-comp' },
-        h('thead', {}, h('tr', {}, ['Indicador', 'Cliente', 'Média do grupo', 'Mediana', 'Posição'].map((t) => h('th', {}, t)))),
+        h('thead', {}, h('tr', {}, ['Indicador', 'Participante', 'Média do grupo', 'Mediana', 'Posição'].map((t) => h('th', {}, t)))),
         h(
           'tbody',
           {},
@@ -1500,7 +1500,7 @@ async function abrirRelatorio() {
       'div',
       { class: 'rel-toolbar' },
       h('strong', {}, 'Relatório do benchmarking'),
-      state.isAdmin ? h('span', { class: 'muted' }, 'Versão da equipe: inclui a comparação com o grupo. O relatório que o cliente gera não tem essa seção.') : null,
+      state.isAdmin ? h('span', { class: 'muted' }, 'Versão da equipe: inclui a comparação com o grupo. O relatório que o participante gera não tem essa seção.') : null,
       h('span', { class: 'spacer' }),
       h('button', { class: 'btn btn-primary', type: 'button', onclick: () => window.print() }, 'Imprimir / salvar em PDF'),
       h('button', { class: 'btn', type: 'button', onclick: fechar }, 'Fechar'),
@@ -1664,7 +1664,7 @@ function clearDialog() {
 
 function reviewDialog(action) {
   const titles = { devolver: 'Devolver para correção', aprovar: 'Aprovar benchmarking', reabrir: 'Reabrir para edição' };
-  const text = h('textarea', { rows: 4, required: action === 'devolver', placeholder: action === 'devolver' ? 'O que precisa ser corrigido? (o cliente recebe esta mensagem)' : 'Mensagem para o cliente (opcional)' });
+  const text = h('textarea', { rows: 4, required: action === 'devolver', placeholder: action === 'devolver' ? 'O que precisa ser corrigido? (o participante recebe esta mensagem)' : 'Mensagem para o participante (opcional)' });
   fill(
     dialog,
     h(
@@ -1677,7 +1677,7 @@ function reviewDialog(action) {
             const view = await api(`/api/benchmark/${state.clientId}/review`, { method: 'POST', body: { action, text: text.value } });
             applyView(view);
             dialog.close();
-            toast({ devolver: 'Devolvido. O cliente recebeu a mensagem no portal.', aprovar: 'Aprovado.', reabrir: 'Reaberto para edição.' }[action]);
+            toast({ devolver: 'Devolvido. O participante recebeu a mensagem no portal.', aprovar: 'Aprovado.', reabrir: 'Reaberto para edição.' }[action]);
           } catch (err) {
             toast(err.message, 'error');
           }
@@ -1685,7 +1685,7 @@ function reviewDialog(action) {
       },
       h('h2', {}, titles[action]),
       text,
-      h('p', { class: 'muted' }, 'A mensagem chega para os usuários do cliente pelo botão Mensagens do portal.'),
+      h('p', { class: 'muted' }, 'A mensagem chega para os usuários do participante pelo botão Mensagens do portal.'),
       h('div', { class: 'dialog-actions' }, h('button', { class: 'btn', type: 'button', onclick: () => dialog.close() }, 'Cancelar'), h('button', { class: `btn ${action === 'devolver' ? 'btn-danger' : 'btn-primary'}`, type: 'submit' }, titles[action])),
     ),
   );
@@ -1739,7 +1739,7 @@ function newClientDialog(owners = []) {
         },
       },
       h('h2', {}, 'Cadastrar fazenda no benchmarking'),
-      h('label', { class: 'bmk-field' }, h('span', {}, 'Nome do cliente (empresa + unidade do confinamento)'), name),
+      h('label', { class: 'bmk-field' }, h('span', {}, 'Nome do participante (empresa + unidade do confinamento)'), name),
       owners.length ? h('label', { class: 'bmk-field' }, h('span', {}, 'Responsável'), owner) : null,
       h('p', { class: 'muted' }, state.kind === 'cliente' ? 'A fazenda entra só no Benchmarking e fica com você para preencher; a equipe Cargill que acompanha você também passa a vê-la.' : 'A fazenda entra só no Benchmarking (sem relatórios do portal) e aparece para o responsável e para os gestores acima dele. O login de quem vai preencher na fazenda é criado por um gestor, na aba Equipe.'),
       h('div', { class: 'dialog-actions' }, h('button', { class: 'btn', type: 'button', onclick: () => dialog.close() }, 'Cancelar'), h('button', { class: 'btn btn-primary', type: 'submit' }, 'Cadastrar')),
@@ -1829,7 +1829,7 @@ async function renderOverview() {
       h(
         'table',
         { class: 'bmk-grid bmk-overview' },
-        h('thead', {}, h('tr', {}, ['Cliente', 'Responsável', 'Gerência', 'Situação', 'Lotes', 'Erros / alertas', 'Questionário', 'Última alteração', ''].map((t) => h('th', {}, t)))),
+        h('thead', {}, h('tr', {}, ['Participante', 'Responsável', 'Gerência', 'Situação', 'Lotes', 'Animais', 'Erros / alertas', 'Questionário', 'Última alteração', ''].map((t) => h('th', {}, t)))),
         h(
           'tbody',
           {},
@@ -1843,6 +1843,7 @@ async function renderOverview() {
                   h('td', {}, c.gerencia || h('span', { class: 'muted' }, '—')),
                   h('td', {}, pill(c.status), c.submittedAt ? h('small', { class: 'muted bmk-sub' }, `enviado ${fmtDateTime(c.submittedAt)}`) : null),
                   h('td', {}, `${c.lotesEngorda} eng. · ${c.lotesRecria} rec.`),
+                  h('td', {}, ((c.animaisEngorda || 0) + (c.animaisRecria || 0)).toLocaleString('pt-BR')),
                   h('td', {}, c.erros ? h('span', { class: 'bmk-chip crit' }, `✕ ${c.erros}`) : h('span', { class: 'muted' }, '0 erros'), ' ', c.alertas ? h('span', { class: 'bmk-chip warn' }, `⚠ ${c.alertas}`) : null),
                   h('td', {}, `${c.questionario.respondidas}/${c.questionario.visiveis}`, c.questionario.faltando ? h('small', { class: 'muted bmk-sub' }, `faltam ${c.questionario.faltando} obrigatórias`) : null),
                   h('td', {}, c.updatedAt ? fmtDateTime(c.updatedAt) : '—', c.updatedBy ? h('small', { class: 'muted bmk-sub' }, c.updatedBy) : null),
@@ -1860,7 +1861,7 @@ async function renderOverview() {
 // O gestor cria e administra os usuários abaixo dele: Time Cargill, Canais Cargill (que só usam o
 // Benchmarking nas fazendas em que são responsáveis) e os logins dos clientes das fazendas da equipe.
 
-const KIND_LABEL = { cliente: 'Cliente Cargill', cargill: 'Time Cargill', canal: 'Canais Cargill' };
+const KIND_LABEL = { cliente: 'Participante (fazenda)', cargill: 'Time Cargill', canal: 'Canais Cargill' };
 
 function showPassword(title, email, password) {
   const code = h('code', { class: 'bmk-password' }, password);
@@ -1898,9 +1899,9 @@ function memberDialog(team, member) {
   const farmsField = h(
     'div',
     { class: 'bmk-field' },
-    h('span', {}, 'Fazendas que este cliente vê (opcional)'),
+    h('span', {}, 'Fazendas que este participante vê (opcional)'),
     team.farms.length ? h('div', { class: 'bmk-checklist' }, farmBoxes.map(({ f, box }) => h('label', { class: 'check' }, box, h('span', {}, f.name)))) : null,
-    h('small', { class: 'muted' }, 'Nenhuma marcada: o login fica sem fazenda. Cadastre a fazenda na aba Clientes quando precisar e depois marque aqui (Editar).'),
+    h('small', { class: 'muted' }, 'Nenhuma marcada: o login fica sem fazenda. Cadastre a fazenda na aba Participantes quando precisar e depois marque aqui (Editar).'),
   );
   const sync = () => {
     const k = kind.value;
@@ -2026,10 +2027,10 @@ async function renderTeam() {
       'div',
       { class: 'bmk-toolbar' },
       readOnly ? null : h('button', { class: 'btn btn-sm btn-primary', type: 'button', onclick: () => memberDialog(team, null) }, '+ Novo usuário'),
-      h('p', { class: 'muted' }, 'Você cria usuários de Canais Cargill e os logins dos clientes das fazendas da sua equipe, só para o Benchmarking (não acessam relatórios nem ferramentas da plataforma). Pessoas do Time Cargill são cadastradas pelo administrador.', team.canCreateTeam ? ' Também pode tornar alguém gestor.' : ''),
+      h('p', { class: 'muted' }, 'Você cria usuários de Canais Cargill e os logins dos participantes das fazendas da sua equipe, só para o Benchmarking (não acessam relatórios nem ferramentas da plataforma). Pessoas do Time Cargill são cadastradas pelo administrador.', team.canCreateTeam ? ' Também pode tornar alguém gestor.' : ''),
     ),
     table('Equipe Cargill', ordered, 'Ninguém responde a você ainda.'),
-    table('Clientes', clientes.map((m) => [m, 0]), 'Nenhum login de cliente nas fazendas da sua equipe.'),
+    table('Participantes', clientes.map((m) => [m, 0]), 'Nenhum login de participante nas fazendas da sua equipe.'),
   );
 }
 
@@ -2154,7 +2155,7 @@ async function init() {
         'div',
         { class: 'bmk-blank' },
         h('h3', {}, 'Nenhuma fazenda no benchmarking'),
-        h('p', { class: 'muted' }, info.isAdmin ? 'Marque "Participa do Benchmarking" no cadastro dos clientes (Admin → Clientes).' : info.canCreateFarm && info.aberta ? 'Cadastre a sua fazenda para começar a preencher.' : 'Ainda não há fazendas suas no benchmarking. Fale com o seu contato Cargill.'),
+        h('p', { class: 'muted' }, info.isAdmin ? 'Marque "Participa do Benchmarking" no cadastro do cliente (Admin → Clientes).' : info.canCreateFarm && info.aberta ? 'Cadastre a sua fazenda para começar a preencher.' : 'Ainda não há fazendas suas no benchmarking. Fale com o seu contato Cargill.'),
         info.canCreateFarm && info.aberta && !user.impersonatedBy ? h('button', { class: 'btn btn-primary', type: 'button', onclick: () => newClientDialog([]) }, '+ Cadastrar fazenda') : null,
       ),
     );

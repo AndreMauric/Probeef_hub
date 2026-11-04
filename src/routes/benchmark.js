@@ -99,21 +99,21 @@ benchmarkRouter.get('/:clientId', (req, res) => res.json(getForUser(req.user, re
 
 benchmarkRouter.put('/:clientId', route(async (req, res) => {
   // Admin "entrando como" o cliente só olha: não grava em nome dele.
-  if (req.impersonator) return res.status(403).json({ error: 'Você está vendo como o cliente: as alterações não são salvas.' });
+  if (req.impersonator) return res.status(403).json({ error: 'Você está vendo como esse usuário: as alterações não são salvas.' });
   res.json(await saveDraft(req.user, req.params.clientId, req.body || {}));
 }));
 
 benchmarkRouter.post('/:clientId/clear', route(async (req, res) => {
-  if (req.impersonator) return res.status(403).json({ error: 'Você está vendo como o cliente: as alterações não são salvas.' });
+  if (req.impersonator) return res.status(403).json({ error: 'Você está vendo como esse usuário: as alterações não são salvas.' });
   res.json(await clearDraft(req.user, req.params.clientId, req.body || {}));
 }));
 
 benchmarkRouter.post('/:clientId/submit', route(async (req, res) => {
-  if (req.impersonator) return res.status(403).json({ error: 'Você está vendo como o cliente: não é possível enviar em nome dele.' });
+  if (req.impersonator) return res.status(403).json({ error: 'Você está vendo como esse usuário: não é possível enviar em nome dele.' });
   res.json(await submit(req.user, req.params.clientId, { text: req.body?.text }));
 }));
 
 benchmarkRouter.post('/:clientId/review', route(async (req, res) => {
-  if (req.impersonator) return res.status(403).json({ error: 'Você está vendo como o cliente: não é possível validar em nome dele.' });
+  if (req.impersonator) return res.status(403).json({ error: 'Você está vendo como esse usuário: não é possível validar em nome dele.' });
   res.json(await review(req.user, req.params.clientId, req.body || {}));
 }));

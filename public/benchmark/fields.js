@@ -379,7 +379,7 @@ export const QUESTIONARIO = [
       { id: 'q1', n: 1, text: 'Nome da empresa + unidade do confinamento', type: 'text', req: true },
       { id: 'q2', n: 2, text: 'Cidade', type: 'text', req: true },
       { id: 'q3', n: 3, text: 'Estado', type: 'uf', req: true },
-      { id: 'q4', n: 4, text: 'Nome do funcionário do cliente responsável pela validação dos dados', type: 'text', req: true },
+      { id: 'q4', n: 4, text: 'Nome do funcionário do participante responsável pela validação dos dados', type: 'text', req: true },
       { id: 'q5', n: 5, text: 'Nome de quem está respondendo o formulário', type: 'text', req: true },
       { id: 'q6', n: 6, text: 'E-mail de quem está respondendo o formulário', type: 'email', req: true },
       { id: 'q7', n: 7, text: 'Coordenador Cargill responsável pelo envio e validação dos dados', type: 'text', req: true },
