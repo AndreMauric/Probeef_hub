@@ -127,28 +127,101 @@ function renderReports() {
   );
 }
 
+// Responsável = o do Benchmarking (Time ou Canais); a gerência é a dele, como no Andamento.
+const donoCliente = (c) => state.users.find((u) => u.id === c.bmkOwner) || null;
+const gerenciaCliente = (c) => donoCliente(c)?.gerenciaEfetiva || '';
+
+// A lista como está na tela (busca, tag, responsável e gerência): a tabela e o Excel usam a mesma.
+function clientesFiltrados() {
+  const fResp = document.getElementById('clients-filter-resp')?.value || '';
+  const fGer = document.getElementById('clients-filter-gerencia')?.value || '';
+  const tag = document.getElementById('clients-tag-filter')?.value;
+  return [...state.clients]
+    .filter((c) => matches('search-clients', c.name))
+    .filter((c) => !tag || (tag === '__none' ? !(c.tagIds || []).length : (c.tagIds || []).includes(tag)))
+    .filter((c) => !fResp || (fResp === '-' ? !c.bmkOwner : c.bmkOwner === fResp))
+    .filter((c) => !fGer || (fGer === '-' ? !gerenciaCliente(c) : gerenciaCliente(c) === fGer))
+    .sort(byName);
+}
+
+const ORIGEM_CLIENTE = { benchmark: 'Cadastrado no Benchmarking', 'benchmark-import': 'Importado do ano passado' };
+
+async function exportClients() {
+  try {
+    const lista = clientesFiltrados();
+    if (!lista.length) throw new Error('Nenhum cliente na lista para exportar.');
+    const ExcelJS = await loadExcelJs();
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('Clientes');
+    ws.columns = [
+      ['nome', 'Fazenda / cliente', 34],
+      ['resp', 'Responsável', 26],
+      ['respPerfil', 'Perfil do responsável', 18],
+      ['respEmail', 'E-mail do responsável', 30],
+      ['gerencia', 'Gerência', 22],
+      ['bmk', 'Benchmarking', 13],
+      ['situacao', 'Situação', 12],
+      ['tags', 'Tags', 24],
+      ['nRel', 'Relatórios', 11],
+      ['relatorios', 'Relatórios liberados', 40],
+      ['nUsu', 'Usuários', 10],
+      ['logins', 'Logins (e-mail)', 40],
+      ['origem', 'Origem', 26],
+      ['criadoPor', 'Cadastrado por', 24],
+      ['criadoEm', 'Cadastrado em', 14],
+    ].map(([key, header, width]) => ({ key, header, width }));
+    const nomeRel = (id) => state.reports.find((r) => r.id === id)?.name;
+    for (const c of lista) {
+      const dono = donoCliente(c);
+      const logins = state.users.filter((u) => u.clientIds.includes(c.id));
+      ws.addRow({
+        nome: c.name,
+        resp: dono?.name || '',
+        respPerfil: dono ? (dono.role === 'admin' ? 'Administrador' : KIND_LABEL[dono.kind] || '') : '',
+        respEmail: dono?.email || '',
+        gerencia: gerenciaCliente(c),
+        bmk: c.benchmark ? 'Sim' : 'Não',
+        situacao: c.active ? 'Ativo' : 'Desativado',
+        tags: (c.tagIds || []).map((id) => tagById(id)?.name).filter(Boolean).join(', '),
+        nRel: c.reportIds.length,
+        relatorios: c.reportIds.map(nomeRel).filter(Boolean).join(', '),
+        nUsu: logins.length,
+        logins: logins.map((u) => u.email).join(', '),
+        origem: ORIGEM_CLIENTE[c.createdVia] || 'Cadastrado pelo admin',
+        criadoPor: c.createdBy ? state.users.find((u) => u.id === c.createdBy)?.name || 'usuário removido' : '',
+        criadoEm: c.createdAt ? new Date(c.createdAt) : null,
+      });
+    }
+    ws.getColumn('criadoEm').numFmt = 'dd/mm/yyyy';
+    const head = ws.getRow(1);
+    head.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    head.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF094140' } };
+    head.alignment = { vertical: 'middle', wrapText: true };
+    ws.views = [{ state: 'frozen', ySplit: 1 }];
+    ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: ws.columnCount } };
+    const blob = new Blob([await wb.xlsx.writeBuffer()], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const a = h('a', { href: URL.createObjectURL(blob), download: `Clientes-${todayIso()}.xlsx` });
+    document.body.append(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+    toast(`${lista.length} cliente(s) exportado(s).`);
+  } catch (err) {
+    toast(err.message, 'error');
+  }
+}
+
 function renderClients() {
   const userCount = (id) => state.users.filter((u) => u.clientIds.includes(id)).length;
-  // Responsável = o do Benchmarking (Time ou Canais); a gerência é a dele, como no Andamento.
-  const dono = (c) => state.users.find((u) => u.id === c.bmkOwner) || null;
-  const gerencia = (c) => dono(c)?.gerenciaEfetiva || '';
+  const dono = donoCliente;
+  const gerencia = gerenciaCliente;
   const pt = (a, b) => a[1].localeCompare(b[1], 'pt-BR');
-  const fResp = userFilterSelect('clients-filter-resp', 'Todos os responsáveis', [...[...new Set(state.clients.map((c) => c.bmkOwner).filter(Boolean))].map((id) => [id, state.users.find((u) => u.id === id)?.name || '(removido)']).sort(pt), ['-', 'Sem responsável']]);
-  const fGer = userFilterSelect('clients-filter-gerencia', 'Todas as gerências', [...[...new Set(state.clients.map(gerencia).filter(Boolean))].map((g) => [g, g]).sort(pt), ['-', 'Sem gerência']]);
+  userFilterSelect('clients-filter-resp', 'Todos os responsáveis', [...[...new Set(state.clients.map((c) => c.bmkOwner).filter(Boolean))].map((id) => [id, state.users.find((u) => u.id === id)?.name || '(removido)']).sort(pt), ['-', 'Sem responsável']]);
+  userFilterSelect('clients-filter-gerencia', 'Todas as gerências', [...[...new Set(state.clients.map(gerencia).filter(Boolean))].map((g) => [g, g]).sort(pt), ['-', 'Sem gerência']]);
   table(
     document.getElementById('clients-table'),
     ['Cliente', 'Responsável', 'Gerência', 'Tags', 'Relatórios', 'Usuários', 'RLS', 'Situação', ''],
-    [...state.clients]
-      .filter((c) => matches('search-clients', c.name))
-      .filter((c) => {
-        const tag = document.getElementById('clients-tag-filter')?.value;
-        if (!tag) return true;
-        if (tag === '__none') return !(c.tagIds || []).length;
-        return (c.tagIds || []).includes(tag);
-      })
-      .filter((c) => !fResp || (fResp === '-' ? !c.bmkOwner : c.bmkOwner === fResp))
-      .filter((c) => !fGer || (fGer === '-' ? !gerencia(c) : gerencia(c) === fGer))
-      .sort(byName)
+    clientesFiltrados()
       .map((c) =>
       h(
         'tr',
@@ -4798,6 +4871,7 @@ async function init() {
     })
     .catch(() => {});
   document.getElementById('new-client').onclick = () => clientDialog();
+  document.getElementById('export-clients').onclick = exportClients;
   document.getElementById('manage-tags').onclick = () => tagsManager();
   document.getElementById('manage-gerencias').onclick = () => gerenciasManager();
   document.getElementById('clients-tag-filter').addEventListener('change', renderClients);
