@@ -129,9 +129,15 @@ function renderReports() {
 
 function renderClients() {
   const userCount = (id) => state.users.filter((u) => u.clientIds.includes(id)).length;
+  // Responsável = o do Benchmarking (Time ou Canais); a gerência é a dele, como no Andamento.
+  const dono = (c) => state.users.find((u) => u.id === c.bmkOwner) || null;
+  const gerencia = (c) => dono(c)?.gerenciaEfetiva || '';
+  const pt = (a, b) => a[1].localeCompare(b[1], 'pt-BR');
+  const fResp = userFilterSelect('clients-filter-resp', 'Todos os responsáveis', [...[...new Set(state.clients.map((c) => c.bmkOwner).filter(Boolean))].map((id) => [id, state.users.find((u) => u.id === id)?.name || '(removido)']).sort(pt), ['-', 'Sem responsável']]);
+  const fGer = userFilterSelect('clients-filter-gerencia', 'Todas as gerências', [...[...new Set(state.clients.map(gerencia).filter(Boolean))].map((g) => [g, g]).sort(pt), ['-', 'Sem gerência']]);
   table(
     document.getElementById('clients-table'),
-    ['Cliente', 'Tags', 'Relatórios', 'Usuários', 'RLS', 'Situação', ''],
+    ['Cliente', 'Responsável', 'Gerência', 'Tags', 'Relatórios', 'Usuários', 'RLS', 'Situação', ''],
     [...state.clients]
       .filter((c) => matches('search-clients', c.name))
       .filter((c) => {
@@ -140,12 +146,23 @@ function renderClients() {
         if (tag === '__none') return !(c.tagIds || []).length;
         return (c.tagIds || []).includes(tag);
       })
+      .filter((c) => !fResp || (fResp === '-' ? !c.bmkOwner : c.bmkOwner === fResp))
+      .filter((c) => !fGer || (fGer === '-' ? !gerencia(c) : gerencia(c) === fGer))
       .sort(byName)
       .map((c) =>
       h(
         'tr',
         {},
-        h('td', {}, h('strong', {}, c.name), c.createdVia === 'benchmark' ? h('span', { class: 'sub' }, `cadastrado no Benchmarking por ${state.users.find((u) => u.id === c.createdBy)?.name || 'usuário removido'}`) : null),
+        h(
+          'td',
+          {},
+          h('strong', {}, c.name),
+          c.createdVia === 'benchmark' || c.createdVia === 'benchmark-import'
+            ? h('span', { class: 'sub' }, `${c.createdVia === 'benchmark' ? 'cadastrado no Benchmarking' : 'importado do ano passado'} por ${state.users.find((u) => u.id === c.createdBy)?.name || 'usuário removido'}`)
+            : null,
+        ),
+        h('td', {}, dono(c)?.name || h('span', { class: 'muted' }, '—')),
+        h('td', {}, gerencia(c) || h('span', { class: 'muted' }, '—')),
         h('td', {}, tagChips(c.tagIds)),
         h('td', { class: 'mono' }, c.reportIds.length),
         h('td', { class: 'mono' }, userCount(c.id)),
@@ -4659,6 +4676,7 @@ async function init() {
   document.getElementById('manage-tags').onclick = () => tagsManager();
   document.getElementById('manage-gerencias').onclick = () => gerenciasManager();
   document.getElementById('clients-tag-filter').addEventListener('change', renderClients);
+  for (const id of ['clients-filter-resp', 'clients-filter-gerencia']) document.getElementById(id).addEventListener('change', renderClients);
   document.getElementById('new-category').onclick = () => categoryDialog();
   document.getElementById('new-user').onclick = () => userDialog();
 
