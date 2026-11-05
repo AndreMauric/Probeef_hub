@@ -262,11 +262,19 @@ O admin marca `client.benchmark` (ou o Time cadastra a fazenda já participando)
   (resultado de cada cliente com o critério de exclusão, estatísticas, ranking e quartil; `SENTIDO`
   diz se maior ou menor é melhor). Dados de `/api/admin/benchmark/export`. Quartil só com 4+ clientes.
 - **Questionário do ano passado** (só admin, botão na aba Questionário; `prefillQuestionario` em `src/benchmark.js`,
-  `POST /api/benchmark/:clientId/prefill`): lê a planilha do ciclo anterior no navegador (`lerQuestionarioAnterior`: aba
-  Questionário do modelo, Q1 ou Formulário — a de 2025 só tem a Formulário, mesmas 100 perguntas na ordem da Q1 entre
-  títulos de seção) e preenche as perguntas em branco (ou todas). A planilha mostra 0 no lugar do vazio: 0 em texto/escolha,
-  nos custos opcionais, em seção inteira zerada e nas energias 69a–e somando 0 vira em branco. Guarda `sub.prefill` (o que
-  veio), anota no Histórico, e a tela avisa o participante e marca "ano passado" nas respostas ainda iguais.
+  `POST /api/benchmark/:clientId/prefill`): lê a planilha do ciclo anterior no navegador (`lerQuestionarioAnterior` em
+  `public/benchmark/anterior.js`, usado pela página e pelo admin: aba Questionário do modelo, Q1 ou Formulário — a que
+  tiver mais respostas; a de 2025 só tem a Formulário, mesmas 100 perguntas na ordem da Q1 entre títulos de seção) e
+  preenche as perguntas em branco (ou todas). A planilha mostra 0 no lugar do vazio: 0 em texto/escolha, nos custos
+  opcionais, em seção inteira zerada e nas energias 69a–e somando 0 vira em branco. A resposta escrita de outro jeito vira a
+  alternativa (maiúscula, acento, ";" no fim, "NÃO", erros de digitação da planilha e do Forms; "5 ou mais" → 5). Guarda
+  `sub.prefill` (o que veio), anota no Histórico, e a tela avisa o participante e marca "ano passado" nas respostas ainda iguais.
+- **Importar participantes** (Admin → Benchmarking, botão no Andamento; `importarParticipantes` em `src/benchmark.js`,
+  `POST /api/admin/benchmark/importar-participantes`, corpo até 3 MB): várias planilhas do ano passado de uma vez (as do
+  Forms 2026, uma por fazenda, aba Q1). Cada uma vira participante só no Benchmarking (`createdVia: 'benchmark-import'`),
+  ou acha a fazenda pelo nome e a põe no Benchmarking, com o questionário como "ano passado". Nome = pergunta 1; vazia
+  ou repetida na lista, sai do nome do arquivo ("Benchmarking ... 2026 - <participante> - <programa> - <coord.> - <ger.>").
+  Responsável opcional (sugerido quando o coordenador da pergunta 7 bate com alguém do Time/Canais). Ignora os "~$" do Excel.
 - **Cobrança (lembretes)** (`src/bmkLembretes.js`): no Andamento do admin, quem não enviou (não iniciado, em
   preenchimento, em correção) recebe lembrete pelas Mensagens do portal — um ("Cobrar"), vários ou todos os pendentes,
   com o texto padrão da situação (`MODELOS`, com `{fazenda}`, `{ano}`, `{prazo}`, `{pendencias}`) ou um texto do
@@ -282,8 +290,11 @@ O admin marca `client.benchmark` (ou o Time cadastra a fazenda já participando)
   tipo de entrada e mês de saída; indicadores e comparação entre grupos, sempre médias
   ponderadas pelos animais) e "Tabelas por categoria" (as abas FINAL da planilha). Sexo sai da
   categoria (Macho de Engorda = machos; Fêmea de Engorda e Vaca de Descarte = fêmeas).
-- As opções das perguntas de múltipla escolha foram montadas a partir das respostas de um
-  cliente e precisam de revisão da equipe (sempre há "Outro").
+- As alternativas das perguntas de escolha são as da planilha oficial **`PLANILHA_BMK_Limpo.xlsb`** (Área de Trabalho),
+  tiradas do VBA das janelas de digitação (listas de `Array(...)`, `AddItem`, `InitializeListBox`/`InitializeComboBox`; a
+  linha da Q1 de cada lista sai de `ws.Cells(linhaInicial + k, 2)` no "Enviar"), em nov/2026. As perguntas (coluna A da Q1)
+  são iguais às das 211 planilhas do Forms 2026. "Outro" virou texto livre (`other: true`); foram corrigidos três erros de
+  digitação da planilha ("Getão", "Ágil de compra", "lotos").
 - **Obrigatórias do questionário** = as que os formulários VBA da planilha exigem (cada seção tem um
   `ValidarFormulario`; o código foi lido do `vbaProject.bin` com `oletools`, sem abrir o Excel):
   84 de 100. Opcionais: 20, 29, 45–54 (custos e preços), 62b, 63b, 63c e 90. Regras que vieram

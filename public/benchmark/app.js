@@ -6,7 +6,8 @@ import { initNps } from '/js/nps.js';
 import { initTicker } from '/js/ticker.js';
 import { initChat } from '/js/chat.js';
 import { renderDashboard } from './dashboard.js';
-import { baixarModelo, lerQuestionario, MODELOS, QUESTIONARIO_SHEET } from './modelo.js';
+import { answerFromCell, lerQuestionarioAnterior, Q1_ROWS } from './anterior.js';
+import { baixarModelo, lerQuestionario, MODELOS } from './modelo.js';
 import {
   calcLote,
   cleanAnswer,
@@ -721,17 +722,6 @@ function loadXlsx() {
   return xlsxLoading;
 }
 
-// Linha da aba Q1 (1 a 100) → pergunta do questionário (as sem número ficam pela posição).
-const Q1_ROWS = [
-  ...Array.from({ length: 39 }, (_, i) => `q${i + 1}`),
-  'q40a', 'q40b', 'q40c', 'q41', 'q42', 'q43', 'q44',
-  ...Array.from({ length: 12 }, (_, i) => `q${45 + i}`),
-  'q57', 'q58', 'q59', 'q60', 'q61', 'q62', 'q62b', 'q63', 'q63b', 'q63c', 'q64', 'q65', 'q66', 'q66b', 'q67', 'q68',
-  'q69a', 'q69b', 'q69c', 'q69d', 'q69e', 'q70',
-  ...Array.from({ length: 16 }, (_, i) => `q${71 + i}`),
-  'q87', 'q88', 'q89', 'q90',
-];
-
 function sheetRows(XLSX, ws, columns, firstRow = 4) {
   if (!ws) return [];
   const rows = XLSX.utils.sheet_to_json(ws, { header: 'A', range: firstRow - 1, raw: true, defval: null });
@@ -746,13 +736,6 @@ function sheetRows(XLSX, ws, columns, firstRow = 4) {
       return raw;
     })
     .filter((r) => r.lote !== undefined && String(r.lote).trim() !== '');
-}
-
-function answerFromCell(q, v) {
-  if (v === null || v === undefined || v === '') return null;
-  if (q.type === 'multi') return String(v).split(';').map((x) => x.trim()).filter(Boolean);
-  const { value } = cleanAnswer(q, v);
-  return value ?? String(v).trim();
 }
 
 async function readWorkbook(file) {
@@ -927,60 +910,6 @@ function importDialog() {
 
 // ---------- Questionário do ano passado (só o admin) ----------
 
-// Na planilha, pergunta sem resposta aparece como 0 (vem de fórmula). Em pergunta de texto ou de escolha, 0 é
-// "em branco"; nos custos e preços opcionais (45, 46, 52–54) também, como na importação da planilha.
-const NUMERICAS = new Set(['int', 'num', 'pct']);
-function respostaAnterior(q, v) {
-  if (!q) return null;
-  if ((v === 0 || v === '0') && (!NUMERICAS.has(q.type) || ['q45', 'q46', 'q52', 'q53', 'q54'].includes(q.id))) return null;
-  const a = answerFromCell(q, v);
-  return a === null || (Array.isArray(a) && !a.length) ? null : a;
-}
-
-// Seção em que tudo veio 0 não foi respondida (a planilha mostra 0 no lugar do vazio): sai inteira. As fontes de
-// energia (69a–e) somando 0 também. Um 0 numa seção respondida continua valendo (ex.: nenhuma leitura noturna).
-function semSecoesZeradas(respostas) {
-  for (const s of QUESTIONARIO) {
-    const ids = s.questions.map((q) => q.id).filter((id) => id in respostas);
-    if (ids.length && ids.every((id) => respostas[id] === 0)) ids.forEach((id) => delete respostas[id]);
-  }
-  const energia = ['q69a', 'q69b', 'q69c', 'q69d', 'q69e'].filter((id) => id in respostas);
-  if (energia.length && energia.every((id) => !respostas[id])) energia.forEach((id) => delete respostas[id]);
-  return respostas;
-}
-
-// Título de seção da aba Formulário ("SAÚDE ANIMAL", "SAÚDE ANIMAL (validar/corrigir)"): maiúsculas, sem número.
-const secaoFormulario = (texto) => {
-  const t = String(texto ?? '').replace(/\(.*?\)/g, '').trim();
-  return Boolean(t) && !/\d/.test(t) && t === t.toUpperCase();
-};
-
-// Lê o questionário de um ciclo anterior: modelo do portal (aba Questionário), aba Q1 ou aba Formulário da
-// planilha (a de 2025 só tem a Formulário: mesmas 100 perguntas da Q1, na mesma ordem, entre títulos de seção).
-async function lerQuestionarioAnterior(file) {
-  const XLSX = await loadXlsx();
-  const wb = XLSX.read(await file.arrayBuffer(), { type: 'array', sheets: [QUESTIONARIO_SHEET, 'Q1', 'Formulário'] });
-  const doModelo = lerQuestionario(XLSX, wb, respostaAnterior);
-  if (doModelo && Object.keys(doModelo).length) return { respostas: doModelo, aba: QUESTIONARIO_SHEET };
-  const porOrdem = (linhas, aba) => {
-    const respostas = {};
-    Q1_ROWS.forEach((id, i) => {
-      const a = respostaAnterior(QUESTIONS.find((x) => x.id === id), linhas[i]?.B);
-      if (a !== null) respostas[id] = a;
-    });
-    semSecoesZeradas(respostas);
-    return { respostas, aba, linhas: linhas.length };
-  };
-  if (wb.Sheets.Q1) return porOrdem(XLSX.utils.sheet_to_json(wb.Sheets.Q1, { header: 'A', raw: true, defval: null }), 'Q1');
-  if (wb.Sheets['Formulário']) {
-    const linhas = XLSX.utils
-      .sheet_to_json(wb.Sheets['Formulário'], { header: 'A', raw: true, defval: null })
-      .filter((r) => String(r.A ?? '').trim() && String(r.A).trim().toLowerCase() !== 'seção' && !secaoFormulario(r.A));
-    return porOrdem(linhas, 'Formulário');
-  }
-  return { respostas: {}, aba: null };
-}
-
 const respostaVazia = (v) => v === null || v === undefined || v === '' || (Array.isArray(v) && !v.length);
 const mesmaResposta = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 const textoResposta = (v) => (Array.isArray(v) ? v.join('; ') : String(v));
@@ -1003,7 +932,7 @@ function prefillDialog() {
     submitBtn.disabled = true;
     modos.hidden = true;
     try {
-      lido = { ...(await lerQuestionarioAnterior(file)), arquivo: file.name };
+      lido = { ...lerQuestionarioAnterior(await loadXlsx(), await file.arrayBuffer()), arquivo: file.name };
       const ids = Object.keys(lido.respostas);
       if (!ids.length) {
         fill(result, h('p', { class: 'alert' }, lido.aba ? `A aba "${lido.aba}" não tem respostas.` : 'Não encontrei o questionário neste arquivo (abas Questionário, Q1 ou Formulário).'));

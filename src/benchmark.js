@@ -207,13 +207,9 @@ export async function saveDraft(user, clientId, body = {}) {
 // anterior entram nas perguntas em branco (ou em todas, se o admin escolher) e o participante confere. Fica
 // guardado o que veio (sub.prefill), para a tela marcar as respostas que continuam iguais às importadas.
 const blankAnswer = (v) => v === null || v === undefined || v === '' || (Array.isArray(v) && !v.length);
-export async function prefillQuestionario(user, clientId, { version, respostas, modo, arquivo } = {}) {
-  if (user.role !== 'admin') throw new BenchmarkError('Só o administrador traz o questionário do ano passado.', 403);
-  const client = clientOr404(user, clientId);
-  const sub = submissionOf(clientId, { create: true });
-  if (Number(version) !== sub.version) throw new BenchmarkError('Outra pessoa salvou alterações neste benchmarking. Recarregue a página para ver a versão mais nova.', 409);
-  const lidas = Object.fromEntries(Object.entries(cleanRespostas(respostas && typeof respostas === 'object' ? respostas : {})).filter(([, v]) => !blankAnswer(v)));
-  if (!Object.keys(lidas).length) throw new BenchmarkError('Nenhuma resposta encontrada no arquivo.');
+const respostasLidas = (respostas) => Object.fromEntries(Object.entries(cleanRespostas(respostas && typeof respostas === 'object' ? respostas : {})).filter(([, v]) => !blankAnswer(v)));
+// Junta as respostas lidas ao questionário do participante (nas em branco ou em todas) e registra. Sem salvar.
+function aplicarPrefill(sub, user, lidas, { modo, arquivo } = {}) {
   const todas = modo === 'todas';
   const aplicar = Object.fromEntries(Object.entries(lidas).filter(([id]) => todas || blankAnswer(sub.respostas[id])));
   sub.respostas = { ...sub.respostas, ...aplicar };
@@ -224,8 +220,56 @@ export async function prefillQuestionario(user, clientId, { version, respostas, 
   sub.version += 1;
   sub.updatedAt = new Date().toISOString();
   sub.updatedBy = user.id;
+  return n;
+}
+
+export async function prefillQuestionario(user, clientId, { version, respostas, modo, arquivo } = {}) {
+  if (user.role !== 'admin') throw new BenchmarkError('Só o administrador traz o questionário do ano passado.', 403);
+  const client = clientOr404(user, clientId);
+  const sub = submissionOf(clientId, { create: true });
+  if (Number(version) !== sub.version) throw new BenchmarkError('Outra pessoa salvou alterações neste benchmarking. Recarregue a página para ver a versão mais nova.', 409);
+  const lidas = respostasLidas(respostas);
+  if (!Object.keys(lidas).length) throw new BenchmarkError('Nenhuma resposta encontrada no arquivo.');
+  aplicarPrefill(sub, user, lidas, { modo, arquivo });
   await save();
   return view(user, client, sub);
+}
+
+// Participantes do ano passado de uma vez (só o admin; Admin → Benchmarking → "Importar participantes"): para cada
+// planilha lida no navegador, cria a fazenda participando (ou acha a que já existe pelo nome, sem acento e sem
+// maiúsculas, e a põe no Benchmarking) e traz o questionário como "ano passado" (nas perguntas em branco). O
+// responsável é opcional: fica para depois.
+const MAX_IMPORT = 300;
+export async function importarParticipantes(admin, { itens } = {}) {
+  if (admin.role !== 'admin') throw new BenchmarkError('Só o administrador importa participantes.', 403);
+  if (!Array.isArray(itens) || !itens.length) throw new BenchmarkError('Nenhum participante para importar.');
+  if (itens.length > MAX_IMPORT) throw new BenchmarkError(`No máximo ${MAX_IMPORT} participantes por vez.`);
+  const data = db();
+  const donos = new Set(data.users.filter((u) => u.active && u.role !== 'admin' && ['cargill', 'canal'].includes(kindOf(u))).map((u) => u.id));
+  const vistos = new Set();
+  const resultado = [];
+  for (const item of itens) {
+    const nome = String(item?.nome || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+    if (nome.length < 3) throw new BenchmarkError(`Nome do participante muito curto: "${nome}".`);
+    if (vistos.has(foldName(nome))) throw new BenchmarkError(`"${nome}" aparece mais de uma vez na importação.`);
+    vistos.add(foldName(nome));
+    const ownerId = item.ownerId && donos.has(item.ownerId) ? item.ownerId : null;
+    let client = data.clients.find((c) => foldName(c.name) === foldName(nome));
+    const novo = !client;
+    if (novo) {
+      client = { id: newId(), name: nome, rlsUsername: '', rlsRoles: [], reportIds: [], active: true, tagIds: [], ccvFarms: [], benchmark: true, bmkOwner: ownerId, createdBy: admin.id, createdVia: 'benchmark-import', createdAt: new Date().toISOString() };
+      data.clients.push(client);
+    } else {
+      client.benchmark = true;
+      if (ownerId) client.bmkOwner = ownerId;
+    }
+    const lidas = respostasLidas(item.respostas);
+    let respostas = 0;
+    if (Object.keys(lidas).length) respostas = aplicarPrefill(submissionOf(client.id, { create: true }), admin, lidas, { modo: 'vazias', arquivo: item.arquivo });
+    resultado.push({ clientId: client.id, nome: client.name, novo, respostas, responsavel: userName(client.bmkOwner) });
+  }
+  await save();
+  return { criados: resultado.filter((r) => r.novo).length, existentes: resultado.filter((r) => !r.novo).length, itens: resultado };
 }
 
 // Apaga de uma vez o que foi preenchido (lotes de engorda, de recria e/ou o questionário).

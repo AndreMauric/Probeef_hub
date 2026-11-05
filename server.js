@@ -107,6 +107,8 @@ app.use((req, res, next) => {
   const restore = req.path === '/api/admin/restore' && req.user?.role === 'admin';
   if (restore) return largeJson(req, res, next);
   if (req.user && req.method === 'PUT' && req.path.startsWith('/api/benchmark/')) return benchmarkJson(req, res, next);
+  // Participantes do ano passado em lote: o questionário de cada fazenda (dezenas delas) vai num pedido só.
+  if (req.user?.role === 'admin' && req.path === '/api/admin/benchmark/importar-participantes') return benchmarkJson(req, res, next);
   if (req.user && req.path.startsWith('/api/fornecedores/simulations')) return fornecedoresJson(req, res, next);
   return smallJson(req, res, next);
 });

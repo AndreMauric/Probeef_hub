@@ -4514,3 +4514,22 @@ td.bmk-sel {
   align-items: center;
   gap: 6px;
 }
+
+/* Benchmarking: importar participantes do ano passado (uma linha por planilha). */
+.bmk-imp {
+  display: grid;
+  gap: 10px;
+}
+
+.bmk-imp-tabela {
+  max-height: 55vh;
+  overflow: auto;
+}
+
+.bmk-imp-tabela input[type='text'] {
+  min-width: 240px;
+}
+
+.bmk-imp-tabela select {
+  min-width: 200px;
+}

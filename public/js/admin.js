@@ -1473,6 +1473,159 @@ function benchmarkSettingsDialog() {
   });
 }
 
+// ---------- Benchmarking: participantes do ano passado em lote ----------
+
+let xlsxLoading = null;
+function loadXlsx() {
+  xlsxLoading ??= new Promise((resolve, reject) => {
+    const sc = document.createElement('script');
+    sc.src = '/vendor/xlsx.full.min.js';
+    sc.onload = () => resolve(window.XLSX);
+    sc.onerror = () => {
+      xlsxLoading = null;
+      reject(new Error('Não foi possível carregar o leitor de planilhas.'));
+    };
+    document.head.append(sc);
+  });
+  return xlsxLoading;
+}
+
+// Nome do participante pelo nome do arquivo (quando a pergunta 1 vem vazia ou se repete). Os do Forms são
+// "Benchmarking Confinamento Probeef 2026 - <participante> - <programa> - <coordenador> - <gerente>": fica o
+// que vem antes do programa (FeedManager, TGC…). Os outros: sem o código do começo e o "Benchmarking ...".
+function nomeDoArquivo(arquivo) {
+  const base = arquivo.replace(/\.[^.]+$/, '').replace(/^[0-9A-F-]{36}/i, '');
+  const partes = base.split(' - ').map((p) => p.trim()).filter(Boolean);
+  const programa = partes.findIndex((p, i) => i > 0 && /^(feed ?manager|tgc|feed e tgc|cfm)\b/i.test(p));
+  if (/^Benchmarking Confinamento Probeef/i.test(partes[0] || '') && programa > 1) return partes.slice(1, programa).join(' - ');
+  return base.replace(/Benchmarking Confinamento Probeef( \d{4})?( Feed Manager)?[\s_-]*/i, '').trim();
+}
+
+// Responsável sugerido: a pessoa do Time ou dos Canais cujo nome tem todas as palavras do coordenador (pergunta 7).
+function sugerirResponsavel(coordenador, donos) {
+  const palavras = fold(coordenador).split(/\s+/).filter((w) => w.length > 2);
+  if (!palavras.length) return null;
+  const achados = donos.filter((u) => palavras.every((w) => fold(u.name).split(/\s+/).includes(w)));
+  return achados.length === 1 ? achados[0].id : null;
+}
+
+// Planilhas de benchmarking do ano passado (uma por fazenda) → participantes já com o questionário. O admin
+// confere a lista, ajusta o nome e o responsável (ou deixa para depois) e confirma.
+function importarParticipantesDialog() {
+  const arquivos = h('input', { type: 'file', accept: '.xlsb,.xlsx,.xlsm,.xls', multiple: true });
+  const corpo = h('div', { class: 'bmk-imp' }, h('p', { class: 'muted', style: 'margin: 0' }, 'Escolha as planilhas (pode marcar várias de uma vez).'));
+  const donos = state.users.filter((u) => u.active && u.role !== 'admin' && ['cargill', 'canal'].includes(u.kind)).sort(byName);
+  let linhas = [];
+  const situacao = (l) => {
+    const c = state.clients.find((x) => fold(x.name) === fold(l.nome.value));
+    const repetido = linhas.filter((o) => o.marcado.checked && fold(o.nome.value) === fold(l.nome.value)).length > 1;
+    if (repetido) return h('span', { class: 'pill pill-danger' }, 'nome repetido na lista');
+    if (!c) return h('span', { class: 'pill pill-ok' }, 'novo');
+    return h('span', { class: 'pill pill-accent', title: c.benchmark ? 'Já participa: só as respostas entram (nas perguntas em branco)' : 'Já é cliente do portal: passa a participar do Benchmarking' }, c.benchmark ? 'já participa' : 'já é cliente');
+  };
+  const desenhar = () => {
+    const tabela = h('table');
+    table(
+      tabela,
+      ['', 'Participante', 'Cidade / UF', 'Respostas', 'Situação', 'Responsável'],
+      linhas.map((l) => {
+        const sit = h('td', {}, situacao(l));
+        l.nome.oninput = () => linhas.forEach((o) => o.sit && o.sit.replaceChildren(situacao(o)));
+        l.sit = sit;
+        return h(
+          'tr',
+          {},
+          h('td', {}, l.marcado),
+          h('td', {}, l.nome, h('span', { class: 'sub' }, l.arquivo.replace(/^[0-9A-F-]{36}/i, ''))),
+          h('td', {}, [l.cidade, l.uf].filter(Boolean).join(' / ') || h('span', { class: 'muted' }, '—')),
+          h('td', { class: 'mono' }, num(l.n), l.coordenador ? h('span', { class: 'sub' }, `coord.: ${l.coordenador}`) : null, l.aviso ? h('span', { class: 'sub' }, l.aviso) : null),
+          sit,
+          h('td', {}, l.dono),
+        );
+      }),
+      'Nenhuma planilha lida.',
+    );
+    const erros = linhas.filter((l) => l.erro);
+    corpo.replaceChildren(
+      h('p', { class: 'muted', style: 'margin: 0' }, `${linhas.length} planilha(s) lida(s). Confira o nome de cada participante (vem da pergunta 1). O responsável pode ficar para depois.`),
+      ...(erros.length ? [h('p', { class: 'alert' }, `Não consegui ler: ${erros.map((l) => `${l.arquivo} (${l.erro})`).join('; ')}`)] : []),
+      h('div', { class: 'table-wrap bmk-imp-tabela' }, tabela),
+    );
+  };
+  arquivos.addEventListener('change', async () => {
+    // "~$..." é o arquivo temporário que o Excel cria com a planilha aberta: fica de fora.
+    const lista = [...arquivos.files].filter((f) => !f.name.startsWith('~$'));
+    if (!lista.length) return;
+    const progresso = h('p', { class: 'muted' }, 'Carregando o leitor de planilhas…');
+    corpo.replaceChildren(progresso);
+    try {
+      const [XLSX, { lerQuestionarioAnterior }] = await Promise.all([loadXlsx(), import('/benchmark/anterior.js')]);
+      linhas = [];
+      for (const [i, file] of lista.entries()) {
+        progresso.textContent = `Lendo ${i + 1} de ${lista.length}: ${file.name}…`;
+        // Dá tempo de a tela mostrar o progresso entre um arquivo e outro.
+        await new Promise((r) => setTimeout(r, 0));
+        try {
+          const lido = lerQuestionarioAnterior(XLSX, await file.arrayBuffer());
+          const r = lido.respostas;
+          const coordenador = String(r.q7 || '').trim();
+          const sugerido = sugerirResponsavel(coordenador, donos);
+          linhas.push({
+            arquivo: file.name,
+            respostas: r,
+            n: Object.keys(r).length,
+            cidade: r.q2 || '',
+            uf: r.q3 || '',
+            coordenador,
+            marcado: h('input', { type: 'checkbox', checked: Object.keys(r).length > 0, 'aria-label': `Importar ${file.name}` }),
+            nome: h('input', { type: 'text', value: String(r.q1 || nomeDoArquivo(file.name)).replace(/\s+/g, ' ').trim(), maxlength: 120, 'aria-label': 'Nome do participante' }),
+            dono: h(
+              'select',
+              { 'aria-label': 'Responsável' },
+              h('option', { value: '' }, '— decidir depois —'),
+              donos.map((u) => h('option', { value: u.id, selected: u.id === sugerido }, `${u.name} · ${KIND_LABEL[u.kind]}`)),
+            ),
+          });
+          // Sem respostas: dá para criar só o participante (vem desmarcado).
+          if (!Object.keys(r).length) linhas.at(-1).aviso = 'sem respostas: cria só o participante';
+        } catch (err) {
+          linhas.push({ arquivo: file.name, erro: err.message, respostas: {}, n: 0, marcado: h('input', { type: 'checkbox', disabled: true }), nome: h('input', { type: 'text', value: nomeDoArquivo(file.name), disabled: true }), dono: h('span', { class: 'muted' }, '—') });
+        }
+      }
+      // Pergunta 1 repetida entre planilhas (ex.: "Astra" e "Astra Estrela" respondidas com o mesmo nome): fica o
+      // nome do arquivo, que separa as fazendas.
+      const vezes = new Map();
+      for (const l of linhas) if (!l.erro) vezes.set(fold(l.nome.value), (vezes.get(fold(l.nome.value)) || 0) + 1);
+      for (const l of linhas) if (!l.erro && vezes.get(fold(l.nome.value)) > 1) l.nome.value = nomeDoArquivo(l.arquivo) || l.nome.value;
+      desenhar();
+    } catch (err) {
+      corpo.replaceChildren(h('p', { class: 'alert' }, err.message));
+    }
+  });
+  formDialog(
+    'Importar participantes do ano passado',
+    [
+      h('p', { class: 'muted', style: 'margin: 0' }, 'Escolha as planilhas de benchmarking do ano passado (uma por fazenda). Cada uma vira um participante do ciclo atual, só no Benchmarking, com o questionário já preenchido como "ano passado" para ele conferir. Os lotes não entram. Se a fazenda já existe no portal (mesmo nome), ela passa a participar e só recebe as respostas nas perguntas em branco.'),
+      arquivos,
+      corpo,
+    ],
+    {
+      submitLabel: 'Importar',
+      onSubmit: async () => {
+        const escolhidas = linhas.filter((l) => !l.erro && l.marcado.checked);
+        if (!escolhidas.length) throw new Error('Marque ao menos uma planilha.');
+        const itens = escolhidas.map((l) => ({ nome: l.nome.value, ownerId: l.dono.value || null, respostas: l.respostas, arquivo: l.arquivo }));
+        const r = await api('/api/admin/benchmark/importar-participantes', { method: 'POST', body: { itens } });
+        await refresh();
+        await loadBenchmark();
+        toast(`Pronto: ${r.criados} participante(s) criado(s)${r.existentes ? ` e ${r.existentes} que já existia(m)` : ''}, com ${r.itens.reduce((t, x) => t + x.respostas, 0)} respostas do questionário.`);
+      },
+    },
+  );
+  dialog.classList.add('dialog-wide');
+  dialog.addEventListener('close', () => dialog.classList.remove('dialog-wide'), { once: true });
+}
+
 // Excel com tudo do ano: andamento, lotes (com indicadores e alertas), questionário e resultados.
 async function exportBenchmark() {
   try {
@@ -1588,6 +1741,7 @@ function selectBmkView(view) {
   document.getElementById('benchmark-compare').hidden = view !== 'comparacao';
   document.getElementById('bmk-metrics-export').hidden = view !== 'metricas';
   document.getElementById('bmk-export').hidden = view === 'metricas';
+  document.getElementById('bmk-import').hidden = view !== 'andamento';
   if (view === 'metricas') loadBmkMetrics();
   if (view === 'comparacao') loadBmkCompare();
 }
@@ -4478,6 +4632,7 @@ async function init() {
   document.getElementById('quote-new').addEventListener('click', () => quoteDialog());
   document.getElementById('bmk-settings').addEventListener('click', () => (bmkState.data ? benchmarkSettingsDialog() : loadBenchmark().then(benchmarkSettingsDialog)));
   document.getElementById('bmk-export').addEventListener('click', exportBenchmark);
+  document.getElementById('bmk-import').addEventListener('click', importarParticipantesDialog);
   document.getElementById('bmk-metrics-export').addEventListener('click', exportBmkMetrics);
   document.querySelectorAll('[data-bmk-view]').forEach((b) => b.addEventListener('click', () => selectBmkView(b.dataset.bmkView)));
   // Contador de coletas esperando validação na aba, mesmo antes de abri-la.
