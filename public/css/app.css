@@ -4533,3 +4533,28 @@ td.bmk-sel {
 .bmk-imp-tabela select {
   min-width: 200px;
 }
+
+/* Cotações: colar a tabela do CEPEA e lançar o dia de todos os preços. */
+.quote-paste-preview {
+  max-height: 260px;
+  overflow: auto;
+}
+
+.quote-day {
+  display: grid;
+  gap: 8px;
+}
+
+.quote-day-row {
+  display: grid;
+  grid-template-columns: 1fr 150px auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.quote-day-row .sub {
+  display: block;
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 400;
+}

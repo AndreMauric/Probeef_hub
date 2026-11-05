@@ -3,6 +3,7 @@
 import { usageSummary } from './accessLog.js';
 import { dataHealthSummary } from './dataHealth.js';
 import { recentDetractors } from './nps.js';
+import { quoteSettings, staleManual } from './quotes.js';
 import { db, save } from './store.js';
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -99,6 +100,22 @@ export function computeAlerts() {
       clientId: r.clients[0]?.id || null,
       client: names,
     });
+  }
+
+  // Preços lançados à mão (CEPEA) sem o valor do último dia útil: a faixa do portal fica com o número velho.
+  // O id leva o dia esperado: adiar vale só para aquele dia.
+  if (quoteSettings().enabled) {
+    for (const q of staleManual()) {
+      alerts.push({
+        id: `cotacao:${q.id}:${q.esperado}`,
+        type: 'cotacao',
+        severity: 'baixa',
+        title: `Cotação "${q.label}" sem o valor de ${q.esperado.split('-').reverse().join('/')}`,
+        detail: q.asOf ? `Último valor lançado: ${q.asOf.split('-').reverse().join('/')}. Atualize na aba Cotações.` : 'Ainda sem nenhum valor: não aparece na faixa.',
+        clientId: null,
+        client: '',
+      });
+    }
   }
 
   const order = { alta: 0, media: 1, baixa: 2 };

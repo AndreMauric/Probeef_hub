@@ -1026,7 +1026,7 @@ const SEVERITY = {
   media: { label: 'Atenção', cls: 'sev-media' },
   baixa: { label: 'Para acompanhar', cls: 'sev-baixa' },
 };
-const ALERT_ICON = { inativo: '⏸', esfriando: '❄', nunca: '○', queda: '↘', semlogin: '👤', falha: '⚠', desatualizado: '🕘', nps: '☹' };
+const ALERT_ICON = { inativo: '⏸', esfriando: '❄', nunca: '○', queda: '↘', semlogin: '👤', falha: '⚠', desatualizado: '🕘', nps: '☹', cotacao: '$' };
 
 function updateAlertCount(data) {
   const n = data.counts.alta + data.counts.media;
@@ -2115,6 +2115,7 @@ function quoteDialog(q) {
     [
       field('Nome', input('label', { value: q?.label, placeholder: 'Ex.: Boi gordo', required: true })),
       h('div', { class: 'grid-2' }, field('Unidade', input('unit', { value: q?.unit, placeholder: 'Ex.: R$/@' })), field('Fonte', input('source', { value: q?.source, placeholder: 'Ex.: CEPEA · SP' }), 'Aparece ao passar o mouse na faixa.')),
+      field('Página no CEPEA (opcional)', input('url', { value: q?.url, placeholder: 'https://www.cepea.org.br/br/indicador/boi-gordo.aspx' }), 'O botão "Abrir no CEPEA" leva para ela, para copiar a tabela e colar aqui.'),
     ],
     {
       onSubmit: async (form) => {
@@ -2124,6 +2125,119 @@ function quoteDialog(q) {
       },
     },
   );
+}
+
+// Tabela copiada da página do indicador no CEPEA (ou de outro lugar): em cada linha, uma data (dd/mm/aaaa) e,
+// depois dela, o primeiro número que não é porcentagem (a variação do dia vem com %). Ex.: "04/11/2026  388,89  0,17%".
+function lerTabelaCotacao(texto) {
+  const linhas = [];
+  for (const l of String(texto).split(/\r?\n/)) {
+    const d = l.match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
+    if (!d) continue;
+    const ano = d[3].length === 2 ? `20${d[3]}` : d[3];
+    const data = `${ano}-${d[2].padStart(2, '0')}-${d[1].padStart(2, '0')}`;
+    const resto = l.slice(d.index + d[0].length);
+    const num = [...resto.matchAll(/(\d{1,3}(?:\.\d{3})+(?:,\d+)?|\d+(?:,\d+)?)(\s*%)?/g)].find((m) => !m[2]);
+    if (!num || Number.isNaN(Date.parse(`${data}T12:00:00`))) continue;
+    linhas.push({ date: data, value: num[1] });
+  }
+  // A mesma data mais de uma vez: fica a primeira (a tabela do CEPEA vem da mais nova para a mais antiga).
+  const vistas = new Set();
+  return linhas.filter((x) => !vistas.has(x.date) && vistas.add(x.date));
+}
+const numeroBR = (t) => Number(String(t).replace(/\./g, '').replace(',', '.'));
+
+function colarCotacaoDialog(q) {
+  const area = h('textarea', { rows: 9, placeholder: 'Cole aqui a tabela do indicador (Ctrl+V)', style: 'font: 13px/1.4 var(--font-data)' });
+  const previa = h('div', {}, h('p', { class: 'muted', style: 'margin: 0' }, 'Nada colado ainda.'));
+  let linhas = [];
+  const conhecidas = new Map(q.history.map((x) => [x.date, x.value]));
+  const atualizar = () => {
+    linhas = lerTabelaCotacao(area.value).slice(0, 60);
+    if (!linhas.length) {
+      previa.replaceChildren(h('p', { class: area.value.trim() ? 'alert' : 'muted', style: 'margin: 0' }, area.value.trim() ? 'Não achei linhas com data e valor (ex.: "04/11/2026  388,89").' : 'Nada colado ainda.'));
+      return;
+    }
+    const tabela = h('table');
+    table(
+      tabela,
+      ['Data', 'Valor', ''],
+      linhas.map((x) => {
+        const antes = conhecidas.get(x.date);
+        const v = numeroBR(x.value);
+        return h(
+          'tr',
+          {},
+          h('td', { class: 'mono' }, fmtDateOnly(`${x.date}T12:00:00`)),
+          h('td', { class: 'mono' }, fmtQuote(v)),
+          h('td', {}, antes === undefined ? h('span', { class: 'pill pill-ok' }, 'novo') : antes === v ? h('span', { class: 'muted' }, 'igual ao lançado') : h('span', { class: 'pill pill-warn' }, `corrige ${fmtQuote(antes)}`)),
+        );
+      }),
+    );
+    previa.replaceChildren(h('p', { class: 'muted', style: 'margin: 0 0 6px' }, `${linhas.length} dia(s) encontrado(s).`), h('div', { class: 'table-wrap quote-paste-preview' }, tabela));
+  };
+  area.addEventListener('input', atualizar);
+  formDialog(
+    `Colar do CEPEA · ${q.label}`,
+    [
+      h(
+        'p',
+        { class: 'muted', style: 'margin: 0' },
+        'Abra a página do indicador no site do CEPEA, selecione a tabela de preços (com as datas), copie (Ctrl+C) e cole aqui. Cada linha com data e valor vira o valor daquele dia; dá para trazer vários dias de uma vez.',
+      ),
+      ...(q.url ? [h('a', { class: 'btn btn-sm', href: q.url, target: '_blank', rel: 'noopener', style: 'justify-self: start' }, 'Abrir a página no CEPEA ↗')] : []),
+      area,
+      previa,
+    ],
+    {
+      submitLabel: 'Lançar',
+      onSubmit: async () => {
+        if (!linhas.length) throw new Error('Cole a tabela com as datas e os valores.');
+        renderQuotes(await api(`/api/admin/quotes/${q.id}/values`, { method: 'POST', body: { rows: linhas } }));
+        toast(`${q.label}: ${linhas.length} dia(s) lançado(s).`);
+      },
+    },
+  );
+  setTimeout(() => area.focus(), 50);
+}
+
+// Todos os preços do dia de uma vez: data (o último dia útil, por padrão) e um campo por preço.
+function lancarDiaDialog(data) {
+  const dia = h('input', { type: 'date', name: 'date', value: data.ultimoDiaUtil || todayIso() });
+  const campos = data.manual.map((q) => ({
+    q,
+    el: h('input', { type: 'text', inputmode: 'decimal', placeholder: q.value !== null ? `último: ${fmtQuote(q.value)}` : '0,00', 'aria-label': `Valor de ${q.label}` }),
+  }));
+  formDialog(
+    'Lançar o dia',
+    [
+      field('Data dos valores', dia, 'O CEPEA publica no fim de cada dia útil. Lançar de novo na mesma data corrige o valor.'),
+      h(
+        'div',
+        { class: 'quote-day' },
+        campos.map(({ q, el }) =>
+          h(
+            'label',
+            { class: 'quote-day-row' },
+            h('span', {}, h('strong', {}, q.label), h('span', { class: 'sub' }, [q.unit, q.asOf ? `último ${fmtDateOnly(`${q.asOf}T12:00:00`)}` : 'sem valor'].filter(Boolean).join(' · '))),
+            el,
+            q.url ? h('a', { class: 'btn btn-sm btn-ghost', href: q.url, target: '_blank', rel: 'noopener', title: 'Abrir a página no CEPEA' }, 'CEPEA ↗') : h('span'),
+          ),
+        ),
+      ),
+      h('small', { class: 'muted' }, 'Os campos em branco ficam como estão.'),
+    ],
+    {
+      submitLabel: 'Lançar',
+      onSubmit: async () => {
+        const values = campos.map(({ q, el }) => ({ id: q.id, value: el.value })).filter((v) => v.value.trim());
+        if (!values.length) throw new Error('Preencha ao menos um valor.');
+        renderQuotes(await api('/api/admin/quotes/day', { method: 'POST', body: { date: dia.value, values } }));
+        toast(`${values.length} valor(es) lançado(s) para ${fmtDateOnly(`${dia.value}T12:00:00`)}.`);
+      },
+    },
+  );
+  setTimeout(() => campos[0]?.el.focus(), 50);
 }
 
 function renderQuotes(data) {
@@ -2167,6 +2281,8 @@ function renderQuotes(data) {
         h(
           'td',
           { class: 'actions' },
+          h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => colarCotacaoDialog(q) }, 'Colar do CEPEA'),
+          ...(q.url ? [h('a', { class: 'btn btn-sm btn-ghost', href: q.url, target: '_blank', rel: 'noopener', title: 'Abrir a página do indicador no CEPEA' }, 'CEPEA ↗')] : []),
           h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => quoteDialog(q) }, 'Editar'),
           h(
             'button',
@@ -2205,7 +2321,16 @@ function renderQuotes(data) {
   );
   box.replaceChildren(
     h('label', { class: 'check', style: 'margin-top: 16px' }, enabled, h('span', {}, h('strong', {}, 'Mostrar a faixa de cotações no portal'), h('br'), h('span', { class: 'muted' }, 'Rola no rodapé de todas as telas do portal; para ao passar o mouse.'))),
-    sectionTitle('Lançadas pela equipe (preços brasileiros)'),
+    sectionTitle('Lançadas pela equipe (preços brasileiros)', data.manual.length ? h('button', { class: 'btn btn-sm btn-primary', type: 'button', onclick: () => lancarDiaDialog(data) }, 'Lançar o dia') : null),
+    ...(data.atrasadas?.length
+      ? [
+          h(
+            'p',
+            { class: 'alert' },
+            `Sem o valor de ${fmtDateOnly(`${data.atrasadas[0].esperado}T12:00:00`)} (último dia útil): ${data.atrasadas.map((x) => x.label).join(', ')}. A faixa do portal mostra o último valor lançado.`,
+          ),
+        ]
+      : []),
     h('div', { class: 'table-wrap' }, manualTable),
     h('p', { class: 'muted usage-hint' }, 'Dica: o CEPEA publica os indicadores do dia no fim da tarde. Lançar outra vez na mesma data corrige o valor daquele dia.'),
     sectionTitle('Automáticas'),

@@ -377,6 +377,11 @@ Câmbio vem da AwesomeAPI e bolsas (Ibovespa, CBOT/CME) do endpoint não oficial
 admin: o CEPEA bloqueia acesso automatizado e copiar de sites de terceiros (Notícias Agrícolas
 etc.) foi descartado por termos de uso/licença — não troque por scraping sem uma fonte
 autorizada. O servidor faz as chamadas externas (a CSP só permite `connectSrc: 'self'`).
+Para lançar rápido: "Lançar o dia" (todos os preços numa janela, `POST /api/admin/quotes/day`) e
+"Colar do CEPEA" por preço (a tabela copiada da página do indicador é lida no navegador,
+`lerTabelaCotacao`, vários dias de uma vez, `POST /api/admin/quotes/:id/values`); cada preço tem o
+link da página (`url`). Preço sem o valor do último dia útil (`staleManual`; feriado não entra na
+conta) vira aviso na aba e alerta na central.
 
 ## Deploy
 

@@ -9,7 +9,7 @@ import { sendDocument, sendTemplate, uploadPdf, whatsappStatus } from '../bot/wh
 import { isCcv } from '../access.js';
 import { ccvUsage, computeCcvAlerts, listFarms, messageFor, oneLine, RULES } from '../ccv.js';
 import { ccvPages, ccvPdfJob, publicJob, startCcvPdf } from '../ccvPdf.js';
-import { adminQuotes, deleteManual, saveManual, setManualValue, setQuoteOptions } from '../quotes.js';
+import { adminQuotes, deleteManual, saveManual, setDayValues, setManualValue, setManualValues, setQuoteOptions } from '../quotes.js';
 import { processMetrics } from '../benchmarkMetrics.js';
 import { checkReportsTo, gerenciaOf, KINDS, responsavelOf } from '../bmkTeam.js';
 import { MODELOS as LEMBRETE_MODELOS, previewReminders, registerManual, sendReminders, ultimosLembretes } from '../bmkLembretes.js';
@@ -367,6 +367,17 @@ adminRouter.put('/quotes/:id', route(async (req, res) => {
 
 adminRouter.delete('/quotes/:id', route(async (req, res) => {
   await deleteManual(req.params.id);
+  res.json(await adminQuotes());
+}));
+
+// Vários dias de um preço (tabela colada do CEPEA) e o dia de vários preços (janela "Lançar o dia").
+adminRouter.post('/quotes/day', route(async (req, res) => {
+  await setDayValues(req.body || {}, req.user);
+  res.json(await adminQuotes());
+}));
+
+adminRouter.post('/quotes/:id/values', route(async (req, res) => {
+  await setManualValues(req.params.id, req.body || {}, req.user);
   res.json(await adminQuotes());
 }));
 

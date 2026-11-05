@@ -21,12 +21,21 @@ export const AUTO_QUOTES = [
 ];
 
 // Preços brasileiros sugeridos na primeira vez (o admin edita, apaga ou cria outros).
+// url: página do indicador no CEPEA, para o admin abrir e copiar a tabela (botão "Colar do CEPEA").
 const DEFAULT_MANUAL = [
-  { label: 'Boi gordo', unit: 'R$/@', source: 'CEPEA/B3 · SP' },
-  { label: 'Bezerro (boi magro)', unit: 'R$/cab', source: 'CEPEA · MS' },
-  { label: 'Soja', unit: 'R$/sc', source: 'CEPEA · Paranaguá' },
-  { label: 'Milho', unit: 'R$/sc', source: 'CEPEA · Campinas' },
+  { label: 'Boi gordo', unit: 'R$/@', source: 'CEPEA/B3 · SP', url: 'https://www.cepea.org.br/br/indicador/boi-gordo.aspx' },
+  { label: 'Bezerro (boi magro)', unit: 'R$/cab', source: 'CEPEA · MS', url: 'https://www.cepea.org.br/br/indicador/bezerro.aspx' },
+  { label: 'Soja', unit: 'R$/sc', source: 'CEPEA · Paranaguá', url: 'https://www.cepea.org.br/br/indicador/soja.aspx' },
+  { label: 'Milho', unit: 'R$/sc', source: 'CEPEA · Campinas', url: 'https://www.cepea.org.br/br/indicador/milho.aspx' },
 ];
+// Para os preços criados antes do link: sugere a página pelo nome (o admin troca em "Editar").
+const URL_PELO_NOME = [
+  [/boi gordo/i, 'https://www.cepea.org.br/br/indicador/boi-gordo.aspx'],
+  [/bezerro/i, 'https://www.cepea.org.br/br/indicador/bezerro.aspx'],
+  [/soja/i, 'https://www.cepea.org.br/br/indicador/soja.aspx'],
+  [/milho/i, 'https://www.cepea.org.br/br/indicador/milho.aspx'],
+];
+const urlDe = (m) => m.url ?? URL_PELO_NOME.find(([re]) => re.test(m.label))?.[1] ?? '';
 
 class QuoteError extends Error {
   constructor(message, status = 400) {
@@ -148,6 +157,25 @@ function manualView(m) {
   };
 }
 
+// Dia útil anterior a hoje (Brasília): o CEPEA publica no fim de cada dia útil, então hoje se espera ter o valor
+// dele. Feriados não entram na conta (no dia seguinte a um feriado o aviso pode aparecer à toa).
+const hojeSP = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
+export function ultimoDiaUtil(hoje = hojeSP()) {
+  const d = new Date(`${hoje}T12:00:00Z`);
+  do d.setUTCDate(d.getUTCDate() - 1);
+  while ([0, 6].includes(d.getUTCDay()));
+  return d.toISOString().slice(0, 10);
+}
+
+// Preços lançados à mão que estão atrasados: o último valor é de antes do último dia útil (ou nunca teve valor).
+export function staleManual() {
+  const esperado = ultimoDiaUtil();
+  return quoteSettings()
+    .manual.map(manualView)
+    .filter((m) => !m.asOf || m.asOf < esperado)
+    .map((m) => ({ id: m.id, label: m.label, asOf: m.asOf, esperado }));
+}
+
 export async function tickerQuotes() {
   const settings = quoteSettings();
   if (!settings.enabled) return { enabled: false, items: [] };
@@ -160,7 +188,9 @@ export async function adminQuotes() {
   const settings = quoteSettings();
   return {
     enabled: settings.enabled,
-    manual: settings.manual.map((m) => ({ ...manualView(m), history: [...m.history].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 10) })),
+    manual: settings.manual.map((m) => ({ ...manualView(m), url: urlDe(m), history: [...m.history].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 10) })),
+    ultimoDiaUtil: ultimoDiaUtil(),
+    atrasadas: staleManual(),
     auto: AUTO_QUOTES.map((q) => ({ id: q.id, label: q.label, unit: q.unit, on: Boolean(settings.auto[q.id]), last: autoCache.items.get(q.id) || null })),
   };
 }
@@ -175,8 +205,9 @@ function findManual(id) {
 }
 
 export async function saveManual(id, body) {
-  const fields = { label: text(body.label, 40), unit: text(body.unit, 20), source: text(body.source, 60) };
+  const fields = { label: text(body.label, 40), unit: text(body.unit, 20), source: text(body.source, 60), url: text(body.url, 300) };
   if (!fields.label) throw new QuoteError('Informe o nome da cotação.');
+  if (fields.url && !/^https:\/\//i.test(fields.url)) throw new QuoteError('O link precisa começar com https://.');
   if (id) Object.assign(findManual(id), fields);
   else quoteSettings().manual.push({ id: newId(), ...fields, history: [] });
   await save();
@@ -189,19 +220,50 @@ export async function deleteManual(id) {
   await save();
 }
 
-// Lança (ou corrige) o valor de um dia. Um valor por data; guarda os últimos 60.
-export async function setManualValue(id, { value, date }, admin) {
-  const m = findManual(id);
-  // Aceita "1.312,50", "312,50" e "2.910" (padrão brasileiro) e também "312.50".
-  const raw = String(value ?? '').trim();
+// Aceita "1.312,50", "312,50" e "2.910" (padrão brasileiro) e também "312.50".
+function toValue(value) {
+  const raw = String(value ?? '').replace(/^R\$\s*/i, '').trim();
   const thousandsOnly = /^\d{1,3}(\.\d{3})+$/.test(raw);
   const number = Number(raw.includes(',') || thousandsOnly ? raw.replace(/\./g, '').replace(',', '.') : raw);
-  if (!Number.isFinite(number) || number <= 0) throw new QuoteError('Informe um valor válido (ex.: 312,50).');
-  if (!ISO_DAY.test(date || '')) throw new QuoteError('Informe a data do valor.');
-  m.history = [{ date, value: number, by: admin.id, at: new Date().toISOString() }, ...m.history.filter((h) => h.date !== date)]
-    .sort((a, b) => b.date.localeCompare(a.date))
-    .slice(0, 60);
+  if (!Number.isFinite(number) || number <= 0) throw new QuoteError(`Informe um valor válido (ex.: 312,50)${raw ? `: "${raw}"` : ''}.`);
+  return number;
+}
+
+// Guarda valores de vários dias (um valor por data; fica com os últimos 60).
+function mergeValues(m, rows, admin) {
+  const at = new Date().toISOString();
+  const novos = rows.map(({ date, value }) => {
+    if (!ISO_DAY.test(date || '')) throw new QuoteError('Informe a data do valor.');
+    return { date, value: toValue(value), by: admin.id, at };
+  });
+  const datas = new Set(novos.map((r) => r.date));
+  m.history = [...novos, ...m.history.filter((h) => !datas.has(h.date))].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 60);
+}
+
+// Lança (ou corrige) o valor de um dia.
+export async function setManualValue(id, { value, date }, admin) {
+  mergeValues(findManual(id), [{ date, value }], admin);
   await save();
+}
+
+// Vários dias de um preço de uma vez (a tabela colada do site do CEPEA, lida no navegador).
+export async function setManualValues(id, { rows } = {}, admin) {
+  if (!Array.isArray(rows) || !rows.length) throw new QuoteError('Nenhum valor para lançar.');
+  if (rows.length > 60) throw new QuoteError('No máximo 60 dias de uma vez.');
+  mergeValues(findManual(id), rows, admin);
+  await save();
+}
+
+// O dia de vários preços de uma vez (janela "Lançar o dia"): os campos em branco ficam como estão.
+export async function setDayValues({ date, values } = {}, admin) {
+  if (!ISO_DAY.test(date || '')) throw new QuoteError('Informe a data dos valores.');
+  const preenchidos = (Array.isArray(values) ? values : []).filter((v) => String(v?.value ?? '').trim());
+  if (!preenchidos.length) throw new QuoteError('Preencha ao menos um valor.');
+  // Confere tudo antes de gravar: um valor errado não deixa a metade lançada.
+  const alvos = preenchidos.map((v) => [findManual(v.id), toValue(v.value)]);
+  for (const [m, value] of alvos) mergeValues(m, [{ date, value }], admin);
+  await save();
+  return alvos.length;
 }
 
 export async function setQuoteOptions({ enabled, auto }) {
