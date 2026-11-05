@@ -340,7 +340,8 @@ export function validateLotes(lotes, settings, opts = {}) {
 
 // ---------- Questionário (aba Formulário / Q1) ----------
 // type: text | email | uf | int | num | pct | sn (sim/não) | choice | multi | textarea.
-// {ano} = ano do benchmarking; {anoDados} = ano dos dados (ano anterior).
+// {ano} = ciclo do benchmarking (o ano dos dados: o ciclo 2026 é coletado em 2027); {anoSeguinte} = o ano
+// seguinte, em que a coleta acontece (as expectativas e oportunidades são para ele).
 
 const SN = ['Sim', 'Não'];
 const UFS = ['AC', 'AL', 'AM', 'AP', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MG', 'MS', 'MT', 'PA', 'PB', 'PE', 'PI', 'PR', 'RJ', 'RN', 'RO', 'RR', 'RS', 'SC', 'SE', 'SP', 'TO'];
@@ -401,8 +402,8 @@ export const QUESTIONARIO = [
     id: 'saude',
     title: 'Saúde animal',
     questions: [
-      { id: 'q26', n: 26, text: 'Mortalidade de machos', unit: '%', type: 'pct', hint: 'Porcentagem de machos que morreram em relação aos que entraram ao longo de {anoDados}.', req: true },
-      { id: 'q27', n: 27, text: 'Mortalidade de fêmeas', unit: '%', type: 'pct', hint: 'Porcentagem de fêmeas que morreram em relação às que entraram ao longo de {anoDados}.', req: true },
+      { id: 'q26', n: 26, text: 'Mortalidade de machos', unit: '%', type: 'pct', hint: 'Porcentagem de machos que morreram em relação aos que entraram ao longo de {ano}.', req: true },
+      { id: 'q27', n: 27, text: 'Mortalidade de fêmeas', unit: '%', type: 'pct', hint: 'Porcentagem de fêmeas que morreram em relação às que entraram ao longo de {ano}.', req: true },
       { id: 'q28', n: 28, text: 'Prevenção de doenças respiratórias na entrada do confinamento', type: 'multi', options: ['Não realiza', 'Vacinação', 'Metafilaxia', 'Vacinação e Metafilaxia'], other: true, req: true },
       { id: 'q29', n: 29, text: 'Quais enfermidades estão presentes no confinamento?', type: 'multi', options: ['Doença respiratória', 'Problema com transporte', 'Polioencefalomalacia', 'Acidose', 'Clostridiose', 'Laminite', 'Acidentes'], other: true },
       { id: 'q30', n: 30, text: 'Quem determina o diagnóstico da causa da morte?', type: 'multi', options: ['Não realiza', 'Veterinário do confinamento', 'Veterinário consultor', 'Peão da ronda'], other: true, req: true },
@@ -509,9 +510,9 @@ export const QUESTIONARIO = [
     id: 'expectativas',
     title: 'Expectativas',
     questions: [
-      { id: 'q87', n: 87, text: 'Quais serão os maiores desafios para {ano}?', type: 'multi', options: ['Custo de reposição', 'Oferta de boi magro', 'Custo de insumos', 'Mão de obra', 'Valor de venda', 'Desempenho zootécnico', 'Instabilidade econômica', 'Clima', 'Demanda de mercado externo', 'Custo de capital'], other: true, req: true },
-      { id: 'q88', n: 88, text: 'Quais serão as principais oportunidades para {ano}?', type: 'multi', options: ['Custo de reposição', 'Oferta de boi magro', 'Custo de insumos', 'Mão de obra', 'Valor de venda', 'Desempenho zootécnico', 'Parcerias com bois de terceiros', 'Variação cambial', 'Recria na fazenda', 'Gestão de risco na comercialização de gado', 'Gestão de risco na comercialização de insumos'], other: true, req: true },
-      { id: 'q89', n: 89, text: 'Expectativas para {ano} em relação a {anoDados}', type: 'choice', options: ['Melhores', 'Piores', 'Iguais', 'Não tem opinião formada'], req: true },
+      { id: 'q87', n: 87, text: 'Quais serão os maiores desafios para {anoSeguinte}?', type: 'multi', options: ['Custo de reposição', 'Oferta de boi magro', 'Custo de insumos', 'Mão de obra', 'Valor de venda', 'Desempenho zootécnico', 'Instabilidade econômica', 'Clima', 'Demanda de mercado externo', 'Custo de capital'], other: true, req: true },
+      { id: 'q88', n: 88, text: 'Quais serão as principais oportunidades para {anoSeguinte}?', type: 'multi', options: ['Custo de reposição', 'Oferta de boi magro', 'Custo de insumos', 'Mão de obra', 'Valor de venda', 'Desempenho zootécnico', 'Parcerias com bois de terceiros', 'Variação cambial', 'Recria na fazenda', 'Gestão de risco na comercialização de gado', 'Gestão de risco na comercialização de insumos'], other: true, req: true },
+      { id: 'q89', n: 89, text: 'Expectativas para {anoSeguinte} em relação a {ano}', type: 'choice', options: ['Melhores', 'Piores', 'Iguais', 'Não tem opinião formada'], req: true },
     ],
   },
   {
@@ -522,7 +523,7 @@ export const QUESTIONARIO = [
 ];
 
 export const QUESTIONS = QUESTIONARIO.flatMap((s) => s.questions);
-export const questionText = (q, settings) => q.text.replaceAll('{ano}', settings.ano).replaceAll('{anoDados}', settings.ano - 1);
+export const questionText = (q, settings) => q.text.replaceAll('{anoSeguinte}', Number(settings.ano) + 1).replaceAll('{ano}', settings.ano);
 
 // [pergunta, valor]: a resposta da pergunta é o valor (ou, na múltipla escolha, inclui o valor).
 const answerIs = ([dep, val], respostas) => {

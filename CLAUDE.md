@@ -139,7 +139,8 @@ Ctrl+P (`beforeprint`); o Excel é do exceljs (Resumo, Premissas em amarelo, Res
 Substitui a coleta pela planilha "Benchmarking Confinamento Probeef 2026 Feed Manager.xlsb"
 (`Documentos\`). **Não é uma ferramenta**: tem seção própria no portal ("Benchmarking", acima de
 Ferramentas) e não usa pedido de acesso. O nome não leva o ano: o **ciclo** é o `ano` das
-configurações (Admin → Benchmarking → "Ciclo, limites e listas"), com a chave **coleta aberta**
+configurações (Admin → Benchmarking → "Ciclo, limites e listas") e é o **ano dos dados** (o ciclo 2026
+é coletado em 2027: no questionário, `{ano}` = ciclo e `{anoSeguinte}` = o ano das expectativas), com a chave **coleta aberta**
 (`settings.aberta`; fechada = só o admin cadastra fazenda, altera ou envia — `assertAberta`).
 
 **Equipes e acessos (só no Benchmarking, por enquanto; `src/bmkTeam.js`)**:
