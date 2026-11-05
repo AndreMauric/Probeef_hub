@@ -1244,10 +1244,33 @@ async function loadBenchmark() {
 
 function renderBenchmark() {
   const { settings } = bmkState.data;
-  // Filtro por gerência (a do responsável pela fazenda).
-  const gerencias = [...new Set(bmkState.data.clients.map((c) => c.gerencia || ''))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  // Filtros: busca pelo nome do participante, responsável e gerência (a do responsável pela fazenda).
+  const todos = bmkState.data.clients;
+  const gerencias = [...new Set(todos.map((c) => c.gerencia || ''))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
   if (bmkState.gerencia !== undefined && !gerencias.includes(bmkState.gerencia)) bmkState.gerencia = undefined;
-  const clients = bmkState.gerencia === undefined ? bmkState.data.clients : bmkState.data.clients.filter((c) => (c.gerencia || '') === bmkState.gerencia);
+  const donos = new Map();
+  for (const c of todos) donos.set(c.ownerId || '', c.ownerId ? c.owner || '(removido)' : 'Sem responsável');
+  const responsaveis = [...donos].sort((a, b) => (a[0] === '') - (b[0] === '') || a[1].localeCompare(b[1], 'pt-BR'));
+  if (bmkState.resp !== undefined && !donos.has(bmkState.resp)) bmkState.resp = undefined;
+  const semAcento = (t) => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  const busca = semAcento(bmkState.busca).trim();
+  const clients = todos.filter(
+    (c) =>
+      (bmkState.gerencia === undefined || (c.gerencia || '') === bmkState.gerencia) &&
+      (bmkState.resp === undefined || (c.ownerId || '') === bmkState.resp) &&
+      (!busca || semAcento(c.client).includes(busca)),
+  );
+  const filtrando = bmkState.gerencia !== undefined || bmkState.resp !== undefined || Boolean(busca);
+  // O campo de busca é o mesmo a cada desenho, para não perder o foco enquanto se digita.
+  bmkState.buscaEl ??= h('input', {
+    type: 'search',
+    placeholder: 'Buscar participante',
+    'aria-label': 'Buscar participante',
+    oninput: (e) => ((bmkState.busca = e.target.value), renderBenchmark()),
+  });
+  const buscaEl = bmkState.buscaEl;
+  const comFoco = document.activeElement === buscaEl;
+  const cursor = comFoco ? buscaEl.selectionStart : null;
   const box = document.getElementById('benchmark');
   const waiting = clients.filter((c) => c.status === 'enviado').length;
   // O contador da aba conta todas as gerências; os números abaixo seguem o filtro.
@@ -1322,7 +1345,55 @@ function renderBenchmark() {
         h('td', { class: 'actions' }, pendente ? h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => lembreteDialog([c.clientId]) }, 'Cobrar') : null, h('a', { class: `btn btn-sm${c.status === 'enviado' ? ' btn-primary' : ' btn-ghost'}`, href: `/benchmark?cliente=${c.clientId}`, target: '_blank', rel: 'noopener' }, c.status === 'enviado' ? 'Validar' : 'Abrir')),
       );
     }),
-    'Nenhum participante no benchmarking. Em Clientes → Editar, marque "Participa do Benchmarking".',
+    todos.length ? 'Nenhum participante com esses filtros.' : 'Nenhum participante no benchmarking. Em Clientes → Editar, marque "Participa do Benchmarking".',
+  );
+  const filtros = h(
+    'div',
+    { class: 'bmk-andamento-filtros' },
+    h('label', { class: 'field' }, h('span', {}, 'Participante'), buscaEl),
+    responsaveis.length > 1
+      ? h(
+          'label',
+          { class: 'field' },
+          h('span', {}, 'Responsável'),
+          h(
+            'select',
+            { onchange: (e) => ((bmkState.resp = e.target.value === '*' ? undefined : e.target.value), renderBenchmark()) },
+            h('option', { value: '*' }, 'Todos'),
+            responsaveis.map(([id, nome]) => h('option', { value: id, selected: bmkState.resp === id }, nome)),
+          ),
+        )
+      : null,
+    gerencias.length > 1
+      ? h(
+          'label',
+          { class: 'field' },
+          h('span', {}, 'Gerência'),
+          h(
+            'select',
+            { onchange: (e) => ((bmkState.gerencia = e.target.value === '*' ? undefined : e.target.value), renderBenchmark()) },
+            h('option', { value: '*' }, 'Todas'),
+            gerencias.map((g) => h('option', { value: g, selected: bmkState.gerencia === g }, g || 'Sem gerência')),
+          ),
+        )
+      : null,
+    filtrando
+      ? h(
+          'button',
+          {
+            class: 'btn btn-sm btn-ghost',
+            type: 'button',
+            onclick: () => {
+              bmkState.busca = '';
+              buscaEl.value = '';
+              bmkState.resp = undefined;
+              bmkState.gerencia = undefined;
+              renderBenchmark();
+            },
+          },
+          `Limpar filtros (${num(clients.length)} de ${num(todos.length)})`,
+        )
+      : null,
   );
   box.replaceChildren(
     h(
@@ -1337,22 +1408,14 @@ function renderBenchmark() {
       statTile('Em correção', num(count('correcao'))),
       statTile('Em preenchimento / não iniciados', `${num(count('rascunho'))} / ${num(count('nao_iniciado'))}`),
     ),
-    gerencias.length > 1
-      ? h(
-          'label',
-          { class: 'field bmk-gerencia-filter' },
-          h('span', {}, 'Gerência'),
-          h(
-            'select',
-            { onchange: (e) => ((bmkState.gerencia = e.target.value === '*' ? undefined : e.target.value), renderBenchmark()) },
-            h('option', { value: '*' }, 'Todas'),
-            gerencias.map((g) => h('option', { value: g, selected: bmkState.gerencia === g }, g || 'Sem gerência')),
-          ),
-        )
-      : null,
-    cobranca,
+    filtros,
+    ...(cobranca ? [cobranca] : []),
     h('div', { class: 'table-wrap' }, tableEl),
   );
+  if (comFoco) {
+    buscaEl.focus();
+    buscaEl.setSelectionRange(cursor, cursor);
+  }
 }
 
 // Lembrete de cobrança para os participantes escolhidos (ver src/bmkLembretes.js). Dois jeitos de mandar:

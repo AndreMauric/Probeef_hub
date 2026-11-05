@@ -4348,9 +4348,18 @@ tr.row-on td {
 }
 
 /* Andamento do Benchmarking: filtro por gerência */
-.bmk-gerencia-filter {
-  max-width: 280px;
+/* Andamento do Benchmarking: busca pelo participante, responsável e gerência */
+.bmk-andamento-filtros {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px 14px;
   margin-bottom: 12px;
+}
+
+.bmk-andamento-filtros .field {
+  flex: 0 1 240px;
+  min-width: 180px;
 }
 
 /* Cadastro de usuário: bloco do Benchmarking (perfil, responde a, poderes) */
