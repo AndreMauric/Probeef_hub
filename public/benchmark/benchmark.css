@@ -1489,3 +1489,9 @@
   margin: 0;
   font-weight: 600;
 }
+
+/* Participantes: filtro de responsável ou gerência em uso */
+.bmk-toolbar select.bmk-filter-on {
+  border-color: var(--accent, #0f4c45);
+  font-weight: 600;
+}

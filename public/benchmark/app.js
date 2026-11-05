@@ -1857,10 +1857,16 @@ async function renderOverview() {
   }
   if (seq !== overviewSeq) return;
   const filtro = state.overviewFilter || 'todos';
-  const count = (st) => data.clients.filter((c) => c.status === st).length;
+  // Filtros de responsável e gerência ('' = todos, '-' = sem). Os contadores da situação seguem esses dois.
+  const SEM = '-';
+  const fResp = state.overviewOwner || '';
+  const fGer = state.overviewGerencia || '';
+  const bate = (valor, f) => !f || (f === SEM ? !valor : valor === f);
+  const base = data.clients.filter((c) => bate(c.ownerId, fResp) && bate(c.gerencia, fGer));
+  const count = (st) => base.filter((c) => c.status === st).length;
   // Primeiro o que espera validação; dentro de cada situação, por nome.
   const order = { enviado: 0, correcao: 1, rascunho: 2, nao_iniciado: 3, aprovado: 4 };
-  const list = data.clients
+  const list = base
     .filter((c) => filtro === 'todos' || c.status === filtro)
     .sort((a, b) => (order[a.status] ?? 9) - (order[b.status] ?? 9) || a.client.localeCompare(b.client, 'pt-BR'));
   const open = async (id) => {
@@ -1869,7 +1875,7 @@ async function renderOverview() {
     selectTab('engorda');
   };
   const FILTROS = [
-    ['todos', `Todos (${data.clients.length})`],
+    ['todos', `Todos (${base.length})`],
     ['enviado', `Para validar (${count('enviado')})`],
     ['correcao', `Em correção (${count('correcao')})`],
     ['aprovado', `Aprovados (${count('aprovado')})`],
@@ -1905,12 +1911,44 @@ async function renderOverview() {
       ownerOptions(data.owners, c.ownerId),
     );
   };
+  // Opções dos filtros a partir das fazendas da lista (aparecem quando há mais de uma escolha).
+  const responsaveis = new Map();
+  for (const c of data.clients) if (c.ownerId) responsaveis.set(c.ownerId, c.owner || 'Sem nome');
+  const gerencias = [...new Set(data.clients.map((c) => c.gerencia).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  const semResp = data.clients.some((c) => !c.ownerId);
+  const semGer = data.clients.some((c) => !c.gerencia);
+  const filtroSelect = (label, valor, opcoes, semLabel, comSem, onPick) =>
+    h(
+      'select',
+      { 'aria-label': label, class: valor ? 'bmk-filter-on' : '', onchange: (e) => (onPick(e.target.value), renderOverview()) },
+      h('option', { value: '' }, `${label}: todos`),
+      opcoes.map(([v, t]) => h('option', { value: v, selected: v === valor }, t)),
+      comSem ? h('option', { value: SEM, selected: valor === SEM }, semLabel) : null,
+    );
+  const filtroResp =
+    responsaveis.size + (semResp ? 1 : 0) > 1 || fResp
+      ? filtroSelect(
+          'Responsável',
+          fResp,
+          [...responsaveis].sort((a, b) => a[1].localeCompare(b[1], 'pt-BR')),
+          'Sem responsável',
+          semResp,
+          (v) => (state.overviewOwner = v),
+        )
+      : null;
+  const filtroGer =
+    gerencias.length + (semGer ? 1 : 0) > 1 || fGer
+      ? filtroSelect('Gerência', fGer, gerencias.map((g) => [g, g]), 'Sem gerência', semGer, (v) => (state.overviewGerencia = v))
+      : null;
   fill(
     panel,
     h(
       'div',
       { class: 'bmk-toolbar' },
       state.canCreateFarm && state.aberta && !readOnly ? h('button', { class: 'btn btn-sm btn-primary', type: 'button', onclick: () => newClientDialog(data.owners) }, '+ Cadastrar fazenda') : null,
+      filtroResp,
+      filtroGer,
+      fResp || fGer ? h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => ((state.overviewOwner = ''), (state.overviewGerencia = ''), renderOverview()) }, 'Limpar filtros') : null,
       h(
         'div',
         { class: 'bmk-seg', role: 'radiogroup', 'aria-label': 'Situação' },
@@ -1944,7 +1982,7 @@ async function renderOverview() {
                   h('td', {}, h('button', { class: `btn btn-sm${c.status === 'enviado' && state.isValidator ? ' btn-primary' : ''}`, type: 'button', onclick: () => open(c.clientId) }, c.status === 'enviado' && state.isValidator ? 'Validar' : 'Abrir')),
                 ),
               )
-            : h('tr', {}, h('td', { colspan: 9, class: 'muted bmk-empty' }, data.clients.length ? 'Nenhuma fazenda nesta situação.' : state.canCreateFarm ? 'Nenhuma fazenda na sua equipe ainda. Use "+ Cadastrar fazenda".' : 'Nenhuma fazenda na sua equipe ainda.')),
+            : h('tr', {}, h('td', { colspan: 10, class: 'muted bmk-empty' }, data.clients.length ? (fResp || fGer ? 'Nenhuma fazenda com esses filtros.' : 'Nenhuma fazenda nesta situação.') : state.canCreateFarm ? 'Nenhuma fazenda na sua equipe ainda. Use "+ Cadastrar fazenda".' : 'Nenhuma fazenda na sua equipe ainda.')),
         ),
       ),
     ),
