@@ -39,6 +39,14 @@ function normalize(raw) {
     delete g.gerente;
   }
   const viaBmkTeam = new Set((next.audit || []).filter((a) => a.action === 'bmk-team.create').map((a) => a.userId));
+  // "Incluir do Time" deixava a pessoa respondendo a quem a incluiu (bmkIncluidoPor); agora ela só participa da equipe
+  // (bmkIncluidoEm) e o "responde a" é sempre do admin: desfaz o que tinha sido feito daquele jeito.
+  for (const u of next.users) {
+    if (!u.bmkIncluidoPor) continue;
+    u.bmkIncluidoEm = [...new Set([...(Array.isArray(u.bmkIncluidoEm) ? u.bmkIncluidoEm : []), u.bmkIncluidoPor])];
+    if (u.reportsTo === u.bmkIncluidoPor) u.reportsTo = null;
+    delete u.bmkIncluidoPor;
+  }
   next.users = next.users.map(({ clientId, isManager, ...user }) => ({
     ...user,
     ...(viaBmkTeam.has(user.id) && user.bmkOnly === undefined ? { bmkOnly: true } : {}),
@@ -54,6 +62,7 @@ function normalize(raw) {
     ccvFarms: Array.isArray(user.ccvFarms) ? user.ccvFarms : [],
     // Benchmarking: fazendas liberadas a alguém do Time Cargill por um gestor (aba Equipe, "Incluir do Time").
     bmkFarms: Array.isArray(user.bmkFarms) ? user.bmkFarms : [],
+    bmkIncluidoEm: Array.isArray(user.bmkIncluidoEm) ? user.bmkIncluidoEm : [],
   }));
 
   // Categorias eram só o texto em cada relatório (e uma imagem por nome em "categoryImages");

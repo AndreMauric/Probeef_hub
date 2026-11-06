@@ -2144,9 +2144,7 @@ function includeDialog(team) {
     const c = team.candidatos.find((x) => x.id === pessoa.value);
     nota.textContent = !c
       ? 'Só aparecem pessoas do Time Cargill já cadastradas pelo administrador.'
-      : c.reportsToName
-        ? `${c.name} já responde a ${c.reportsToName}: continua naquela equipe e passa a mexer também nas fazendas que você marcar.`
-        : `${c.name} passa a responder a você (entra na sua equipe) e mexe nas fazendas em que for responsável e nas que você marcar.`;
+      : `${c.name} passa a participar da sua equipe e a mexer nas fazendas que você marcar. A quem responde${c.reportsToName ? ` (hoje, ${c.reportsToName})` : ''} continua definido pelo administrador.`;
   };
   pessoa.addEventListener('change', sync);
   sync();
@@ -2162,7 +2160,7 @@ function includeDialog(team) {
           try {
             const r = await api('/api/benchmark/team/include', { method: 'POST', body: { userId: pessoa.value, farmIds: pick.valores() } });
             dialog.close();
-            toast(r.entrou ? `${r.member.name} entrou na sua equipe.` : `Fazendas liberadas para ${r.member.name}.`);
+            toast(`${r.member.name} agora participa da sua equipe.`);
             renderTeam();
           } catch (err) {
             toast(err.message, 'error');
@@ -2182,14 +2180,13 @@ function includeDialog(team) {
 // Fazendas liberadas a alguém do Time (da equipe ou de outra equipe) e "Tirar da equipe".
 function farmsDialog(team, m) {
   const pick = farmPicker(team.farms, (m.bmkFarms || []).filter((id) => team.farms.some((fz) => fz.id === id)));
-  const entrouPorMim = m.reportsTo === team.me.id && m.incluidoPor === team.me.id;
   const remover = async () => {
-    const msg = entrouPorMim ? `Tirar ${m.name} da sua equipe? As fazendas liberadas por você saem junto.` : `Tirar de ${m.name} as fazendas liberadas por você?`;
+    const msg = `Tirar ${m.name} da sua equipe? As fazendas liberadas por você saem junto.`;
     if (!confirm(msg)) return;
     try {
       await api(`/api/benchmark/team/${m.id}/farms`, { method: 'PUT', body: { remover: true } });
       dialog.close();
-      toast(entrouPorMim ? `${m.name} saiu da sua equipe.` : 'Fazendas retiradas.');
+      toast(`${m.name} saiu da sua equipe.`);
       renderTeam();
     } catch (err) {
       toast(err.message, 'error');
@@ -2219,7 +2216,7 @@ function farmsDialog(team, m) {
       h(
         'div',
         { class: 'dialog-actions' },
-        m.externo || entrouPorMim ? h('button', { class: 'btn btn-ghost btn-danger', type: 'button', onclick: remover }, entrouPorMim ? 'Tirar da equipe' : 'Tirar acesso') : null,
+        m.externo ? h('button', { class: 'btn btn-ghost btn-danger', type: 'button', onclick: remover }, 'Tirar da equipe') : null,
         h('span', { class: 'spacer' }),
         h('button', { class: 'btn', type: 'button', onclick: () => dialog.close() }, 'Cancelar'),
         h('button', { class: 'btn btn-primary', type: 'submit' }, 'Salvar'),
@@ -2255,7 +2252,7 @@ async function renderTeam() {
     }
   };
   // Árvore: a partir de quem responde a mim, em profundidade; clientes logo abaixo da equipe.
-  const internos = [...team.members.filter((m) => m.kind !== 'cliente'), ...(team.liberados || []).map((m) => ({ ...m, externo: true }))];
+  const internos = [...team.members.filter((m) => m.kind !== 'cliente'), ...(team.incluidos || []).map((m) => ({ ...m, externo: true }))];
   const liberadas = (m) => (m.bmkFarms || []).filter((id) => farmNames.has(id)).length;
   const ordered = [];
   const walk = (bossId, depth) => {
@@ -2276,8 +2273,8 @@ async function renderTeam() {
       h(
         'td',
         {},
-        m.kind === 'cliente' ? m.clientIds.map((id) => farmNames.get(id)).filter(Boolean).join(', ') || h('span', { class: 'muted' }, 'sem fazenda ainda') : m.externo ? `${m.reportsToName || '—'} (outra equipe)` : names.get(m.reportsTo) || '—',
-        m.kind === 'cargill' && liberadas(m) ? h('small', { class: 'muted bmk-sub' }, `${liberadas(m)} fazenda(s) liberada(s) por você`) : null,
+        m.kind === 'cliente' ? m.clientIds.map((id) => farmNames.get(id)).filter(Boolean).join(', ') || h('span', { class: 'muted' }, 'sem fazenda ainda') : m.externo ? m.reportsToName || '—' : names.get(m.reportsTo) || '—',
+        m.kind === 'cargill' && (m.externo || liberadas(m)) ? h('small', { class: 'muted bmk-sub' }, [m.externo ? 'incluído na sua equipe' : null, liberadas(m) ? `${liberadas(m)} fazenda(s) liberada(s) por você` : null].filter(Boolean).join(' · ')) : null,
       ),
       h('td', {}, m.active ? 'Ativo' : 'Desativado', m.bmkOnly ? null : h('small', { class: 'muted bmk-sub' }, 'também usa a plataforma'), h('small', { class: 'muted bmk-sub' }, m.lastLoginAt ? `último acesso ${fmtDateTime(m.lastLoginAt)}` : 'nunca entrou')),
       h('td', { class: 'bmk-actions' }, readOnly ? null : [m.externo ? null : h('button', { class: 'btn btn-sm', type: 'button', onclick: () => memberDialog(team, m) }, 'Editar'), ' ', m.kind === 'cargill' && !state.isAdmin ? h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => farmsDialog(team, m) }, 'Fazendas') : null, ' ', m.bmkOnly ? h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => resetPassword(m) }, 'Nova senha') : null]),
