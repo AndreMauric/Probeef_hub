@@ -9,7 +9,7 @@
 //   access-log tool_time – tempo com a página aberta e visível, por aba (Lotes, Questionário…)
 // Datas antigas (antes de out/2026) não têm sessões nem retrato: essas colunas ficam vazias.
 import { toolTimeEvents } from './accessLog.js';
-import { settings } from './benchmark.js';
+import { settings, statusDe } from './benchmark.js';
 import { fieldLabel } from '../public/benchmark/fields.js';
 import { db } from './store.js';
 
@@ -80,7 +80,7 @@ export function processMetrics() {
     return {
       clientId: c.id,
       client: c.name,
-      status: sub.status,
+      status: statusDe(sub),
       lotes: sub.engorda.length + sub.recria.length,
       inicio: sub.createdAt,
       primeiroEnvio: envios[0]?.at || null,

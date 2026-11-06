@@ -190,7 +190,9 @@ O admin marca `client.benchmark` (ou o Time cadastra a fazenda já participando)
   RECRIA). É importado pelo navegador e pelo servidor (Node importa de `public/`).
 - Dados: `db().bmkSubmissions` (um por cliente por ano; `version` evita sobrescrever o trabalho
   de outra pessoa) e `db().bmkSettings` (limites e listas, editáveis no admin). Fluxo
-  rascunho → enviado → correção/aprovado; devolver/aprovar avisa os logins de cliente pelo chat.
+  rascunho → enviado → correção/aprovado; devolver/aprovar avisa os logins de cliente pelo chat. Nas listas
+  (andamento, cobrança, métricas), rascunho sem trabalho de ninguém aparece como "não iniciado" (`statusDe`):
+  o questionário do ano passado trazido pelo admin não conta como início.
   **Validadores** (Time Cargill com `bmkValidator`) aprovam/devolvem/reabrem como o admin nas
   fazendas que enxergam (ver Equipes acima). A tela usa `view.access` ({edit, review}) vindo do
   servidor para mostrar os botões. "+ Cadastrar fazenda" (`POST /api/benchmark/clients`,

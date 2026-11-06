@@ -139,6 +139,22 @@ function recordWork(sub, user, changed) {
   if (!sub.metrics.primeiro && sub.engorda.length + sub.recria.length > 0) sub.metrics.primeiro = { ...snapshot(sub), by: user.id };
 }
 
+// Situação para as listas (andamento, cobrança, métricas): em rascunho, só conta como iniciado quando alguém
+// trabalhou nele. O questionário do ano passado trazido pelo admin (sub.prefill) sozinho não conta: o participante
+// pode nem ter entrado. Trabalho = lotes, um salvamento que mudou algo (sessões) ou respostas diferentes das trazidas.
+const mesmaResposta = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+export function statusDe(sub) {
+  if (!sub) return 'nao_iniciado';
+  if (sub.status !== 'rascunho') return sub.status;
+  const veio = sub.prefill?.respostas || {};
+  const trabalhou =
+    sub.engorda.length + sub.recria.length > 0 ||
+    (sub.metrics?.sessions || []).length > 0 ||
+    Boolean(sub.submittedAt) ||
+    Object.entries(sub.respostas || {}).some(([id, v]) => !blankAnswer(v) && !(id in veio && mesmaResposta(v, veio[id])));
+  return trabalhou ? 'rascunho' : 'nao_iniciado';
+}
+
 function view(user, client, sub) {
   const status = sub?.status || 'rascunho';
   return {
@@ -408,7 +424,7 @@ export function adminList({ clientIds = null } = {}) {
         owner: userName(c.bmkOwner),
         // Gerência da fazenda = a do responsável (ver gerenciaOf).
         gerencia: gerenciaOf(db().users.find((u) => u.id === c.bmkOwner)),
-        status: sub?.status || 'nao_iniciado',
+        status: statusDe(sub),
         updatedAt: sub?.updatedAt || null,
         updatedBy: userName(sub?.updatedBy),
         submittedAt: sub?.submittedAt || null,
