@@ -34,7 +34,9 @@ export function participantClients(user) {
   const list = db().clients.filter((c) => c.benchmark && c.active !== false);
   if (user.role === 'admin') return list;
   const scope = isInternal(user) ? ownerScope(user) : null;
-  return list.filter((c) => user.clientIds?.includes(c.id) || (scope && c.bmkOwner && scope.has(c.bmkOwner)));
+  // bmkFarms: fazendas que um gestor liberou a esta pessoa do Time Cargill (ver includeMember em bmkTeam.js).
+  const liberadas = isInternal(user) ? new Set(user.bmkFarms || []) : null;
+  return list.filter((c) => user.clientIds?.includes(c.id) || (scope && c.bmkOwner && scope.has(c.bmkOwner)) || liberadas?.has(c.id));
 }
 
 // Time, Canais e logins "só Benchmarking" entram mesmo sem fazenda ainda (para cadastrar a primeira).

@@ -11,6 +11,9 @@
 // Canais e Cliente); só gestores (e o admin) criam usuários — Canais e Cliente nunca.
 // Quem o gestor cria (Canais e Cliente) é "só Benchmarking" (user.bmkOnly): não acessa relatórios,
 // CCV nem ferramentas, mesmo que a fazenda também seja cliente da plataforma (ver userClients).
+// O gestor não cadastra gente do Time Cargill, mas inclui na equipe quem o admin já cadastrou ("Incluir do Time")
+// e libera fazendas da equipe para essa pessoa mexer (user.bmkFarms, à parte dos relatórios em clientIds). Quem
+// ainda não responde a ninguém passa a responder ao gestor; quem já tem gestor continua lá e só ganha as fazendas.
 // Por enquanto tudo isso vale só para o Benchmarking; relatórios e ferramentas seguem como antes.
 import { generatePassword, hashPassword } from './auth.js';
 import { db, newId, save } from './store.js';
@@ -143,6 +146,8 @@ const publicMember = (u) => ({
   active: u.active,
   bmkOnly: Boolean(u.bmkOnly),
   gerencia: gerenciaOf(u),
+  bmkFarms: u.bmkFarms || [],
+  incluidoPor: u.bmkIncluidoPor || null,
   lastLoginAt: u.lastLoginAt || null,
 });
 
@@ -158,7 +163,74 @@ export function teamView(user, farms) {
     members: members.map(publicMember).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')),
     gestores: [...gestorCandidates(user)].map((u) => ({ id: u.id, name: u.name })),
     farms: farms.map((f) => ({ id: f.id, name: f.name })),
+    // Time Cargill de outras equipes com fazendas liberadas por aqui (aparecem na lista, só com as fazendas).
+    liberados: liberadosPor(user, farmIds).map((u) => ({ ...publicMember(u), reportsToName: userById(u.reportsTo)?.name || null })),
+    // Quem dá para incluir (janela "Incluir do Time Cargill").
+    candidatos: (user.role === 'admin' ? [] : includeCandidates(user))
+      .map((u) => ({ id: u.id, name: u.name, email: u.email, gerencia: gerenciaOf(u), reportsToName: userById(u.reportsTo)?.name || null }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')),
   };
+}
+
+// ---------- Incluir do Time Cargill (gente que o admin cadastrou) ----------
+
+// Pessoas do Time Cargill que o gestor pode incluir: ativas, fora da equipe dele e que não estão acima dele.
+function includeCandidates(user) {
+  const team = teamIds(user.id);
+  const acima = new Set();
+  for (let b = userById(user.reportsTo); b && !acima.has(b.id); b = userById(b.reportsTo)) acima.add(b.id);
+  return db().users.filter((u) => u.active && u.role !== 'admin' && kindOf(u) === 'cargill' && u.id !== user.id && !team.has(u.id) && !acima.has(u.id));
+}
+
+// Time Cargill fora da equipe com alguma fazenda do gestor liberada.
+function liberadosPor(user, farmIds) {
+  const team = teamIds(user.id);
+  return db().users.filter((u) => u.role !== 'admin' && kindOf(u) === 'cargill' && u.id !== user.id && !team.has(u.id) && (u.bmkFarms || []).some((id) => farmIds.has(id)));
+}
+
+const farmList = (body, farmIds) => {
+  const ids = [...new Set(Array.isArray(body.farmIds) ? body.farmIds : [])];
+  if (ids.some((id) => !farmIds.has(id))) throw new TeamError('Só dá para liberar fazendas da sua equipe.', 403);
+  return ids;
+};
+// Troca só a parte das fazendas deste gestor; as liberadas por outros gestores ficam como estão.
+const mergeFarms = (member, ids, farmIds) => [...(member.bmkFarms || []).filter((id) => !farmIds.has(id)), ...ids];
+
+export async function includeMember(user, body = {}, farms) {
+  if (!isGestor(user) || user.role === 'admin') throw new TeamError('Só gestores do Time Cargill incluem pessoas na equipe.', 403);
+  const farmIds = new Set(farms.map((f) => f.id));
+  const member = includeCandidates(user).find((u) => u.id === body.userId);
+  if (!member) throw new TeamError('Pessoa do Time Cargill não encontrada (ou já está na sua equipe).', 404);
+  const ids = farmList(body, farmIds);
+  // Sem gestor: passa a responder a quem incluiu. Com gestor: continua na equipe dele e só ganha as fazendas.
+  const entra = !member.reportsTo;
+  if (!entra && !ids.length) throw new TeamError('Esta pessoa já responde a outro gestor: escolha ao menos uma fazenda para liberar.');
+  if (entra) {
+    member.reportsTo = checkReportsTo(member.id, user.id);
+    member.bmkIncluidoPor = user.id;
+  }
+  member.bmkFarms = mergeFarms(member, ids, farmIds);
+  audit(user, 'bmk-team.include', member.id);
+  await save();
+  return { member: publicMember(member), entrou: entra };
+}
+
+// Fazendas liberadas a alguém do Time (da equipe ou de fora) e "Tirar da equipe" (remover: true): tira as fazendas
+// deste gestor e, se a pessoa entrou na equipe pelo "Incluir", deixa de responder a ele.
+export async function setMemberFarms(user, id, body = {}, farms) {
+  if (!isGestor(user) || user.role === 'admin') throw new TeamError('Só gestores do Time Cargill liberam fazendas.', 403);
+  const farmIds = new Set(farms.map((f) => f.id));
+  const member = [...managedBy(user, farmIds), ...liberadosPor(user, farmIds)].find((u) => u.id === id && kindOf(u) === 'cargill');
+  if (!member) throw new TeamError('Pessoa do Time Cargill não encontrada na sua equipe.', 404);
+  const remover = Boolean(body.remover);
+  member.bmkFarms = mergeFarms(member, remover ? [] : farmList(body, farmIds), farmIds);
+  if (remover && member.reportsTo === user.id && member.bmkIncluidoPor === user.id) {
+    member.reportsTo = null;
+    member.bmkIncluidoPor = null;
+  }
+  audit(user, remover ? 'bmk-team.exclude' : 'bmk-team.farms', member.id);
+  await save();
+  return publicMember(member);
 }
 
 function readMember(user, body, farmIds, existing) {

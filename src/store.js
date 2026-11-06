@@ -52,6 +52,8 @@ function normalize(raw) {
     semi: user.semi || { status: 'none', requestedAt: null, decidedAt: null },
     // Painel CCV: fazendas que o usuário vê, dentre as do cliente. Vazio = todas as do cliente.
     ccvFarms: Array.isArray(user.ccvFarms) ? user.ccvFarms : [],
+    // Benchmarking: fazendas liberadas a alguém do Time Cargill por um gestor (aba Equipe, "Incluir do Time").
+    bmkFarms: Array.isArray(user.bmkFarms) ? user.bmkFarms : [],
   }));
 
   // Categorias eram só o texto em cada relatório (e uma imagem por nome em "categoryImages");

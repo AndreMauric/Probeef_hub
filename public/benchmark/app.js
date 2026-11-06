@@ -2090,6 +2090,145 @@ function memberDialog(team, member) {
   name.focus();
 }
 
+// Escolha de fazendas com busca (a equipe pode ter muitas): devolve o bloco e as marcadas.
+function farmPicker(farms, marcadas = []) {
+  const sel = new Set(marcadas);
+  const busca = h('input', { type: 'search', placeholder: 'Buscar fazenda', 'aria-label': 'Buscar fazenda' });
+  const contador = h('small', { class: 'muted' });
+  const itens = [...farms]
+    .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
+    .map((fz) => {
+      const box = h('input', { type: 'checkbox', value: fz.id, checked: sel.has(fz.id), onchange: (e) => (e.target.checked ? sel.add(fz.id) : sel.delete(fz.id), contar()) });
+      return { fz, box, el: h('label', { class: 'check' }, box, h('span', {}, fz.name)) };
+    });
+  const semAcento = (t) => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const contar = () => (contador.textContent = `${sel.size} de ${farms.length} fazenda(s) marcada(s)`);
+  const visiveis = () => itens.filter((x) => !x.el.hidden);
+  busca.addEventListener('input', () => {
+    const q = semAcento(busca.value).trim();
+    for (const x of itens) x.el.hidden = Boolean(q) && !semAcento(x.fz.name).includes(q);
+  });
+  const marcar = (v) => {
+    for (const x of visiveis()) {
+      x.box.checked = v;
+      v ? sel.add(x.fz.id) : sel.delete(x.fz.id);
+    }
+    contar();
+  };
+  contar();
+  const el = h(
+    'div',
+    { class: 'bmk-field' },
+    h('span', {}, 'Fazendas que pode mexer'),
+    farms.length
+      ? [
+          h('div', { class: 'bmk-farm-pick-tools' }, busca, h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => marcar(true) }, 'Marcar as mostradas'), h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => marcar(false) }, 'Desmarcar')),
+          h('div', { class: 'bmk-checklist bmk-farm-pick' }, itens.map((x) => x.el)),
+          contador,
+        ]
+      : h('small', { class: 'muted' }, 'Sua equipe ainda não tem fazendas.'),
+  );
+  return { el, valores: () => [...sel] };
+}
+
+// Incluir na equipe alguém do Time Cargill que o admin já cadastrou e liberar fazendas para ele.
+function includeDialog(team) {
+  const pessoa = h(
+    'select',
+    { required: true },
+    h('option', { value: '' }, 'Escolha a pessoa'),
+    team.candidatos.map((c) => h('option', { value: c.id }, [c.name, c.gerencia, c.reportsToName ? `responde a ${c.reportsToName}` : null].filter(Boolean).join(' · '))),
+  );
+  const nota = h('small', { class: 'muted' });
+  const sync = () => {
+    const c = team.candidatos.find((x) => x.id === pessoa.value);
+    nota.textContent = !c
+      ? 'Só aparecem pessoas do Time Cargill já cadastradas pelo administrador.'
+      : c.reportsToName
+        ? `${c.name} já responde a ${c.reportsToName}: continua naquela equipe e passa a mexer também nas fazendas que você marcar.`
+        : `${c.name} passa a responder a você (entra na sua equipe) e mexe nas fazendas em que for responsável e nas que você marcar.`;
+  };
+  pessoa.addEventListener('change', sync);
+  sync();
+  const pick = farmPicker(team.farms);
+  fill(
+    dialog,
+    h(
+      'form',
+      {
+        class: 'bmk-dialog',
+        onsubmit: async (e) => {
+          e.preventDefault();
+          try {
+            const r = await api('/api/benchmark/team/include', { method: 'POST', body: { userId: pessoa.value, farmIds: pick.valores() } });
+            dialog.close();
+            toast(r.entrou ? `${r.member.name} entrou na sua equipe.` : `Fazendas liberadas para ${r.member.name}.`);
+            renderTeam();
+          } catch (err) {
+            toast(err.message, 'error');
+          }
+        },
+      },
+      h('h2', {}, 'Incluir do Time Cargill'),
+      h('label', { class: 'bmk-field' }, h('span', {}, 'Pessoa do Time Cargill'), pessoa, nota),
+      pick.el,
+      h('div', { class: 'dialog-actions' }, h('button', { class: 'btn', type: 'button', onclick: () => dialog.close() }, 'Cancelar'), h('button', { class: 'btn btn-primary', type: 'submit' }, 'Incluir')),
+    ),
+  );
+  dialog.showModal();
+  pessoa.focus();
+}
+
+// Fazendas liberadas a alguém do Time (da equipe ou de outra equipe) e "Tirar da equipe".
+function farmsDialog(team, m) {
+  const pick = farmPicker(team.farms, (m.bmkFarms || []).filter((id) => team.farms.some((fz) => fz.id === id)));
+  const entrouPorMim = m.reportsTo === team.me.id && m.incluidoPor === team.me.id;
+  const remover = async () => {
+    const msg = entrouPorMim ? `Tirar ${m.name} da sua equipe? As fazendas liberadas por você saem junto.` : `Tirar de ${m.name} as fazendas liberadas por você?`;
+    if (!confirm(msg)) return;
+    try {
+      await api(`/api/benchmark/team/${m.id}/farms`, { method: 'PUT', body: { remover: true } });
+      dialog.close();
+      toast(entrouPorMim ? `${m.name} saiu da sua equipe.` : 'Fazendas retiradas.');
+      renderTeam();
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  };
+  fill(
+    dialog,
+    h(
+      'form',
+      {
+        class: 'bmk-dialog',
+        onsubmit: async (e) => {
+          e.preventDefault();
+          try {
+            await api(`/api/benchmark/team/${m.id}/farms`, { method: 'PUT', body: { farmIds: pick.valores() } });
+            dialog.close();
+            toast('Fazendas atualizadas.');
+            renderTeam();
+          } catch (err) {
+            toast(err.message, 'error');
+          }
+        },
+      },
+      h('h2', {}, `Fazendas de ${m.name}`),
+      h('p', { class: 'muted' }, 'Além das fazendas em que é responsável (e das da equipe dele), mexe nas marcadas aqui.'),
+      pick.el,
+      h(
+        'div',
+        { class: 'dialog-actions' },
+        m.externo || entrouPorMim ? h('button', { class: 'btn btn-ghost btn-danger', type: 'button', onclick: remover }, entrouPorMim ? 'Tirar da equipe' : 'Tirar acesso') : null,
+        h('span', { class: 'spacer' }),
+        h('button', { class: 'btn', type: 'button', onclick: () => dialog.close() }, 'Cancelar'),
+        h('button', { class: 'btn btn-primary', type: 'submit' }, 'Salvar'),
+      ),
+    ),
+  );
+  dialog.showModal();
+}
+
 let teamSeq = 0;
 async function renderTeam() {
   const panel = document.querySelector('[data-panel="equipe"]');
@@ -2116,7 +2255,8 @@ async function renderTeam() {
     }
   };
   // Árvore: a partir de quem responde a mim, em profundidade; clientes logo abaixo da equipe.
-  const internos = team.members.filter((m) => m.kind !== 'cliente');
+  const internos = [...team.members.filter((m) => m.kind !== 'cliente'), ...(team.liberados || []).map((m) => ({ ...m, externo: true }))];
+  const liberadas = (m) => (m.bmkFarms || []).filter((id) => farmNames.has(id)).length;
   const ordered = [];
   const walk = (bossId, depth) => {
     for (const m of internos.filter((x) => x.reportsTo === bossId).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))) {
@@ -2133,9 +2273,14 @@ async function renderTeam() {
       { class: m.active ? '' : 'bmk-row-off' },
       h('td', {}, h('span', { style: `padding-left: ${depth * 18}px` }, depth ? '└ ' : '', h('strong', {}, m.name)), h('small', { class: 'muted bmk-sub' }, m.email)),
       h('td', {}, KIND_LABEL[m.kind], m.bmkGestor ? ' · Gestor' : '', m.bmkValidator ? ' · Valida' : '', m.gerencia ? h('small', { class: 'muted bmk-sub' }, m.gerencia) : null),
-      h('td', {}, m.kind === 'cliente' ? m.clientIds.map((id) => farmNames.get(id)).filter(Boolean).join(', ') || h('span', { class: 'muted' }, 'sem fazenda ainda') : names.get(m.reportsTo) || '—'),
+      h(
+        'td',
+        {},
+        m.kind === 'cliente' ? m.clientIds.map((id) => farmNames.get(id)).filter(Boolean).join(', ') || h('span', { class: 'muted' }, 'sem fazenda ainda') : m.externo ? `${m.reportsToName || '—'} (outra equipe)` : names.get(m.reportsTo) || '—',
+        m.kind === 'cargill' && liberadas(m) ? h('small', { class: 'muted bmk-sub' }, `${liberadas(m)} fazenda(s) liberada(s) por você`) : null,
+      ),
       h('td', {}, m.active ? 'Ativo' : 'Desativado', m.bmkOnly ? null : h('small', { class: 'muted bmk-sub' }, 'também usa a plataforma'), h('small', { class: 'muted bmk-sub' }, m.lastLoginAt ? `último acesso ${fmtDateTime(m.lastLoginAt)}` : 'nunca entrou')),
-      h('td', { class: 'bmk-actions' }, readOnly ? null : [h('button', { class: 'btn btn-sm', type: 'button', onclick: () => memberDialog(team, m) }, 'Editar'), ' ', m.bmkOnly ? h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => resetPassword(m) }, 'Nova senha') : null]),
+      h('td', { class: 'bmk-actions' }, readOnly ? null : [m.externo ? null : h('button', { class: 'btn btn-sm', type: 'button', onclick: () => memberDialog(team, m) }, 'Editar'), ' ', m.kind === 'cargill' && !state.isAdmin ? h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => farmsDialog(team, m) }, 'Fazendas') : null, ' ', m.bmkOnly ? h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => resetPassword(m) }, 'Nova senha') : null]),
     );
   const table = (title, rows, empty) =>
     h(
@@ -2159,7 +2304,8 @@ async function renderTeam() {
       'div',
       { class: 'bmk-toolbar' },
       readOnly ? null : h('button', { class: 'btn btn-sm btn-primary', type: 'button', onclick: () => memberDialog(team, null) }, '+ Novo usuário'),
-      h('p', { class: 'muted' }, 'Você cria usuários de Canais Cargill e os logins dos participantes das fazendas da sua equipe, só para o Benchmarking (não acessam relatórios nem ferramentas da plataforma). Pessoas do Time Cargill são cadastradas pelo administrador.', team.canCreateTeam ? ' Também pode tornar alguém gestor.' : ''),
+      readOnly || !team.candidatos?.length ? null : h('button', { class: 'btn btn-sm', type: 'button', onclick: () => includeDialog(team) }, '+ Incluir do Time Cargill'),
+      h('p', { class: 'muted' }, 'Você cria usuários de Canais Cargill e os logins dos participantes das fazendas da sua equipe, só para o Benchmarking (não acessam relatórios nem ferramentas da plataforma). Pessoas do Time Cargill são cadastradas pelo administrador: você as inclui na equipe e escolhe as fazendas que podem mexer.', team.canCreateTeam ? ' Também pode tornar alguém gestor.' : ''),
     ),
     table('Equipe Cargill', ordered, 'Ninguém responde a você ainda.'),
     table('Participantes', clientes.map((m) => [m, 0]), 'Nenhum login de participante nas fazendas da sua equipe.'),

@@ -149,6 +149,10 @@ configurações (Admin → Benchmarking → "Ciclo, limites e listas") e é o **
   **Equipe** do `/benchmark`), `bmkCreateTeam` (pode tornar alguém gestor) e `bmkValidator`.
 - `user.reportsTo` aponta para um gestor; a equipe de alguém é todo mundo abaixo dele, em qualquer
   nível (`teamIds`; ciclo na árvore é recusado em `checkReportsTo`).
+- **Incluir do Time Cargill** (aba Equipe, `includeMember`/`setMemberFarms`): o gestor não cria gente do Time, mas
+  inclui quem o admin cadastrou e marca as fazendas da equipe que a pessoa pode mexer (`user.bmkFarms`, à parte do
+  `clientIds` dos relatórios; entra em `participantClients`). Sem "responde a", ela passa a responder ao gestor
+  (`bmkIncluidoPor`; "Tirar da equipe" desfaz); com outro gestor, continua lá e só ganha as fazendas.
 - Cada fazenda tem um responsável `client.bmkOwner` (Time ou Canais). Time e Canais veem as fazendas
   cujo responsável está no alcance deles (`ownerScope`: a própria pessoa e a equipe; **quem valida
   soma a equipe do gestor direto**), mais as vinculadas por `clientIds` (legado). Cliente vê só as

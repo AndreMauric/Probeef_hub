@@ -1495,3 +1495,21 @@
   border-color: var(--accent, #0f4c45);
   font-weight: 600;
 }
+
+/* Equipe: escolher as fazendas que alguém do Time Cargill pode mexer */
+.bmk-farm-pick-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.bmk-farm-pick-tools input[type='search'] {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+
+.bmk-farm-pick {
+  max-height: 260px;
+  overflow: auto;
+}

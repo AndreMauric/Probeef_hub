@@ -5,7 +5,7 @@ import { Router } from 'express';
 import { recordToolAccess, startToolView } from '../accessLog.js';
 import { requireAuth } from '../auth.js';
 import { adminList, canUseBenchmark, clearDraft, coletaAberta, createClientFor, getForUser, isValidator, participantClients, prefillQuestionario, review, saveDraft, setOwner, settings, submit } from '../benchmark.js';
-import { canCreateFarm, canCreateTeam, canSetOwner, createMember, isGestor, isInternal, kindOf, ownerCandidates, resetMemberPassword, teamView, updateMember } from '../bmkTeam.js';
+import { canCreateFarm, canCreateTeam, canSetOwner, createMember, includeMember, setMemberFarms, isGestor, isInternal, kindOf, ownerCandidates, resetMemberPassword, teamView, updateMember } from '../bmkTeam.js';
 
 export const benchmarkRouter = Router();
 
@@ -83,6 +83,17 @@ benchmarkRouter.get('/team', route(async (req, res) => res.json(teamView(req.use
 benchmarkRouter.post('/team', route(async (req, res) => {
   if (noImpersonation(req, res)) return;
   res.status(201).json(await createMember(req.user, req.body || {}, farmsOf(req.user)));
+}));
+
+// Incluir alguém do Time Cargill (cadastrado pelo admin) e liberar fazendas da equipe para ele.
+benchmarkRouter.post('/team/include', route(async (req, res) => {
+  if (noImpersonation(req, res)) return;
+  res.json(await includeMember(req.user, req.body || {}, farmsOf(req.user)));
+}));
+
+benchmarkRouter.put('/team/:id/farms', route(async (req, res) => {
+  if (noImpersonation(req, res)) return;
+  res.json({ member: await setMemberFarms(req.user, req.params.id, req.body || {}, farmsOf(req.user)) });
 }));
 
 benchmarkRouter.put('/team/:id', route(async (req, res) => {
