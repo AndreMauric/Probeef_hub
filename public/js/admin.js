@@ -1254,13 +1254,16 @@ function renderBenchmark() {
   if (bmkState.resp !== undefined && !donos.has(bmkState.resp)) bmkState.resp = undefined;
   const semAcento = (t) => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
   const busca = semAcento(bmkState.busca).trim();
-  const clients = todos.filter(
+  const semSituacao = todos.filter(
     (c) =>
       (bmkState.gerencia === undefined || (c.gerencia || '') === bmkState.gerencia) &&
       (bmkState.resp === undefined || (c.ownerId || '') === bmkState.resp) &&
       (!busca || semAcento(c.client).includes(busca)),
   );
-  const filtrando = bmkState.gerencia !== undefined || bmkState.resp !== undefined || Boolean(busca);
+  // Situação: a contagem de cada uma segue os outros filtros.
+  if (bmkState.situacao !== undefined && !BMK_STATUS[bmkState.situacao]) bmkState.situacao = undefined;
+  const clients = bmkState.situacao === undefined ? semSituacao : semSituacao.filter((c) => (c.status || 'nao_iniciado') === bmkState.situacao);
+  const filtrando = bmkState.gerencia !== undefined || bmkState.resp !== undefined || bmkState.situacao !== undefined || Boolean(busca);
   // O campo de busca é o mesmo a cada desenho, para não perder o foco enquanto se digita.
   bmkState.buscaEl ??= h('input', {
     type: 'search',
@@ -1351,6 +1354,19 @@ function renderBenchmark() {
     'div',
     { class: 'bmk-andamento-filtros' },
     h('label', { class: 'field' }, h('span', {}, 'Participante'), buscaEl),
+    h(
+      'label',
+      { class: 'field' },
+      h('span', {}, 'Situação'),
+      h(
+        'select',
+        { onchange: (e) => ((bmkState.situacao = e.target.value === '*' ? undefined : e.target.value), renderBenchmark()) },
+        h('option', { value: '*' }, 'Todas'),
+        ['enviado', 'correcao', 'rascunho', 'nao_iniciado', 'aprovado'].map((s) =>
+          h('option', { value: s, selected: bmkState.situacao === s }, `${BMK_STATUS[s][0]} (${num(semSituacao.filter((c) => (c.status || 'nao_iniciado') === s).length)})`),
+        ),
+      ),
+    ),
     responsaveis.length > 1
       ? h(
           'label',
@@ -1388,6 +1404,7 @@ function renderBenchmark() {
               buscaEl.value = '';
               bmkState.resp = undefined;
               bmkState.gerencia = undefined;
+              bmkState.situacao = undefined;
               renderBenchmark();
             },
           },
