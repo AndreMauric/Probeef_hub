@@ -1083,6 +1083,51 @@ export function colIndex(col) {
   return [...col].reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0) - 1;
 }
 
+// ---------- Relatórios "Índices Zootécnicos" e "Listagem de Lotes Econômica" do Feed Manager ----------
+// São o que o software exporta (.xls), um lote por linha, com as mesmas colunas das abas BD_Zootec_Feed e
+// BD_Econom_Feed, mas: (1) no zootécnico, Raça (D:E) e Categoria (F:G) são células mescladas, então a linha tem duas
+// colunas vazias a mais (E e G) — copiada e colada, também; (2) depois dos lotes vem um "Resumo" com totais, que não
+// é lote; (3) há títulos e cabeçalhos em várias linhas e colunas de cálculo à direita. Serve para colar e importar.
+const celulaVazia = (v) => v === null || v === undefined || String(v).trim() === '';
+const pareceData = (v) => (typeof v === 'number' ? v > 20000 && v < 80000 : /^\s*(\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}|\d{4}-\d{2}-\d{2})/.test(String(v ?? '')));
+const pareceNumero = (v) => !celulaVazia(v) && Number.isFinite(toNumber(v));
+const FIM_DOS_LOTES = /^resumo$/i;
+// Cabeçalhos e linhas do resumo que começam na coluna A (para o caso de o resumo vir sem a palavra "Resumo").
+const NAO_E_LOTE =
+  /^(lote|identifica[çc][ãa]o|mortes|animais abatidos|retorno a pasto|retorno a pasto \(%\)|mortalidade \(%\))$|^(entrada de animais \(|total de animais|total de mortes|total de retornos|[íi]ndice de retorno a pasto|lotes encerrados|piquetes relacionados)/i;
+
+// matrix: linhas × células (da planilha ou do texto colado). tipo: 'zoo' | 'eco' | null (descobre pelos dados: na
+// zootécnica a coluna C é o tipo de entrada, um texto; na econômica é o valor de entrada, um número).
+export function lerRelatorioFeed(matrix, tipo = null) {
+  const fim = matrix.findIndex((row) => (row || []).some((c) => FIM_DOS_LOTES.test(String(c ?? '').trim())));
+  const linhas = (fim >= 0 ? matrix.slice(0, fim) : matrix).filter((row) => row && !celulaVazia(row[0]) && !NAO_E_LOTE.test(String(row[0]).trim()));
+  if (!tipo) tipo = linhas.length && linhas.filter((r) => pareceNumero(r[2])).length > linhas.length / 2 ? 'eco' : 'zoo';
+  // Células mescladas do relatório zootécnico: E e G vazias e a data de saída em H (no modelo, a data fica em F).
+  let mescladas = false;
+  if (tipo === 'zoo') {
+    const doRelatorio = linhas.filter((r) => celulaVazia(r[4]) && celulaVazia(r[6]) && pareceData(r[7])).length;
+    const doModelo = linhas.filter((r) => pareceData(r[5])).length;
+    mescladas = doRelatorio > doModelo;
+  }
+  const colunas = tipo === 'zoo' ? COLUNAS_ZOO : COLUNAS_ECO;
+  const lotes = linhas
+    .map((r) => {
+      const cells = mescladas ? r.filter((_, i) => i !== 4 && i !== 6) : r;
+      const raw = {};
+      for (const f of colunas) {
+        const v = cells[colIndex(f.col)];
+        if (celulaVazia(v)) continue;
+        raw[f.key] = f.type === 'date' ? toIsoDate(v) : typeof v === 'string' ? v.trim() : v;
+      }
+      return raw;
+    })
+    .filter((r) => r.lote !== undefined && String(r.lote).trim() !== '');
+  return { tipo, mescladas, resumo: fim >= 0, lotes };
+}
+
+// Aba com um desses relatórios: a coluna A tem "Lote" no cabeçalho, nas primeiras linhas.
+export const ehRelatorioFeed = (matrix) => matrix.slice(0, 20).some((row) => /^lote$/i.test(String(row?.[0] ?? '').trim()));
+
 export const STATUS = {
   rascunho: { label: 'Em preenchimento', cls: 'neutral' },
   enviado: { label: 'Enviado para validação', cls: 'warn' },

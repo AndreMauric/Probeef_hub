@@ -215,6 +215,12 @@ O admin marca `client.benchmark` (ou o Time cadastra a fazenda já participando)
 - Importar a planilha atual é feito no navegador com SheetJS (`/vendor/xlsx.full.min.js`,
   pacote oficial de cdn.sheetjs.com — a versão do npm é antiga): lê BD_Zootec_Feed,
   BD_Econom_Feed, BD_Zootec_Feed_ Recria_Conf e Q1.
+- **Relatórios que saem do Feed Manager** ("Índices Zootécnicos" e "Listagem de Lotes Econômica", .xls; exemplos em
+  `Downloads\Relatorio zootecnico .xls` e `Relatorio economico.xls`): mesmas colunas das abas BD_*, mas no zootécnico
+  Raça (D:E) e Categoria (F:G) são mescladas (duas colunas vazias a mais, também ao copiar e colar) e depois dos lotes
+  vem um "Resumo". `lerRelatorioFeed` em `fields.js` lê os dois (colar e importar; zootécnico ou econômico pelos
+  dados, a coluna C) e é o leitor do "Colar do Excel" também para o modelo. Importar aceita vários arquivos de uma vez
+  (os dois relatórios se juntam pelo lote); o relatório só é procurado nas abas que não são do modelo.
 - Datas: `parseDate` em `fields.js` é o único leitor (colar, importar, TGC e o servidor via
   `cleanLote`). Aceita célula sem formato de data: número de série do Excel (inclusive como texto),
   dd/mm/aa(aa) com / - . ou espaço, AAAA-MM-DD, AAAAMMDD, mês por nome e hora no fim; dd/mm é o

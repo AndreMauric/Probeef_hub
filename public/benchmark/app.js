@@ -14,6 +14,8 @@ import {
   cleanLote,
   colIndex,
   COLUNAS_ECO,
+  ehRelatorioFeed,
+  lerRelatorioFeed,
   COLUNAS_ZOO,
   ECO_FIELDS,
   ECO_RESULT_ROWS,
@@ -522,22 +524,9 @@ function issuesDialog(kind, i) {
 
 // ---------- Colar do Excel (mesma ordem de colunas da planilha) ----------
 
-// Lê linhas coladas (separadas por tabulação) usando a letra de coluna de cada campo.
-function rowsFromTsv(text, columns) {
-  const lines = text.replace(/\r/g, '').split('\n').filter((line) => line.trim());
-  return lines
-    .map((line) => line.split('\t'))
-    .filter((cells) => !/^lote$/i.test(String(cells[0] || '').trim()) && !/^identifica/i.test(String(cells[0] || '').trim()))
-    .map((cells) => {
-      const raw = {};
-      for (const f of columns) {
-        const v = cells[colIndex(f.col)];
-        if (v !== undefined && String(v).trim() !== '') raw[f.key] = String(v).trim();
-      }
-      return raw;
-    })
-    .filter((r) => r.lote);
-}
+// Linhas coladas (separadas por tabulação) → células. Quem lê é lerRelatorioFeed (fields.js): pela letra de coluna de
+// cada campo, como no modelo, e também o relatório que sai do Feed Manager (colunas mescladas e resumo no fim).
+const linhasColadas = (text) => text.replace(/\r/g, '').split('\n').map((line) => line.split('\t'));
 
 // Junta lotes novos aos atuais pelo identificador do lote (atualiza os existentes, inclui os novos).
 function mergeLotes(kind, incoming) {
@@ -610,7 +599,7 @@ function pasteDialog(kind) {
   const info = h('p', { class: 'muted' });
   const showInfo = () => {
     const cols = which === 'zoo' ? COLUNAS_ZOO : COLUNAS_ECO;
-    info.textContent = `Feed Manager (um lote por linha) — ordem esperada (como na aba ${which === 'zoo' ? (recria ? 'BD_Zootec_Feed_ Recria_Conf' : 'BD_Zootec_Feed') : 'BD_Econom_Feed'}, a partir da coluna A): ${cols.map((f) => `${f.col} ${f.label || 'Lote'}`).join(' · ')}. Colunas que não estão na lista (como Mortes % e as calculadas) são ignoradas. Lotes já existentes são atualizados pelo número do lote. TGC ou Cargill Feed Manager (um animal por linha): cole o relatório junto com a linha de cabeçalho (LOTE_SAIDA ou "LOTE Saída confinamento", RAÇA…); os animais são juntados por lote, como a tabela dinâmica da planilha.`;
+    info.textContent = `Feed Manager (um lote por linha): pode colar direto o relatório do software (${recria ? '"Índices Zootécnicos"' : '"Índices Zootécnicos" ou "Listagem de Lotes Econômica"'}), inteiro ou só as linhas dos lotes — as colunas mescladas e o resumo do fim são tratados${recria ? '' : ', e zootécnico ou econômico é reconhecido sozinho'}. Ou na ordem da aba ${which === 'zoo' ? (recria ? 'BD_Zootec_Feed_ Recria_Conf' : 'BD_Zootec_Feed') : 'BD_Econom_Feed'}, a partir da coluna A: ${cols.map((f) => `${f.col} ${f.label || 'Lote'}`).join(' · ')}. Colunas que não estão na lista (como Mortes % e as calculadas) são ignoradas. Lotes já existentes são atualizados pelo número do lote. TGC ou Cargill Feed Manager (um animal por linha): cole o relatório junto com a linha de cabeçalho (LOTE_SAIDA ou "LOTE Saída confinamento", RAÇA…); os animais são juntados por lote, como a tabela dinâmica da planilha.`;
   };
   showInfo();
   fill(
@@ -633,13 +622,16 @@ function pasteDialog(kind) {
             afterAnimalImport(kind, t.source);
             return;
           }
-          const rows = rowsFromTsv(area.value, which === 'zoo' ? COLUNAS_ZOO : COLUNAS_ECO);
-          if (!rows.length) return toast('Nenhuma linha com número de lote foi encontrada.', 'error');
-          const { added, updated } = mergeLotes(kind, rows);
+          // Zootécnico ou econômico: pelos dados (na recria, sempre zootécnico).
+          const lido = lerRelatorioFeed(linhasColadas(area.value), recria ? 'zoo' : null);
+          if (!lido.lotes.length) return toast('Nenhuma linha com número de lote foi encontrada.', 'error');
+          const { added, updated } = mergeLotes(kind, lido.lotes);
           changed();
           dialog.close();
           lotesPanel(kind);
-          toast(`${added} lote(s) incluído(s), ${updated} atualizado(s).`);
+          toast(
+            `${lido.tipo === 'eco' ? 'Dados econômicos' : 'Dados zootécnicos'}${lido.mescladas ? ' do relatório do Feed Manager' : ''}: ${added} lote(s) incluído(s), ${updated} atualizado(s).${lido.resumo ? ' O resumo do fim ficou de fora.' : ''}`,
+          );
         },
       },
       h('h2', {}, `Colar do Excel · ${recria ? 'recria confinada' : 'engorda'}`),
@@ -758,16 +750,29 @@ async function readWorkbook(file) {
   }
   engorda.push(...porAnimal.engorda.flatMap((r) => r.lotes));
   recria.push(...porAnimal.recria.flatMap((r) => r.lotes));
-  // Arquivo que não é a planilha de benchmarking: pode ser a exportação pura do TGC ou do CFM.
+  // Arquivo que não é a planilha de benchmarking: pode ser a exportação pura do TGC ou do CFM (um animal por linha) ou
+  // os relatórios do Feed Manager que saem do software (um lote por linha: "Índices Zootécnicos" e "Listagem de
+  // Lotes Econômica", .xls com colunas mescladas e resumo no fim). Os dois do Feed Manager se juntam pelo lote.
   let raw = null;
+  const relatorioFeed = { lotes: [], zoo: new Set(), eco: new Set(), abas: [] };
   if (!engorda.length && !recria.length) {
+    const porLote = new Map();
     for (const name of wb.SheetNames) {
       const r = reportFromSheet(XLSX, wb.Sheets[name]);
       if (r?.animais) {
-        raw = { ...r, sheet: name };
-        break;
+        raw ??= { ...r, sheet: name };
+        continue;
       }
+      if (/^(BD_|Q1$|Question|Formul|Listas$)/i.test(name)) continue;
+      const matrix = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, raw: true, defval: null });
+      if (!ehRelatorioFeed(matrix)) continue;
+      const fm = lerRelatorioFeed(matrix);
+      if (!fm.lotes.length) continue;
+      for (const l of fm.lotes) relatorioFeed[fm.tipo].add(String(l.lote));
+      relatorioFeed.abas.push(name);
+      for (const l of fm.lotes) porLote.set(String(l.lote), { ...(porLote.get(String(l.lote)) || {}), ...l });
     }
+    relatorioFeed.lotes = [...porLote.values()];
   }
   // Modelo baixado do portal: questionário na aba "Questionário" (código + resposta).
   const respostas = lerQuestionario(XLSX, wb, answerFromCell) || {};
@@ -780,11 +785,32 @@ async function readWorkbook(file) {
       if (q && a !== null && !(typeof a === 'number' && a === 0 && ['q45', 'q46', 'q52', 'q53', 'q54'].includes(id))) respostas[id] = a;
     });
   }
-  return { engorda, recria, respostas, feedManager, porAnimal, raw, sheets: wb.SheetNames };
+  return { engorda, recria, respostas, feedManager, porAnimal, raw, relatorioFeed, sheets: wb.SheetNames };
+}
+
+// Vários arquivos de uma vez (ex.: o relatório zootécnico e o econômico do Feed Manager): junta os lotes pelo número.
+function juntarLidos(lidos) {
+  if (lidos.length === 1) return lidos[0];
+  const porLote = (listas) => {
+    const m = new Map();
+    for (const l of listas.flat()) m.set(String(l.lote), { ...(m.get(String(l.lote)) || {}), ...l });
+    return [...m.values()];
+  };
+  const fms = lidos.map((p) => p.relatorioFeed);
+  return {
+    engorda: porLote(lidos.map((p) => p.engorda)),
+    recria: porLote(lidos.map((p) => p.recria)),
+    respostas: Object.assign({}, ...lidos.map((p) => p.respostas)),
+    feedManager: { engorda: lidos.reduce((t, p) => t + p.feedManager.engorda, 0), recria: lidos.reduce((t, p) => t + p.feedManager.recria, 0) },
+    porAnimal: { engorda: lidos.flatMap((p) => p.porAnimal.engorda), recria: lidos.flatMap((p) => p.porAnimal.recria) },
+    raw: lidos.find((p) => p.raw)?.raw || null,
+    relatorioFeed: { lotes: porLote(fms.map((x) => x.lotes)), zoo: new Set(fms.flatMap((x) => [...x.zoo])), eco: new Set(fms.flatMap((x) => [...x.eco])), abas: fms.flatMap((x) => x.abas) },
+    sheets: lidos.flatMap((p) => p.sheets),
+  };
 }
 
 function importDialog() {
-  const fileInput = h('input', { type: 'file', accept: '.xlsb,.xlsx,.xlsm,.xls,.csv' });
+  const fileInput = h('input', { type: 'file', accept: '.xlsb,.xlsx,.xlsm,.xls,.csv', multiple: true });
   const result = h('div', { class: 'bmk-import-result' });
   let parsed = null;
   const modes = h(
@@ -798,11 +824,11 @@ function importDialog() {
   // Exportação pura do TGC ou do CFM: a pessoa diz se os animais são da engorda ou da recria.
   let rawKind = state.tab === 'recria' ? 'recria' : 'engorda';
   fileInput.addEventListener('change', async () => {
-    const file = fileInput.files[0];
-    if (!file) return;
+    const files = [...fileInput.files];
+    if (!files.length) return;
     fill(result, h('p', { class: 'muted' }, 'Lendo a planilha… (arquivos grandes podem levar alguns segundos)'));
     try {
-      parsed = await readWorkbook(file);
+      parsed = juntarLidos(await Promise.all(files.map(readWorkbook)));
       const nResp = Object.keys(parsed.respostas).length;
       const faltando = (x) => (x.faltando.length > 0 && x.lotes.length ? h('small', { class: 'muted' }, ` · colunas que não vieram: ${x.faltando.join(', ')}`) : null);
       // "12 lotes de engorda (3 do Feed Manager + 9 do TGC: …)".
@@ -814,9 +840,35 @@ function importDialog() {
         return [` (${parts.join(' + ')})`, ...reps.map(faltando)];
       };
       const raw = parsed.raw;
+      const fm = parsed.relatorioFeed;
+      // Escolha engorda/recria, para o que não diz de qual é (relatório por animal e relatório do Feed Manager).
+      const escolhaKind = h(
+        'div',
+        { class: 'bmk-field' },
+        h('span', {}, raw ? 'Esses animais são de' : 'Esses lotes são de'),
+        h(
+          'div',
+          { class: 'bmk-clear-list' },
+          [
+            ['engorda', 'Engorda'],
+            ['recria', 'Recria confinada'],
+          ].map(([k, label]) => h('label', { class: 'bmk-check' }, h('input', { type: 'radio', name: 'rawKind', value: k, checked: k === rawKind, onchange: () => (rawKind = k) }), h('span', {}, label))),
+        ),
+      );
       fill(
         result,
-        raw
+        !raw && fm.lotes.length
+          ? [
+              h(
+                'p',
+                { class: 'bmk-callout ok' },
+                `Relatório do Feed Manager: ${fm.lotes.length} lote(s)${fm.zoo.size ? ` · dados zootécnicos em ${fm.zoo.size}` : ''}${fm.eco.size ? ` · dados econômicos em ${fm.eco.size}` : ''}. As colunas mescladas e o resumo do fim foram tratados.`,
+              ),
+              !fm.eco.size && rawKind === 'engorda' ? h('p', { class: 'muted' }, 'Só veio o zootécnico. O econômico (Listagem de Lotes Econômica) pode ser importado depois, em "Juntar", ou escolhido junto com este arquivo.') : null,
+              !fm.zoo.size ? h('p', { class: 'muted' }, 'Só veio o econômico. O zootécnico (Índices Zootécnicos) pode ser importado depois, em "Juntar", ou escolhido junto com este arquivo.') : null,
+              escolhaKind,
+            ]
+          : raw
           ? [
               h(
                 'p',
@@ -824,19 +876,7 @@ function importDialog() {
                 `Relatório do ${reportLabel(raw)} (aba "${raw.sheet}"): ${reportResumo(raw)}. Os animais são juntados por ${ANIMAL_SOURCES[raw.source].loteCol}${raw.source === 'cfm' ? ': zootécnico pela média dos vendidos, custos e receita somados no lote' : ' (contagem e média de cada coluna), como a tabela dinâmica da planilha'}.`,
                 faltando(raw),
               ),
-              h(
-                'div',
-                { class: 'bmk-field' },
-                h('span', {}, 'Esses animais são de'),
-                h(
-                  'div',
-                  { class: 'bmk-clear-list' },
-                  [
-                    ['engorda', 'Engorda'],
-                    ['recria', 'Recria confinada'],
-                  ].map(([k, label]) => h('label', { class: 'bmk-check' }, h('input', { type: 'radio', name: 'rawKind', value: k, checked: k === rawKind, onchange: () => (rawKind = k) }), h('span', {}, label))),
-                ),
-              ),
+              escolhaKind,
             ]
           : h(
               'ul',
@@ -845,11 +885,11 @@ function importDialog() {
               h('li', {}, h('strong', {}, parsed.recria.length), ' lotes de recria confinada', ...origem('recria')),
               h('li', {}, h('strong', {}, nResp), ' respostas do questionário'),
             ),
-        !raw && !parsed.engorda.length && !parsed.recria.length && !nResp ? h('p', { class: 'alert' }, `Não encontrei as abas do modelo de benchmarking nem um relatório por animal do TGC (coluna LOTE_SAIDA) ou do Cargill Feed Manager (coluna "LOTE Saída confinamento") neste arquivo (abas: ${parsed.sheets.join(', ')}).`) : null,
+        !raw && !fm.lotes.length && !parsed.engorda.length && !parsed.recria.length && !nResp ? h('p', { class: 'alert' }, `Não encontrei as abas do modelo de benchmarking, os relatórios do Feed Manager (Índices Zootécnicos ou Listagem de Lotes Econômica) nem um relatório por animal do TGC (coluna LOTE_SAIDA) ou do Cargill Feed Manager (coluna "LOTE Saída confinamento") neste arquivo (abas: ${parsed.sheets.join(', ')}).`) : null,
       );
       modes.hidden = false;
       modes.querySelector('[name=respostas]').closest('label').hidden = !nResp;
-      submitBtn.disabled = !raw && !parsed.engorda.length && !parsed.recria.length && !nResp;
+      submitBtn.disabled = !raw && !fm.lotes.length && !parsed.engorda.length && !parsed.recria.length && !nResp;
     } catch (err) {
       parsed = null;
       fill(result, h('p', { class: 'alert' }, `Não consegui ler o arquivo: ${err.message}`));
@@ -867,6 +907,18 @@ function importDialog() {
           const form = e.target;
           const mode = form.elements.mode.value;
           if (mode === 'replace' && (state.data.engorda.length || state.data.recria.length) && !confirm('Apagar os lotes atuais e ficar só com os da planilha?')) return;
+          if (!parsed.raw && parsed.relatorioFeed.lotes.length) {
+            if (mode === 'replace') state.data[rawKind] = [];
+            const r = mergeLotes(rawKind, parsed.relatorioFeed.lotes);
+            if (form.elements.respostas.checked) state.data.respostas = { ...state.data.respostas, ...parsed.respostas };
+            changed();
+            dialog.close();
+            if (state.tab !== rawKind) selectTab(rawKind);
+            renderAll();
+            toast(`Relatório do Feed Manager: ${r.added} lote(s) incluído(s), ${r.updated} atualizado(s). Confira os erros e alertas.`);
+            setTimeout(() => standardizeDialog(rawKind, { auto: true }), 400);
+            return;
+          }
           if (parsed.raw) {
             // Exportação pura (TGC ou CFM): só a lista escolhida (engorda ou recria) é afetada.
             if (mode === 'replace') state.data[rawKind] = [];
@@ -897,7 +949,7 @@ function importDialog() {
         },
       },
       h('h2', {}, 'Importar a planilha de benchmarking'),
-      h('p', { class: 'muted' }, 'Escolha o modelo baixado do portal depois de preenchido, a planilha de benchmarking ("Benchmarking Confinamento Probeef …", .xlsb ou .xlsx), com os dados do Feed Manager, do TGC e/ou do Cargill Feed Manager nas abas próprias, ou direto o relatório por animal exportado do TGC ou do Cargill Feed Manager ("Relatório de fechamento individual", .xlsx, .xls ou .csv). O arquivo é lido aqui no seu navegador; só os dados vão para o portal.'),
+      h('p', { class: 'muted' }, 'Escolha o modelo baixado do portal depois de preenchido, a planilha de benchmarking ("Benchmarking Confinamento Probeef …", .xlsb ou .xlsx), com os dados do Feed Manager, do TGC e/ou do Cargill Feed Manager nas abas próprias, ou direto o que sai do software: os relatórios do Feed Manager "Índices Zootécnicos" e "Listagem de Lotes Econômica" (.xls; dá para escolher os dois arquivos juntos) ou o relatório por animal do TGC ou do Cargill Feed Manager ("Relatório de fechamento individual", .xlsx, .xls ou .csv). O arquivo é lido aqui no seu navegador; só os dados vão para o portal.'),
       h('p', { class: 'muted' }, 'Ainda não tem o modelo? ', h('button', { class: 'btn btn-sm', type: 'button', onclick: downloadModelo }, 'Baixar modelo em Excel')),
       fileInput,
       result,
@@ -1105,8 +1157,9 @@ function standardizeDialog(kind, { auto = false } = {}) {
     if (!auto) toast('Todos os valores de raça, categoria, origem e tipo de entrada já estão nas listas.');
     return;
   }
-  // Nomes que o TGC e o Cargill Feed Manager usam → item da lista (só se o item existir na lista).
+  // Nomes que o TGC, o Cargill Feed Manager e o relatório do Feed Manager usam → item da lista (só se o item existir na lista).
   const SINONIMOS = [
+    [/^(anm|animal|animais)\.? ?propr?/, 'Boi Próprio'],
     [/leite/, 'Cruz.Leiteiro'],
     [/angus.*(cruz|mesti|f1)|(cruz|mesti|f1).*angus/, 'Cruz.Industrial(Angus)'],
     [/anelorad/, 'Anelorado'],
