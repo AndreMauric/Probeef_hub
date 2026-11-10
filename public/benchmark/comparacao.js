@@ -22,11 +22,13 @@ export const PRINCIPAIS = ['gpd', 'gdc', 'rc', 'arrobasProduzidas', 'consMS', 'e
 
 // submissions: [{ clientId, client, status, engorda, recria, respostas }] (rota /api/admin/benchmark/export).
 // Devolve, por cliente, o resultado de cada categoria: { engorda: { [cat]: {...zoo, ...eco} }, recria: {...} }.
-export function resultadosDoGrupo(submissions, settings) {
+// filtro (opcional): só os lotes que passam nele entram (ex.: uma faixa de peso de entrada).
+export function resultadosDoGrupo(submissions, settings, filtro = null) {
   const cats = settings.listas.categorias;
   return submissions.map((s) => {
-    const eng = separarExclusao(s.engorda || [], 'engorda', settings).incluidos;
-    const rec = separarExclusao(s.recria || [], 'recria', settings).incluidos;
+    const so = (ls) => (filtro ? ls.filter(filtro) : ls);
+    const eng = so(separarExclusao(s.engorda || [], 'engorda', settings).incluidos);
+    const rec = so(separarExclusao(s.recria || [], 'recria', settings).incluidos);
     const engorda = {};
     const recria = {};
     for (const c of cats) {

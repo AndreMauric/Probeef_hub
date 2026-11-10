@@ -257,6 +257,11 @@ O admin marca `client.benchmark` (ou o Time cadastra a fazenda já participando)
   confinamento (Dias conf.; sem ele, Dias de trato); "Águas" quando mais de 70% desses dias caem
   em dezembro–maio, senão "Seca". Aparece na tabela (ao lado de Saída), no detalhe do lote, no
   Painel (filtro e comparação) e no Excel consolidado do admin.
+- **Faixa de peso de entrada** (`FAIXAS_PESO` / `faixaPeso` em `fields.js`, também em `calcLote`): pelo peso de entrada
+  e o sexo da categoria. Machos: Abaixo de 300, 301-330 … 451-480, Acima de 481; fêmeas: Abaixo de 240, 241-270 …
+  361-390, Acima de 391 (cada número é o limite de cima da faixa, então todo peso cai numa). Coluna na tabela de lotes
+  (selo azul = machos, rosa = fêmeas) e no detalhe do lote, filtro e "Comparar por" no Painel, coluna no Excel
+  consolidado e filtro na Comparação do admin (`resultadosDoGrupo(..., filtro)`).
 - Origem do lote é opcional (não existia por lote na planilha). "Preencher origem" (`originDialog`)
   aplica uma origem aos lotes sem origem, aos que a tabela mostra (filtro/busca) ou a todos; sugere
   a origem quando a pergunta 10 do questionário tem um só modelo de reposição (`Q10_ORIGEM`).

@@ -1830,6 +1830,7 @@ async function exportBenchmark() {
             p_entrada: c.entrada,
             p_aguas: c.pctAguas === null ? null : Number(c.pctAguas.toFixed(1)),
             p_periodo: c.periodo,
+            p_faixa: c.faixaPeso,
             ...Object.fromEntries(calcCols.map(([k]) => [`c_${k}`, Number.isFinite(c[k]) ? Number(c[k].toFixed(3)) : null])),
             exclusao: motivos.length ? `Excluído: ${motivos.map((x) => x.msg).join(' | ')}` : 'Entra',
             erros: v.porLote[i].filter((x) => x.level === 'erro').map((x) => x.msg).join(' | '),
@@ -1837,7 +1838,7 @@ async function exportBenchmark() {
           });
         });
       }
-      const periodoCols = [['p_entrada', 'Entrada estimada', 14], ['p_aguas', 'Dias nas águas (%)', 12], ['p_periodo', 'Período', 10]];
+      const periodoCols = [['p_entrada', 'Entrada estimada', 14], ['p_aguas', 'Dias nas águas (%)', 12], ['p_periodo', 'Período', 10], ['p_faixa', 'Faixa de peso de entrada (kg)', 16]];
       sheet(name, [['cliente', 'Participante', 28], ['status', 'Situação', 14], ...fields.map((f) => [f.key, `${f.label}${f.unit ? ` (${f.unit})` : ''}`]), ...periodoCols, ...(recria ? [] : calcCols.map(([k, label]) => [`c_${k}`, label])), ['exclusao', 'Resultado (critério de exclusão)', 50], ['erros', 'Erros', 50], ['alertas', 'Alertas', 60]], rows);
     };
     sheet(
@@ -2121,7 +2122,7 @@ async function exportBmkMetrics() {
 // Resultado de cada cliente por categoria (com o critério de exclusão) e a posição no grupo.
 // Cálculo em public/benchmark/comparacao.js, o mesmo da seção de comparação do relatório.
 
-const bmkCompare = { data: null, m: null, c: null, situacao: 'aprovado', grupo: null, ind: 'gpd', loading: false };
+const bmkCompare = { data: null, m: null, c: null, situacao: 'aprovado', grupo: null, faixa: '', ind: 'gpd', loading: false };
 const SITUACOES = [
   ['aprovado', 'Só aprovados'],
   ['enviado', 'Enviados e aprovados'],
@@ -2151,12 +2152,16 @@ function renderBmkCompare() {
   const subs = data.submissions.filter((s) =>
     bmkCompare.situacao === 'aprovado' ? s.status === 'aprovado' : bmkCompare.situacao === 'enviado' ? s.status === 'aprovado' || s.status === 'enviado' : s.engorda.length + s.recria.length > 0,
   );
-  const grupo = c.resultadosDoGrupo(subs, settings);
+  const grupoTodos = c.resultadosDoGrupo(subs, settings);
   // Grupos com dados: "engorda|Macho de Engorda", "recria|…".
   const grupos = [];
-  for (const kind of ['engorda', 'recria']) for (const cat of settings.listas.categorias) if (grupo.some((g) => g[kind][cat])) grupos.push([`${kind}|${cat}`, `${kind === 'engorda' ? 'Engorda' : 'Recria'} · ${cat}`]);
+  for (const kind of ['engorda', 'recria']) for (const cat of settings.listas.categorias) if (grupoTodos.some((g) => g[kind][cat])) grupos.push([`${kind}|${cat}`, `${kind === 'engorda' ? 'Engorda' : 'Recria'} · ${cat}`]);
   if (!grupos.some(([k]) => k === bmkCompare.grupo)) bmkCompare.grupo = grupos[0]?.[0] || null;
   const [kind, cat] = (bmkCompare.grupo || 'engorda|').split('|');
+  // Faixa de peso de entrada (as do sexo da categoria): o resultado de cada participante sai só com os lotes da faixa.
+  const faixas = m.faixasDoSexo(m.sexoDaCategoria(cat));
+  if (!faixas.includes(bmkCompare.faixa)) bmkCompare.faixa = '';
+  const grupo = bmkCompare.faixa ? c.resultadosDoGrupo(subs, settings, (l) => m.faixaPeso(l)?.faixa === bmkCompare.faixa) : grupoTodos;
   const inds = c.INDICADORES[kind];
   if (!inds.some(([k]) => k === bmkCompare.ind)) bmkCompare.ind = 'gpd';
   const ind = inds.find(([k]) => k === bmkCompare.ind);
@@ -2224,6 +2229,9 @@ function renderBmkCompare() {
       { class: 'bmk-compare-controls' },
       h('label', { class: 'field' }, h('span', {}, 'Participantes'), sel(bmkCompare.situacao, SITUACOES, (v) => ((bmkCompare.situacao = v), renderBmkCompare()), 'Participantes')),
       h('label', { class: 'field' }, h('span', {}, 'Grupo'), grupos.length ? sel(bmkCompare.grupo, grupos, (v) => ((bmkCompare.grupo = v), renderBmkCompare()), 'Grupo') : h('span', { class: 'muted' }, 'sem dados')),
+      faixas.length
+        ? h('label', { class: 'field' }, h('span', {}, 'Faixa de peso de entrada'), sel(bmkCompare.faixa, [['', 'Todas'], ...faixas.map((x) => [x, `${x} kg`])], (v) => ((bmkCompare.faixa = v), renderBmkCompare()), 'Faixa de peso de entrada'))
+        : null,
       h('label', { class: 'field' }, h('span', {}, 'Indicador'), indSelect),
     ),
     ...(grupos.length

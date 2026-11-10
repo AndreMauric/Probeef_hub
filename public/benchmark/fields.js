@@ -216,6 +216,35 @@ export function periodoLote(l) {
   return { entrada: new Date(inicio).toISOString().slice(0, 10), dias, diasAguas: aguas, pctAguas, periodo: aguas / dias > LIMITE_AGUAS ? 'Águas' : 'Seca' };
 }
 
+// Faixas de peso de entrada (kg/cab), por sexo (o sexo sai da categoria: Macho de Engorda = machos; Fêmea de
+// Engorda e Vaca de Descarte = fêmeas). São os limites de cima de cada faixa: até 300 é "Abaixo de 300", acima de 300
+// até 330 é "301-330", …, acima de 480 é "Acima de 481" — todo peso cai numa faixa, com ou sem decimais.
+export const FAIXAS_PESO = {
+  macho: [300, 330, 360, 390, 420, 450, 480],
+  femea: [240, 270, 300, 330, 360, 390],
+};
+export const SEXO_LABEL = { macho: 'Machos', femea: 'Fêmeas' };
+// (sexoDaCategoria fica junto do critério de exclusão, mais abaixo: mesma regra.)
+const rotuloFaixa = (lim, i) => (i === 0 ? `Abaixo de ${lim[0]}` : i === lim.length ? `Acima de ${lim[lim.length - 1] + 1}` : `${lim[i - 1] + 1}-${lim[i]}`);
+// Rótulos das faixas de um sexo, na ordem.
+export const faixasDoSexo = (sexo) => (FAIXAS_PESO[sexo] ? Array.from({ length: FAIXAS_PESO[sexo].length + 1 }, (_, i) => rotuloFaixa(FAIXAS_PESO[sexo], i)) : []);
+// Faixa de um lote: { sexo, indice, faixa, chave } ou null (sem categoria de sexo conhecido ou sem peso de entrada).
+// chave = "1-3" (machos) / "2-0" (fêmeas): ordena machos antes de fêmeas e as faixas em ordem.
+export function faixaPeso(l) {
+  const sexo = sexoDaCategoria(l.categoria);
+  const pv = num(l.pvEntrada);
+  if (!sexo || pv === null || !(pv > 0)) return null;
+  const lim = FAIXAS_PESO[sexo];
+  const i = lim.findIndex((x) => pv <= x);
+  const indice = i < 0 ? lim.length : i;
+  return { sexo, indice, faixa: rotuloFaixa(lim, indice), chave: `${sexo === 'macho' ? 1 : 2}-${indice}` };
+}
+export const faixaPorChave = (chave) => {
+  const [s, i] = String(chave || '').split('-');
+  const sexo = s === '1' ? 'macho' : s === '2' ? 'femea' : null;
+  return sexo ? { sexo, faixa: faixasDoSexo(sexo)[Number(i)] || '' } : null;
+};
+
 // Indicadores recalculados de um lote (colunas Z–AF da aba zootécnica e AC–AI da econômica).
 export function calcLote(l) {
   const v = (k) => num(l[k]);
@@ -256,6 +285,10 @@ export function calcLote(l) {
   c.entrada = p?.entrada ?? null;
   c.pctAguas = p?.pctAguas ?? null;
   c.periodo = p?.periodo ?? null;
+  const fx = faixaPeso(l);
+  c.sexo = fx?.sexo ?? null;
+  c.faixaPeso = fx?.faixa ?? null;
+  c.faixaChave = fx?.chave ?? null;
   return c;
 }
 

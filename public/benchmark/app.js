@@ -276,6 +276,7 @@ function lotesPanel(kind) {
     shownFields.flatMap((f, k) => [
       h('th', { scope: 'col', class: k === 0 ? 'bmk-sticky1' : '', style: `min-width:${f.w || 80}px` }, f.label, f.unit ? h('small', {}, f.unit) : null, (recria ? f.reqRecria : f.req) ? h('span', { class: 'bmk-req', title: 'Obrigatório' }, '*') : null, colBadges(f)),
       f.key === 'saida' ? h('th', { scope: 'col', class: 'bmk-calc-h', title: 'Calculado: águas (dez–mai) quando mais de 70% dos dias no confinamento caíram nas águas; senão, seca', style: 'min-width:110px' }, 'Período', h('small', {}, 'águas/seca')) : null,
+      f.key === 'pvEntrada' ? h('th', { scope: 'col', class: 'bmk-calc-h', title: 'Calculado do peso de entrada, com as faixas do sexo (pela categoria): azul = machos, rosa = fêmeas', style: 'min-width:120px' }, 'Faixa de peso', h('small', {}, 'entrada, kg')) : null,
     ]),
     CALC_COLS[group].map(([, label, unit]) => h('th', { scope: 'col', class: 'bmk-calc-h', title: 'Calculado' }, label, h('small', {}, unit))),
     editable ? h('th', { scope: 'col' }, '') : null,
@@ -304,6 +305,7 @@ function lotesPanel(kind) {
         return [
           h('td', { class: `${k === 0 ? 'bmk-sticky1 ' : ''}${cls}`, title: fi.map((x) => x.msg).join('\n') || null }, cellInput(kind, i, f, editable && !f.readonly)),
           f.key === 'saida' ? periodoCell(c) : null,
+          f.key === 'pvEntrada' ? faixaCell(c) : null,
         ];
       }),
       CALC_COLS[group].map(([key, , , d]) => h('td', { class: 'bmk-calc num' }, nf(c[key], d))),
@@ -482,6 +484,12 @@ function periodoCell(c) {
   );
 }
 
+// Faixa de peso de entrada (FAIXAS_PESO em fields.js): selo azul para machos e rosa para fêmeas.
+function faixaCell(c) {
+  if (!c.faixaPeso) return h('td', { class: 'bmk-calc', title: 'Precisa do peso de entrada e de uma categoria de macho ou fêmea.' }, '—');
+  return h('td', { class: 'bmk-calc', title: `${c.sexo === 'macho' ? 'Machos' : 'Fêmeas'}: faixa ${c.faixaPeso} kg` }, h('span', { class: `bmk-faixa ${c.sexo}` }, c.faixaPeso));
+}
+
 function issuesDialog(kind, i) {
   const l = state.data[kind][i];
   const issues = validateLotes(state.data[kind], settings(), { recria: kind === 'recria' }).porLote[i];
@@ -514,6 +522,7 @@ function issuesDialog(kind, i) {
           h('tr', {}, h('th', {}, 'Entrada (saída − dias no confinamento)'), h('td', { class: 'num' }, fmtDia(c.entrada))),
           h('tr', {}, h('th', {}, 'Dias nas águas (dez–mai)'), h('td', { class: 'num' }, c.pctAguas === null ? '—' : `${nf(c.pctAguas, 1)}%`)),
           h('tr', {}, h('th', {}, 'Período (águas se acima de 70%)'), h('td', { class: 'num' }, c.periodo || '—')),
+          h('tr', {}, h('th', {}, `Faixa de peso de entrada${c.sexo ? ` (${c.sexo === 'macho' ? 'machos' : 'fêmeas'})` : ''}`), h('td', { class: 'num' }, c.faixaPeso ? `${c.faixaPeso} kg` : '—')),
         ),
       ),
       h('div', { class: 'dialog-actions' }, h('button', { class: 'btn btn-primary', type: 'button', onclick: () => dialog.close() }, 'Fechar')),
