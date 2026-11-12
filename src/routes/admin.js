@@ -13,7 +13,7 @@ import { adminQuotes, deleteManual, saveManual, setDayValues, setManualValue, se
 import { processMetrics } from '../benchmarkMetrics.js';
 import { checkReportsTo, gerenciaOf, KINDS, responsavelOf } from '../bmkTeam.js';
 import { MODELOS as LEMBRETE_MODELOS, previewReminders, registerManual, sendReminders, ultimosLembretes } from '../bmkLembretes.js';
-import { adminList as bmkList, exportAll as bmkExport, importarParticipantes, saveSettings as saveBmkSettings, settings as bmkSettings } from '../benchmark.js';
+import { adminList as bmkList, exportAll as bmkExport, importarParticipantes, saveSettings as saveBmkSettings, setValidador, settings as bmkSettings, validadoresView } from '../benchmark.js';
 import { adminConversation, adminInbox, adminMarkRead, adminSend, chatFile, forgetChat, saveChatFile, setThreadStatus } from '../chat.js';
 import { exportData, listSnapshots, offsiteStatus, sendOffsite, snapshotPath, validateBackup } from '../backup.js';
 import { generatePassword, hashPassword, requireAdmin, validatePassword } from '../auth.js';
@@ -335,6 +335,10 @@ adminRouter.post('/benchmark/lembretes/registro', route(async (req, res) => {
 adminRouter.post('/benchmark/importar-participantes', route(async (req, res) => {
   res.json(await importarParticipantes(req.user, req.body || {}));
 }));
+
+// Validador responsável de cada responsável de fazenda (Admin → Benchmarking → Validadores).
+adminRouter.get('/benchmark/validadores', (_req, res) => res.json(validadoresView()));
+adminRouter.put('/benchmark/validadores', route(async (req, res) => res.json(await setValidador(req.user, req.body || {}))));
 
 adminRouter.put('/benchmark/settings', route(async (req, res) => {
   res.json({ settings: await saveBmkSettings(req.body || {}) });

@@ -1317,7 +1317,7 @@ function renderBenchmark() {
   const tableEl = h('table');
   table(
     tableEl,
-    ['', 'Participante', 'Responsável', 'Gerência', 'Situação', 'Lotes', 'Animais', 'Erros / alertas', 'Questionário', 'Última alteração', ''],
+    ['', 'Participante', 'Responsável', 'Gerência', 'Validador', 'Situação', 'Lotes', 'Animais', 'Erros / alertas', 'Questionário', 'Última alteração', ''],
     clients.map((c) => {
       const [label, cls] = BMK_STATUS[c.status] || BMK_STATUS.nao_iniciado;
       const pendente = c.active && PENDENTE.includes(c.status);
@@ -1339,6 +1339,7 @@ function renderBenchmark() {
         h('td', {}, h('strong', {}, c.client), c.active ? null : h('span', { class: 'sub' }, 'participante desativado')),
         h('td', {}, c.owner || h('span', { class: 'muted' }, '—')),
         h('td', {}, c.gerencia || h('span', { class: 'muted' }, '—')),
+        h('td', {}, c.validador || (c.ownerId ? h('span', { class: 'pill pill-warn', title: 'O responsável ainda não tem validador: defina em Validadores' }, 'sem validador') : h('span', { class: 'muted' }, '—'))),
         h('td', {}, h('span', { class: cls }, label), c.submittedAt ? h('span', { class: 'sub' }, `enviado ${fmtDate(c.submittedAt)}`) : null, c.lembrete && pendente ? h('span', { class: 'sub', title: c.lembrete.auto ? `Lembrete automático (${c.lembrete.auto} dia(s) antes do prazo)` : 'Lembrete enviado pelo admin' }, `lembrete ${fmtDate(c.lembrete.at)}${c.lembrete.auto ? ' (auto)' : c.lembrete.canal === 'email' ? ' (e-mail)' : c.lembrete.canal === 'whatsapp' ? ' (WhatsApp)' : ''}`) : null),
         h('td', { class: 'mono' }, num(c.lotesEngorda + c.lotesRecria), c.lotesRecria ? h('span', { class: 'sub nowrap' }, `${c.lotesEngorda} eng. · ${c.lotesRecria} rec.`) : null),
         h('td', { class: 'mono' }, num((c.animaisEngorda || 0) + (c.animaisRecria || 0)), c.animaisRecria ? h('span', { class: 'sub nowrap' }, `${num(c.animaisEngorda || 0)} eng. · ${num(c.animaisRecria)} rec.`) : null),
@@ -1910,11 +1911,129 @@ function selectBmkView(view) {
   document.getElementById('benchmark').hidden = view !== 'andamento';
   document.getElementById('benchmark-metrics').hidden = view !== 'metricas';
   document.getElementById('benchmark-compare').hidden = view !== 'comparacao';
+  document.getElementById('benchmark-validadores').hidden = view !== 'validadores';
   document.getElementById('bmk-metrics-export').hidden = view !== 'metricas';
   document.getElementById('bmk-export').hidden = view === 'metricas';
   document.getElementById('bmk-import').hidden = view !== 'andamento';
   if (view === 'metricas') loadBmkMetrics();
   if (view === 'comparacao') loadBmkCompare();
+  if (view === 'validadores') loadBmkValidadores();
+}
+
+// ---------- Benchmarking → Validadores (validador responsável de cada responsável de fazenda) ----------
+// Só o admin define. O validador vê e valida as fazendas desse responsável e recebe aviso pelas Mensagens quando
+// uma é enviada (ver validadoresView / setValidador em src/benchmark.js).
+const bmkVal = { data: null, busca: '', todos: false, semValidador: false, gerencia: '', sel: new Set() };
+
+async function loadBmkValidadores() {
+  const box = document.getElementById('benchmark-validadores');
+  if (!bmkVal.data) box.replaceChildren(h('p', { class: 'muted' }, 'Carregando…'));
+  try {
+    bmkVal.data = await api('/api/admin/benchmark/validadores');
+    renderBmkValidadores();
+  } catch (err) {
+    box.replaceChildren(h('p', { class: 'alert' }, err.message));
+  }
+}
+
+async function salvarValidador(userIds, validadorId) {
+  try {
+    bmkVal.data = await api('/api/admin/benchmark/validadores', { method: 'PUT', body: { userIds, validadorId: validadorId || null } });
+    bmkVal.sel.clear();
+    renderBmkValidadores();
+    toast(userIds.length === 1 ? 'Validador salvo.' : `Validador salvo para ${userIds.length} pessoas.`);
+    loadBenchmark().catch(() => {}); // o Andamento mostra o validador de cada fazenda
+  } catch (err) {
+    toast(err.message, 'error');
+    renderBmkValidadores();
+  }
+}
+
+function renderBmkValidadores() {
+  const box = document.getElementById('benchmark-validadores');
+  const { pessoas, validadores } = bmkVal.data;
+  const semAcento = (t) => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const busca = semAcento(bmkVal.busca).trim();
+  const comFazenda = pessoas.filter((p) => p.fazendas > 0);
+  const gerencias = [...new Set(pessoas.map((p) => p.gerencia || ''))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  if (bmkVal.gerencia && !gerencias.includes(bmkVal.gerencia)) bmkVal.gerencia = '';
+  const lista = pessoas.filter(
+    (p) =>
+      (bmkVal.todos || p.fazendas > 0) &&
+      (!bmkVal.semValidador || !p.validador) &&
+      (!bmkVal.gerencia || (p.gerencia || '-') === bmkVal.gerencia) &&
+      (!busca || semAcento(`${p.name} ${p.email}`).includes(busca)),
+  );
+  for (const id of [...bmkVal.sel]) if (!lista.some((p) => p.id === id)) bmkVal.sel.delete(id);
+  const opcoes = (atual) => [h('option', { value: '' }, '— sem validador —'), ...validadores.map((v) => h('option', { value: v.id, selected: v.id === atual }, v.gerencia ? `${v.name} · ${v.gerencia}` : v.name))];
+  const KIND = { cargill: 'Time Cargill', canal: 'Canais Cargill' };
+
+  const buscaEl = h('input', { type: 'search', placeholder: 'Buscar pessoa', 'aria-label': 'Buscar pessoa', value: bmkVal.busca, oninput: (e) => ((bmkVal.busca = e.target.value), renderBmkValidadores(), document.getElementById('bmk-val-busca')?.focus()) });
+  buscaEl.id = 'bmk-val-busca';
+  const lote = h('select', { 'aria-label': 'Validador para os marcados', style: 'width: auto; max-width: 320px' }, opcoes(''));
+  const tableEl = h('table');
+  table(
+    tableEl,
+    [
+      h('input', { type: 'checkbox', 'aria-label': 'Marcar todos', checked: lista.length > 0 && lista.every((p) => bmkVal.sel.has(p.id)), onchange: (e) => (lista.forEach((p) => (e.target.checked ? bmkVal.sel.add(p.id) : bmkVal.sel.delete(p.id))), renderBmkValidadores()) }),
+      'Responsável',
+      'Perfil',
+      'Gerência',
+      'Fazendas',
+      'Validador',
+    ],
+    lista.map((p) =>
+      h(
+        'tr',
+        { class: p.active ? '' : 'row-off' },
+        h('td', { class: 'bmk-sel' }, h('input', { type: 'checkbox', 'aria-label': `Marcar ${p.name}`, checked: bmkVal.sel.has(p.id), onchange: (e) => (e.target.checked ? bmkVal.sel.add(p.id) : bmkVal.sel.delete(p.id), renderBmkValidadores()) })),
+        h('td', {}, h('strong', {}, p.name), h('span', { class: 'sub' }, p.email), p.active ? null : h('span', { class: 'sub' }, 'desativado')),
+        h('td', {}, KIND[p.kind] || '—'),
+        h('td', {}, p.gerencia || h('span', { class: 'muted' }, '—')),
+        h('td', { class: 'mono' }, p.fazendas || h('span', { class: 'muted' }, '0')),
+        h(
+          'td',
+          {},
+          h('select', { 'aria-label': `Validador de ${p.name}`, class: p.fazendas && !p.validador ? 'bmk-val-falta' : '', onchange: (e) => salvarValidador([p.id], e.target.value) }, opcoes(p.validadorId)),
+          p.validadorId && !p.validador ? h('span', { class: 'sub' }, 'o validador escolhido não pode mais validar') : null,
+        ),
+      ),
+    ),
+    bmkVal.semValidador ? 'Todos os responsáveis desta seleção já têm validador.' : 'Ninguém nesta seleção.',
+  );
+  const semVal = comFazenda.filter((p) => !p.validador).length;
+  box.replaceChildren(
+    h('p', { class: 'muted bmk-metrics-note' }, 'Cada responsável por fazenda (Time ou Canais Cargill) tem um validador responsável: alguém do Time Cargill que pode validar. O validador vê e valida as fazendas desse responsável e recebe um aviso pelas Mensagens quando uma é enviada para validação. Quem pode validar é marcado no cadastro do usuário ("Pode validar").'),
+    h(
+      'div',
+      { class: 'stats' },
+      statTile('Responsáveis com fazenda', num(comFazenda.length)),
+      statTile('Sem validador', num(semVal), semVal ? h('span', { class: 'muted' }, 'precisam de um validador') : h('span', { class: 'muted' }, 'todos com validador')),
+      statTile('Pessoas que podem validar', num(validadores.length)),
+    ),
+    ...(validadores.length ? [] : [h('p', { class: 'alert' }, 'Ninguém pode validar ainda. Em Usuários, marque "Pode validar" no cadastro de quem é do Time Cargill.')]),
+    h(
+      'div',
+      { class: 'bmk-andamento-filtros' },
+      h('label', { class: 'field' }, h('span', {}, 'Pessoa'), buscaEl),
+      h(
+        'label',
+        { class: 'field' },
+        h('span', {}, 'Gerência'),
+        h('select', { onchange: (e) => ((bmkVal.gerencia = e.target.value), renderBmkValidadores()) }, h('option', { value: '' }, 'Todas'), gerencias.map((g) => h('option', { value: g || '-', selected: bmkVal.gerencia === (g || '-') }, g || 'Sem gerência'))),
+      ),
+      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: bmkVal.semValidador, onchange: (e) => ((bmkVal.semValidador = e.target.checked), renderBmkValidadores()) }), h('span', {}, 'Só sem validador')),
+      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: bmkVal.todos, onchange: (e) => ((bmkVal.todos = e.target.checked), renderBmkValidadores()) }), h('span', {}, 'Incluir quem ainda não tem fazenda')),
+    ),
+    h(
+      'div',
+      { class: 'bmk-cobranca' },
+      h('span', { class: 'muted' }, bmkVal.sel.size ? `${bmkVal.sel.size} marcado(s):` : 'Marque pessoas para definir o validador de várias de uma vez:'),
+      lote,
+      h('button', { class: 'btn btn-sm btn-primary', type: 'button', disabled: !bmkVal.sel.size, onclick: () => salvarValidador([...bmkVal.sel], lote.value) }, 'Definir para os marcados'),
+    ),
+    h('div', { class: 'table-wrap' }, tableEl),
+  );
 }
 
 async function loadBmkMetrics() {

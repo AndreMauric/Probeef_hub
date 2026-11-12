@@ -63,6 +63,8 @@ function normalize(raw) {
     // Benchmarking: fazendas liberadas a alguém do Time Cargill por um gestor (aba Equipe, "Incluir do Time").
     bmkFarms: Array.isArray(user.bmkFarms) ? user.bmkFarms : [],
     bmkIncluidoEm: Array.isArray(user.bmkIncluidoEm) ? user.bmkIncluidoEm : [],
+    // Benchmarking: validador responsável pelas fazendas desta pessoa (Admin → Benchmarking → Validadores).
+    bmkValidadorId: user.bmkValidadorId || null,
   }));
 
   // Categorias eram só o texto em cada relatório (e uma imagem por nome em "categoryImages");

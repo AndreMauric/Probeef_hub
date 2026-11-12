@@ -4567,3 +4567,9 @@ td.bmk-sel {
   font-size: 12.5px;
   font-weight: 400;
 }
+
+/* Benchmarking → Validadores: responsável com fazenda e sem validador */
+select.bmk-val-falta {
+  border-color: var(--warn, #b7791f);
+  box-shadow: 0 0 0 1px var(--warn, #b7791f);
+}

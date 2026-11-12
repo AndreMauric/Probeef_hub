@@ -179,6 +179,11 @@ configurações (Admin → Benchmarking → "Ciclo, limites e listas") e é o **
   (`user.gerenciaId`; o texto livre antigo `user.gerencia` vira item do cadastro no `normalize`). Canais e Cliente herdam a de quem do Time os cadastrou (`createdBy`; sem ela, a do
   `reportsTo`) — `gerenciaOf` calcula na hora, então mudar a gerência reflete em todos. A gerência da
   fazenda é a do responsável: coluna e filtro no andamento do admin, coluna na aba Clientes.
+- **Validador responsável** (Admin → Benchmarking → Validadores; `validadoresView`/`setValidador` em
+  `src/benchmark.js`, rotas `/api/admin/benchmark/validadores`): cada responsável de fazenda (Time ou Canais) tem um
+  validador (`user.bmkValidadorId`, alguém do Time com `bmkValidator`), definido só pelo admin, um a um ou em lote.
+  O validador vê e valida as fazendas desse responsável (soma em `participantClients`) e recebe aviso pelas
+  Mensagens quando uma é enviada (`submit`). Coluna "Validador" no Andamento ("sem validador" em destaque).
 - Usuários antigos sem perfil: Time Cargill se já validavam, senão Cliente Cargill (`normalize`).
 - Teste das regras: script com 32 verificações (gestor, validador, Canais, cliente, coleta fechada) —
   se mexer em `bmkTeam.js`/`participantClients`, refaça algo equivalente contra o servidor local.

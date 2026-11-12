@@ -29,14 +29,60 @@ export const isValidator = (user) => user.role === 'admin' || (kindOf(user) === 
 
 // Fazendas do benchmarking que o usuário pode abrir. Admin: todas. Cliente: as vinculadas a ele.
 // Time e Canais: as que têm como responsável alguém do alcance dele (ownerScope), mais as
-// vinculadas diretamente no cadastro (como era antes das equipes).
+// vinculadas diretamente no cadastro (como era antes das equipes). Quem valida também vê as fazendas dos
+// responsáveis de quem é o validador responsável (user.bmkValidadorId, definido pelo admin).
 export function participantClients(user) {
   const list = db().clients.filter((c) => c.benchmark && c.active !== false);
   if (user.role === 'admin') return list;
   const scope = isInternal(user) ? ownerScope(user) : null;
   // bmkFarms: fazendas que um gestor liberou a esta pessoa do Time Cargill (ver includeMember em bmkTeam.js).
   const liberadas = isInternal(user) ? new Set(user.bmkFarms || []) : null;
-  return list.filter((c) => user.clientIds?.includes(c.id) || (scope && c.bmkOwner && scope.has(c.bmkOwner)) || liberadas?.has(c.id));
+  const validados = isValidator(user) ? new Set(db().users.filter((u) => u.bmkValidadorId === user.id).map((u) => u.id)) : null;
+  return list.filter((c) => user.clientIds?.includes(c.id) || (scope && c.bmkOwner && scope.has(c.bmkOwner)) || liberadas?.has(c.id) || (validados && c.bmkOwner && validados.has(c.bmkOwner)));
+}
+
+// ---------- Validador responsável (Admin → Benchmarking → Validadores) ----------
+// Cada responsável de fazenda (Time ou Canais) tem um validador: alguém do Time Cargill que pode validar
+// (bmkValidator). Ele vê e valida as fazendas desse responsável e é avisado pelas Mensagens quando uma é enviada.
+const podeValidar = (u) => u.active && u.role === 'client' && kindOf(u) === 'cargill' && Boolean(u.bmkValidator);
+const podeSerResponsavel = (u) => u.role === 'client' && isInternal(u);
+const AVISO_VALIDACAO = { id: 'bmk-validacao', role: 'admin' };
+
+export function validadorDe(ownerId) {
+  const owner = ownerId && db().users.find((u) => u.id === ownerId);
+  const v = owner?.bmkValidadorId && db().users.find((u) => u.id === owner.bmkValidadorId);
+  return v && podeValidar(v) ? v : null;
+}
+
+export function validadoresView() {
+  const data = db();
+  const fazendas = new Map();
+  for (const c of data.clients) if (c.benchmark && c.active !== false && c.bmkOwner) fazendas.set(c.bmkOwner, (fazendas.get(c.bmkOwner) || 0) + 1);
+  const pt = (a, b) => a.name.localeCompare(b.name, 'pt-BR');
+  return {
+    validadores: data.users.filter(podeValidar).map((u) => ({ id: u.id, name: u.name, gerencia: gerenciaOf(u) })).sort(pt),
+    pessoas: data.users
+      .filter((u) => (u.active && podeSerResponsavel(u)) || fazendas.has(u.id))
+      .map((u) => ({ id: u.id, name: u.name, email: u.email, kind: kindOf(u), active: u.active, gerencia: gerenciaOf(u), fazendas: fazendas.get(u.id) || 0, validadorId: u.bmkValidadorId || null, validador: validadorDe(u.id)?.name || null }))
+      .sort(pt),
+  };
+}
+
+export async function setValidador(admin, { userIds, validadorId } = {}) {
+  if (admin.role !== 'admin') throw new BenchmarkError('Só o administrador define o validador.', 403);
+  const ids = [...new Set(Array.isArray(userIds) ? userIds : [])];
+  if (!ids.length) throw new BenchmarkError('Escolha ao menos uma pessoa.');
+  if (ids.length > 500) throw new BenchmarkError('No máximo 500 pessoas de uma vez.');
+  const data = db();
+  const validador = validadorId ? data.users.find((u) => u.id === validadorId) : null;
+  if (validadorId && !(validador && podeValidar(validador))) throw new BenchmarkError('O validador precisa ser alguém ativo do Time Cargill que pode validar.');
+  const donos = new Set(data.clients.filter((c) => c.benchmark && c.bmkOwner).map((c) => c.bmkOwner));
+  const pessoas = ids.map((id) => data.users.find((u) => u.id === id));
+  if (pessoas.some((u) => !u || !(podeSerResponsavel(u) || donos.has(u.id)))) throw new BenchmarkError('Só dá para definir o validador de quem é do Time ou de Canais Cargill.');
+  for (const u of pessoas) u.bmkValidadorId = validador ? validador.id : null;
+  data.audit = [...(data.audit || []), ...pessoas.map((u) => ({ at: new Date().toISOString(), action: 'bmk-validador', adminId: admin.id, userId: u.id, validadorId: validador?.id || null }))].slice(-1000);
+  await save();
+  return validadoresView();
 }
 
 // Time, Canais e logins "só Benchmarking" entram mesmo sem fazenda ainda (para cadastrar a primeira).
@@ -337,6 +383,15 @@ export async function submit(user, clientId, { text, impersonating = false } = {
   if (user.role === 'client' && !impersonating) {
     await userSend(user, { text: `Enviei o Benchmarking ${sub.ano} de ${client.name} para validação.${text ? `\n\n${text}` : ''}` }).catch(() => {});
   }
+  // E o validador responsável (o do responsável pela fazenda), se não foi ele mesmo que enviou.
+  const validador = validadorDe(client.bmkOwner);
+  if (validador && validador.id !== user.id) {
+    const dono = db().users.find((u) => u.id === client.bmkOwner);
+    await adminSend(AVISO_VALIDACAO, validador.id, {
+      text: `O Benchmarking ${sub.ano} de ${client.name} foi enviado para validação${dono ? ` (responsável: ${dono.name})` : ''}. Você é o validador responsável: abra o Benchmarking no portal para aprovar ou devolver.`,
+      origin: { type: 'benchmark', action: 'validar' },
+    }).catch(() => {});
+  }
   return view(user, client, sub);
 }
 
@@ -426,6 +481,9 @@ export function adminList({ clientIds = null } = {}) {
         owner: userName(c.bmkOwner),
         // Gerência da fazenda = a do responsável (ver gerenciaOf).
         gerencia: gerenciaOf(db().users.find((u) => u.id === c.bmkOwner)),
+        // Validador responsável: o do responsável pela fazenda.
+        validadorId: validadorDe(c.bmkOwner)?.id || null,
+        validador: validadorDe(c.bmkOwner)?.name || null,
         status: statusDe(sub),
         updatedAt: sub?.updatedAt || null,
         updatedBy: userName(sub?.updatedBy),
