@@ -1,5 +1,5 @@
 import { composer, renderMessage } from './chat.js';
-import { api, copyText, h, loadConfig, logout, openPasswordDialog, setupMenu, toast } from './common.js';
+import { acessoPronto, api, copyText, h, loadConfig, logout, openPasswordDialog, setupMenu, toast } from './common.js';
 
 const state = { reports: [], clients: [], users: [], status: null, me: null, backups: [], offsite: null, images: [], categories: [], tags: [], gerencias: [] };
 const dialog = document.getElementById('dialog');
@@ -66,16 +66,17 @@ function confirmDialog(title, message, onConfirm, label = 'Excluir') {
   formDialog(title, h('p', { style: 'margin: 0' }, message), { submitLabel: label, danger: true, onSubmit: onConfirm });
 }
 
-function showPassword(title, email, password) {
+// user: { name, email, bmkOnly }. A senha aparece só aqui: a mensagem pronta vai com o endereço, o login e a senha.
+function showPassword(title, user, password) {
   const code = h('code', {}, password);
   formDialog(
     title,
     h(
       'div',
       { style: 'display: grid; gap: 12px' },
-      h('p', { style: 'margin: 0' }, 'Envie estes dados ao usuário. A senha aparece só agora e ele vai trocá-la no primeiro acesso.'),
-      field('E-mail', h('code', { class: 'mono' }, email)),
-      h('div', { class: 'secret' }, code, h('button', { class: 'btn btn-sm', type: 'button', onclick: () => copyText(password, code) }, 'Copiar')),
+      h('p', { style: 'margin: 0' }, 'A senha aparece só agora. Copie a mensagem abaixo (ou abra no WhatsApp ou no e-mail) e mande para a pessoa; ela troca a senha no primeiro acesso.'),
+      acessoPronto(user, password),
+      h('details', {}, h('summary', {}, 'Só o login e a senha'), h('div', { style: 'display: grid; gap: 8px; margin-top: 8px' }, field('E-mail', h('code', { class: 'mono' }, user.email)), h('div', { class: 'secret' }, code, h('button', { class: 'btn btn-sm', type: 'button', onclick: () => copyText(password, code) }, 'Copiar a senha')))),
     ),
   );
 }
@@ -4947,7 +4948,7 @@ function userDialog(user) {
         const result = await api('/api/admin/users', { method: 'POST', body });
         await applyTools(result.user);
         await refresh();
-        showPassword('Usuário criado', result.user.email, result.password);
+        showPassword('Usuário criado', result.user, result.password);
         return false;
       },
     },
@@ -4969,7 +4970,7 @@ function resetPassword(user) {
     `Uma nova senha temporária será gerada para ${user.name}. A senha atual deixa de funcionar e as sessões abertas são encerradas.`,
     async () => {
       const { password } = await api(`/api/admin/users/${user.id}/reset-password`, { method: 'POST', body: {} });
-      showPassword('Nova senha gerada', user.email, password);
+      showPassword('Nova senha gerada', user, password);
       return false;
     },
     'Gerar senha',

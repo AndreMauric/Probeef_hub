@@ -4573,3 +4573,21 @@ select.bmk-val-falta {
   border-color: var(--warn, #b7791f);
   box-shadow: 0 0 0 1px var(--warn, #b7791f);
 }
+
+/* Mensagem pronta com login e senha temporária (criar usuário / senha nova) */
+.acesso-pronto {
+  display: grid;
+  gap: 8px;
+}
+
+.acesso-msg {
+  width: 100%;
+  font: 13px/1.5 var(--font-data, ui-monospace, monospace);
+  resize: vertical;
+}
+
+.acesso-acoes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}

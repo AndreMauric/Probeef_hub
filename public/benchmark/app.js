@@ -1,7 +1,7 @@
 // Benchmarking (Confinamento) Probeef: coleta por cliente, com validação na hora (antes: planilha
 // "Benchmarking Confinamento Probeef 2026 Feed Manager.xlsb"). As regras ficam em fields.js,
 // as mesmas que o servidor usa. Fluxo: rascunho → enviado → correção/aprovado (ver src/benchmark.js).
-import { api, h, toast } from '/js/common.js';
+import { acessoPronto, api, h, toast } from '/js/common.js';
 import { initNps } from '/js/nps.js';
 import { initTicker } from '/js/ticker.js';
 import { initChat } from '/js/chat.js';
@@ -2057,22 +2057,17 @@ async function renderOverview() {
 
 const KIND_LABEL = { cliente: 'Participante (fazenda)', cargill: 'Time Cargill', canal: 'Canais Cargill' };
 
-function showPassword(title, email, password) {
-  const code = h('code', { class: 'bmk-password' }, password);
+// member: { name, email, bmkOnly }. A senha aparece só aqui: a mensagem pronta vai com o endereço, o login e a senha.
+function showPassword(title, member, password) {
   fill(
     dialog,
     h(
-      'div',
-      { class: 'bmk-dialog' },
+      'form',
+      { class: 'bmk-dialog', onsubmit: (e) => e.preventDefault() },
       h('h2', {}, title),
-      h('p', {}, 'Envie à pessoa o endereço do portal, o e-mail e a senha temporária abaixo. No primeiro acesso ela troca a senha.'),
-      h('p', {}, h('strong', {}, email), h('br'), code),
-      h(
-        'div',
-        { class: 'dialog-actions' },
-        h('button', { class: 'btn', type: 'button', onclick: () => navigator.clipboard?.writeText(`${location.origin}\nE-mail: ${email}\nSenha temporária: ${password}`).then(() => toast('Copiado.')) }, 'Copiar'),
-        h('button', { class: 'btn btn-primary', type: 'button', onclick: () => dialog.close() }, 'Fechar'),
-      ),
+      h('p', {}, 'A senha aparece só agora. Copie a mensagem abaixo (ou abra no WhatsApp ou no e-mail) e mande para a pessoa; ela troca a senha no primeiro acesso.'),
+      acessoPronto(member, password),
+      h('div', { class: 'dialog-actions' }, h('button', { class: 'btn btn-primary', type: 'button', onclick: () => dialog.close() }, 'Fechar')),
     ),
   );
   if (!dialog.open) dialog.showModal();
@@ -2129,7 +2124,7 @@ function memberDialog(team, member) {
               toast('Usuário atualizado.');
             } else {
               const r = await api('/api/benchmark/team', { method: 'POST', body });
-              showPassword('Usuário criado', r.member.email, r.password);
+              showPassword('Usuário criado', r.member, r.password);
             }
             renderTeam();
           } catch (err) {
@@ -2308,7 +2303,7 @@ async function renderTeam() {
     if (!confirm(`Gerar uma nova senha temporária para ${m.name}? A senha atual deixa de funcionar.`)) return;
     try {
       const { password } = await api(`/api/benchmark/team/${m.id}/reset-password`, { method: 'POST', body: {} });
-      showPassword('Nova senha gerada', m.email, password);
+      showPassword('Nova senha gerada', m, password);
     } catch (err) {
       toast(err.message, 'error');
     }

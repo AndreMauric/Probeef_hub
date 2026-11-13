@@ -73,6 +73,62 @@ export function setupMenu(button, list) {
   });
 }
 
+// ---------- Mensagem pronta com o acesso (login e senha temporária) ----------
+// Para o admin ou o gestor mandar à pessoa do jeito que preferir: copiar, WhatsApp ou e-mail. Usada ao criar o
+// usuário e ao gerar uma senha nova (Admin → Usuários e aba Equipe do Benchmarking).
+let nomeDoPortal;
+const portalName = () => (nomeDoPortal ??= api('/api/config').then((c) => c.portalName || 'portal').catch(() => 'portal'));
+
+export function mensagemAcesso({ name, email, password, bmkOnly, kind }, portal = 'portal') {
+  const primeiro = String(name || '').trim().split(/\s+/)[0];
+  // Login só do Benchmarking: a fazenda lança os dados; Time e Canais acompanham as fazendas deles.
+  const benchmark = !bmkOnly ? '' : kind === 'cliente' ? ' Depois de entrar, abra "Benchmarking" para lançar os dados da fazenda.' : ' Depois de entrar, abra "Benchmarking".';
+  return [
+    `Olá${primeiro ? `, ${primeiro}` : ''}!`,
+    '',
+    `Seu acesso ao ${portal} está pronto.`,
+    `Endereço: ${location.origin}`,
+    `Login: ${email}`,
+    `Senha temporária: ${password}`,
+    '',
+    `No primeiro acesso, o portal pede para você criar uma senha sua.${benchmark}`,
+  ].join('\n');
+}
+
+export function acessoPronto(user, password) {
+  const area = h('textarea', { rows: 11, readonly: true, class: 'acesso-msg', 'aria-label': 'Mensagem com o acesso' });
+  const whats = h('a', { class: 'btn btn-sm', target: '_blank', rel: 'noopener' }, 'Abrir no WhatsApp');
+  const mail = h('a', { class: 'btn btn-sm' }, 'Abrir no e-mail');
+  let texto = '';
+  const montar = (portal) => {
+    texto = mensagemAcesso({ ...user, password }, portal);
+    area.value = texto;
+    whats.href = `https://wa.me/?text=${encodeURIComponent(texto)}`;
+    mail.href = `mailto:${user.email}?subject=${encodeURIComponent(`Seu acesso ao ${portal}`)}&body=${encodeURIComponent(texto)}`;
+  };
+  montar('portal');
+  portalName().then(montar);
+  const copiar = h(
+    'button',
+    {
+      class: 'btn btn-sm btn-primary',
+      type: 'button',
+      onclick: async () => {
+        try {
+          await navigator.clipboard.writeText(texto);
+          toast('Mensagem copiada. É só colar para a pessoa.');
+        } catch {
+          area.focus();
+          area.select();
+          toast('Selecione e copie a mensagem (Ctrl+C).');
+        }
+      },
+    },
+    'Copiar mensagem',
+  );
+  return h('div', { class: 'acesso-pronto' }, area, h('div', { class: 'acesso-acoes' }, copiar, whats, mail));
+}
+
 export async function copyText(text, fallbackEl) {
   try {
     await navigator.clipboard.writeText(text);
